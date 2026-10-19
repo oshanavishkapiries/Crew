@@ -61,6 +61,7 @@ export interface PipelineHarness {
   runCrew: (
     args: string[],
     env?: Record<string, string>,
+    execaOptions?: Record<string, any>,
   ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
   /** Seed another agent in the workspace and return its token */
   addAgent: (id: string, customRoleId?: string, cliType?: string) => string;
@@ -239,7 +240,11 @@ export async function createPipelineHarness(
     };
   };
 
-  const runCrew = async (args: string[], env: Record<string, string> = {}) => {
+  const runCrew = async (
+    args: string[],
+    env: Record<string, string> = {},
+    execaOptions: Record<string, any> = {},
+  ) => {
     const result = await execa(process.execPath, [cliPath, ...args], {
       cwd: repoDir,
       env: {
@@ -251,6 +256,7 @@ export async function createPipelineHarness(
       },
       extendEnv: false,
       reject: false,
+      ...execaOptions,
     });
     return { exitCode: result.exitCode ?? null, stdout: result.stdout, stderr: result.stderr };
   };

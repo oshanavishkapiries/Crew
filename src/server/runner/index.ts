@@ -45,6 +45,32 @@ export function ensureCrewShim(crewHome: string): string {
   return binDir;
 }
 
+export function ensureClaudeSettings(crewHome: string): string {
+  const settingsPath = path.join(crewHome, 'claude-settings.json');
+  const content = JSON.stringify(
+    {
+      hooks: {
+        Stop: [
+          {
+            hooks: [
+              {
+                type: 'command',
+                command: 'crew hook stop',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    null,
+    2,
+  );
+  try {
+    fs.writeFileSync(settingsPath, content, 'utf8');
+  } catch {}
+  return settingsPath;
+}
+
 export async function killProcessGroup(
   pid: number,
   signal: NodeJS.Signals = 'SIGTERM',
@@ -337,6 +363,8 @@ export class Runner extends EventEmitter {
     childEnv.CREW_TASK_ID = task.id;
     childEnv.CREW_AGENT_TOKEN = agentToken;
     childEnv.CREW_SESSION_ID = sessionId;
+    childEnv.CREW_RUN_ID = runId;
+    childEnv.CREW_HOME = this.crewHome;
     childEnv.CREW_CLI_PATH = path.join(findPackageRoot(), 'dist', 'cli.js');
 
     const permissionProfile: PermissionProfile =
@@ -352,6 +380,17 @@ export class Runner extends EventEmitter {
             denyCommands: [],
           };
 
+    // Check if Stop hook is enabled (D36: off by default, enabled per workspace or role)
+    const isStopHookEnabled = Boolean(
+      (workspace?.config as any)?.stopHook ||
+      (role?.permissionProfile as any)?.stopHook
+    );
+
+    let settingsPath: string | undefined;
+    if (isStopHookEnabled) {
+      settingsPath = ensureClaudeSettings(this.crewHome);
+    }
+
     // Build spawn or resume command
     let spawnConfig: { command: string; args: string[]; env: Record<string, string> };
     if (options.isResume && options.sessionId && adapter.buildResume) {
@@ -363,6 +402,8 @@ export class Runner extends EventEmitter {
         taskId: task.id,
         serverUrl: this.serverUrl,
         agentToken,
+        settingsPath,
+        stopHook: isStopHookEnabled,
       });
     } else {
       spawnConfig = adapter.buildSpawn({
@@ -372,6 +413,8 @@ export class Runner extends EventEmitter {
         taskId: task.id,
         serverUrl: this.serverUrl,
         agentToken,
+        settingsPath,
+        stopHook: isStopHookEnabled,
       });
     }
 

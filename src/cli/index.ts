@@ -11,7 +11,7 @@ export function createCli(commands: CommandDefinition[] = COMMANDS): Command {
     .version('0.1.0');
 
   for (const def of commands) {
-    const cmd = program.command(def.name);
+    const cmd = program.command(def.name, { hidden: Boolean(def.hidden) });
     cmd.description(def.summary);
 
     if (def.args) {

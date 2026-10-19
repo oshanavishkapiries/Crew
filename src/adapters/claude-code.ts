@@ -1,5 +1,7 @@
 import * as crypto from 'node:crypto';
+import * as path from 'node:path';
 import { execa } from 'execa';
+import { getCrewHome } from '../server/config.js';
 import type { AgentAdapter, AgentEvent, PermissionProfile } from './types.js';
 
 export const BASE_ALLOWED_TOOLS = [
@@ -133,6 +135,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     serverUrl?: string;
     agentToken?: string;
     sessionId?: string;
+    settingsPath?: string;
+    stopHook?: boolean;
   }): { command: string; args: string[]; env: Record<string, string> } {
     const sessionId = opts.sessionId || crypto.randomUUID();
     const { allowedTools, disallowedTools, permissionMode } = this.resolveTools(opts.permissions);
@@ -153,6 +157,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       '--disallowedTools',
       disallowedTools.join(' '),
     ];
+
+    if (opts.settingsPath) {
+      args.push('--settings', opts.settingsPath);
+    } else if (opts.stopHook) {
+      args.push('--settings', path.join(getCrewHome(), 'claude-settings.json'));
+    }
 
     if (this.options.maxBudgetUsd !== undefined) {
       args.push('--max-budget-usd', String(this.options.maxBudgetUsd));
@@ -178,6 +188,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     taskId?: string;
     serverUrl?: string;
     agentToken?: string;
+    settingsPath?: string;
+    stopHook?: boolean;
   }): { command: string; args: string[]; env: Record<string, string> } {
     const { allowedTools, disallowedTools, permissionMode } = this.resolveTools(opts.permissions);
 
@@ -197,6 +209,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       '--disallowedTools',
       disallowedTools.join(' '),
     ];
+
+    if (opts.settingsPath) {
+      args.push('--settings', opts.settingsPath);
+    } else if (opts.stopHook) {
+      args.push('--settings', path.join(getCrewHome(), 'claude-settings.json'));
+    }
 
     if (this.options.maxBudgetUsd !== undefined) {
       args.push('--max-budget-usd', String(this.options.maxBudgetUsd));

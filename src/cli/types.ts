@@ -27,4 +27,5 @@ export interface CommandDefinition {
   options?: CommandOption[];
   examples?: CommandExample[];
   action?: (...args: any[]) => Promise<void> | void;
+  hidden?: boolean;
 }

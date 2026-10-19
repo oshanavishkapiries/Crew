@@ -27,7 +27,7 @@ describe('Commands reference (PRD Decision D3)', () => {
     expect(helpText).toContain('Usage: crew [options] [command]');
     expect(helpText).toContain('Turn AI coding agents into a dev team with its own memory');
 
-    for (const cmd of COMMANDS) {
+    for (const cmd of COMMANDS.filter((c) => !c.hidden)) {
       expect(helpText).toContain(cmd.name);
     }
   });

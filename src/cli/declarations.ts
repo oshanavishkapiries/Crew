@@ -3,6 +3,7 @@ import { handleAsk } from './commands/ask.js';
 import { handleCancel } from './commands/cancel.js';
 import { handleDiff } from './commands/diff.js';
 import { handleDone } from './commands/done.js';
+import { handleHook } from './commands/hook.js';
 import { handleLogs } from './commands/logs.js';
 import { handleResume } from './commands/resume.js';
 import { handleReview } from './commands/review.js';
@@ -268,6 +269,20 @@ export const COMMANDS: CommandDefinition[] = [
       { description: 'Request changes with feedback', command: 'crew review changes --feedback "Add unit tests for error cases"' },
     ],
     action: handleReview,
+  },
+  {
+    name: 'hook',
+    category: 'agent',
+    summary: 'Internal hook handler',
+    description: 'Internal lifecycle hook called by agent tools (e.g. Claude Code Stop hook).',
+    args: [
+      { name: 'event', description: 'Hook event name (e.g. stop)', required: true },
+    ],
+    examples: [
+      { description: 'Stop hook invocation', command: 'crew hook stop' },
+    ],
+    action: handleHook,
+    hidden: true,
   },
 
   // Orchestrator commands

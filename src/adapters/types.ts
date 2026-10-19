@@ -27,6 +27,8 @@ export interface AgentAdapter {
     taskId?: string;
     serverUrl?: string;
     agentToken?: string;
+    settingsPath?: string;
+    stopHook?: boolean;
   }): { command: string; args: string[]; env: Record<string, string> };
   parseOutput(chunk: string): AgentEvent[];
   isRateLimit(event: AgentEvent): boolean;
@@ -38,6 +40,8 @@ export interface AgentAdapter {
     taskId?: string;
     serverUrl?: string;
     agentToken?: string;
+    settingsPath?: string;
+    stopHook?: boolean;
   }): { command: string; args: string[]; env: Record<string, string> };
   installExtras?(workDir: string): Promise<void>;
 }

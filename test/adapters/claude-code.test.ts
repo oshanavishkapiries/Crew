@@ -109,6 +109,59 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
       expect(disallowedToolsStr).toContain('Bash(sudo *)');
       expect(disallowedToolsStr).toContain('Bash(rm -rf / *)');
     });
+
+    it('builds spawn command with read-only permission profile (dontAsk, read/search/git-diff allowed, edit/write denied)', () => {
+      const spawnConfig = adapter.buildSpawn({
+        prompt: 'Review task',
+        workDir: '/path/to/worktree',
+        permissions: {
+          mode: 'read-only',
+        },
+      });
+
+      expect(spawnConfig.args).toContain('--permission-mode');
+      expect(spawnConfig.args).toContain('dontAsk');
+
+      const allowedToolsIdx = spawnConfig.args.indexOf('--allowedTools');
+      const allowedToolsStr = spawnConfig.args[allowedToolsIdx + 1];
+      expect(allowedToolsStr).toContain('Read');
+      expect(allowedToolsStr).toContain('Glob');
+      expect(allowedToolsStr).toContain('Grep');
+      expect(allowedToolsStr).toContain('Bash(git diff *)');
+      expect(allowedToolsStr).toContain('Bash(crew review *)');
+
+      const disallowedToolsIdx = spawnConfig.args.indexOf('--disallowedTools');
+      const disallowedToolsStr = spawnConfig.args[disallowedToolsIdx + 1];
+      expect(disallowedToolsStr).toContain('Edit');
+      expect(disallowedToolsStr).toContain('Write');
+      expect(disallowedToolsStr).toContain('Bash(git push *)');
+    });
+
+    it('includes --settings flag when settingsPath is provided in buildSpawn', () => {
+      const spawnConfig = adapter.buildSpawn({
+        prompt: 'Task with settings',
+        workDir: '/path/to/worktree',
+        permissions: { mode: 'standard' },
+        settingsPath: '/custom/claude-settings.json',
+      });
+
+      const settingsIdx = spawnConfig.args.indexOf('--settings');
+      expect(settingsIdx).toBeGreaterThan(-1);
+      expect(spawnConfig.args[settingsIdx + 1]).toBe('/custom/claude-settings.json');
+    });
+
+    it('includes --settings flag when stopHook is true in buildSpawn', () => {
+      const spawnConfig = adapter.buildSpawn({
+        prompt: 'Task with stop hook',
+        workDir: '/path/to/worktree',
+        permissions: { mode: 'standard' },
+        stopHook: true,
+      });
+
+      const settingsIdx = spawnConfig.args.indexOf('--settings');
+      expect(settingsIdx).toBeGreaterThan(-1);
+      expect(spawnConfig.args[settingsIdx + 1]).toContain('claude-settings.json');
+    });
   });
 
   describe('buildResume', () => {
@@ -140,9 +193,43 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
 
       expect(resumeConfig.env.CREW_SESSION_ID).toBe(sessionId);
     });
+
+    it('includes --settings flag when settingsPath is provided in buildResume', () => {
+      const sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+      const resumeConfig = adapter.buildResume({
+        sessionId,
+        prompt: 'Use ESM modules',
+        workDir: '/path/to/worktree',
+        permissions: { mode: 'standard' },
+        settingsPath: '/custom/claude-settings.json',
+      });
+
+      const settingsIdx = resumeConfig.args.indexOf('--settings');
+      expect(settingsIdx).toBeGreaterThan(-1);
+      expect(resumeConfig.args[settingsIdx + 1]).toBe('/custom/claude-settings.json');
+    });
   });
 
   describe('parseOutput', () => {
+    it('parses real recorded hook-blocked stream-json fixture', () => {
+      const fixturePath = path.resolve(import.meta.dirname, '../fixtures/claude-code/hook-blocked.jsonl');
+      const content = fs.readFileSync(fixturePath, 'utf-8');
+      const events = adapter.parseOutput(content);
+
+      expect(events.length).toBeGreaterThan(0);
+      for (const event of events) {
+        expect(event.type).toBeDefined();
+        expect(event.sessionId).toBe('b7706332-f3b3-4c8d-a3dd-51809ff48125');
+      }
+
+      // Check user and notification events from hook feedback
+      const types = events.map((e) => e.type);
+      expect(types).toContain('system');
+      expect(types).toContain('assistant');
+      expect(types).toContain('user');
+      expect(types).toContain('result');
+    });
+
     it('parses real recorded short-task stream-json fixture', () => {
       const fixturePath = path.resolve(import.meta.dirname, '../fixtures/claude-code/short-task.jsonl');
       const content = fs.readFileSync(fixturePath, 'utf-8');

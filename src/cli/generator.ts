@@ -39,9 +39,10 @@ export function renderCommandMarkdown(cmd: CommandDefinition): string {
 }
 
 export function generateCommandsMarkdown(commands: CommandDefinition[] = COMMANDS): string {
-  const humanCmds = commands.filter((c) => c.category === 'human');
-  const agentCmds = commands.filter((c) => c.category === 'agent');
-  const orchestratorCmds = commands.filter((c) => c.category === 'orchestrator');
+  const visibleCommands = commands.filter((c) => !c.hidden);
+  const humanCmds = visibleCommands.filter((c) => c.category === 'human');
+  const agentCmds = visibleCommands.filter((c) => c.category === 'agent');
+  const orchestratorCmds = visibleCommands.filter((c) => c.category === 'orchestrator');
 
   const lines: string[] = [
     '# Crew Commands Reference',
