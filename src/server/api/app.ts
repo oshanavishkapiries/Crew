@@ -1,4 +1,6 @@
-import { eq, inArray } from 'drizzle-orm';
+import * as fs from 'node:fs';
+import { eq, inArray, desc, asc } from 'drizzle-orm';
+import { execa } from 'execa';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
@@ -276,7 +278,20 @@ export function createApp(ctx: AppContext): Hono {
       throw forbidden(`task ${taskId} is not assigned to this agent`);
     }
 
-    return c.json({ success: true, task });
+    const messages = ctx.db.db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.taskId, taskId))
+      .orderBy(asc(schema.messages.createdAt))
+      .all();
+    const runs = ctx.db.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.taskId, taskId))
+      .orderBy(asc(schema.runs.startedAt))
+      .all();
+
+    return c.json({ success: true, task, messages, runs });
   });
 
   // PRD line 370: POST /api/tasks/:id/answer (human secret)
@@ -387,6 +402,127 @@ export function createApp(ctx: AppContext): Hono {
     return c.json({
       success: true,
       message: 'Dispatch resumed and stopped agents restored to idle',
+    });
+  });
+
+  // PRD: GET /api/status (human secret)
+  app.get('/api/status', async (c) => {
+    requireHuman(c);
+
+    const isStopped = ctx.dispatcher ? ctx.dispatcher.isStopped() : false;
+    const agents = ctx.db.db.select().from(schema.agents).all();
+    const liveRuns = ctx.runner
+      ? ctx.runner.getLiveRuns().map((r) => ({
+          id: r.id,
+          taskId: r.taskId,
+          agentId: r.agentId,
+          sessionId: r.sessionId,
+          pid: r.pid,
+        }))
+      : [];
+    const rateLimits = ctx.runner ? ctx.runner.getAllRateLimits() : [];
+
+    const tasks = ctx.db.db.select().from(schema.tasks).all();
+    const taskCounts: Record<string, number> = {};
+    for (const t of tasks) {
+      taskCounts[t.status] = (taskCounts[t.status] || 0) + 1;
+    }
+
+    return c.json({
+      stopped: isStopped,
+      agents: agents.map((a) => ({
+        id: a.id,
+        name: a.name,
+        cliType: a.cliType,
+        status: a.status,
+      })),
+      liveRuns,
+      rateLimits,
+      taskCounts,
+      totalTasks: tasks.length,
+    });
+  });
+
+  // PRD line 374: GET /api/tasks (human secret)
+  app.get('/api/tasks', async (c) => {
+    requireHuman(c);
+    const allTasks = ctx.db.db
+      .select()
+      .from(schema.tasks)
+      .orderBy(asc(schema.tasks.createdAt))
+      .all();
+
+    const allAgents = ctx.db.db.select().from(schema.agents).all();
+    const agentMap = new Map(allAgents.map((a) => [a.id, a.name]));
+
+    const tasksWithAgent = allTasks.map((t) => ({
+      ...t,
+      assigneeAgentName: t.assigneeAgentId ? agentMap.get(t.assigneeAgentId) : undefined,
+    }));
+
+    return c.json({ tasks: tasksWithAgent });
+  });
+
+  // PRD line 373: GET /api/tasks/:id/diff (human secret)
+  app.get('/api/tasks/:id/diff', async (c) => {
+    requireHuman(c);
+    const taskId = c.req.param('id');
+    const task = loadTask(taskId);
+
+    if (!task.worktreePath || !fs.existsSync(task.worktreePath)) {
+      return c.json({ diff: '', branch: task.branch || '', error: 'No worktree exists for this task' });
+    }
+
+    const board = ctx.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get();
+    const workspace = board
+      ? ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()
+      : undefined;
+    const baseBranch = workspace?.defaultBranch || 'main';
+
+    try {
+      await execa('git', ['add', '-N', '.'], { cwd: task.worktreePath, reject: false });
+      const diffResult = await execa('git', ['diff', baseBranch], {
+        cwd: task.worktreePath,
+        reject: false,
+      });
+      return c.json({
+        diff: diffResult.stdout || '',
+        branch: task.branch,
+        baseBranch,
+      });
+    } catch (err: any) {
+      return c.json({ diff: '', error: err.message }, 500);
+    }
+  });
+
+  // GET /api/tasks/:id/logs (human secret)
+  app.get('/api/tasks/:id/logs', async (c) => {
+    requireHuman(c);
+    const taskId = c.req.param('id');
+    const task = loadTask(taskId);
+
+    const lastRun = ctx.db.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.taskId, taskId))
+      .orderBy(desc(schema.runs.startedAt))
+      .get();
+
+    if (!lastRun) {
+      return c.json({ content: '', logPath: null, runId: null });
+    }
+
+    let content = '';
+    if (lastRun.logPath && fs.existsSync(lastRun.logPath)) {
+      content = fs.readFileSync(lastRun.logPath, 'utf-8');
+    }
+
+    return c.json({
+      content,
+      logPath: lastRun.logPath,
+      runId: lastRun.id,
+      exitReason: lastRun.exitReason,
+      exitCode: lastRun.exitCode,
     });
   });
 

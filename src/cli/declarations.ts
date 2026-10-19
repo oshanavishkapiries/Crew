@@ -1,10 +1,16 @@
 import { handleAnswer } from './commands/answer.js';
 import { handleAsk } from './commands/ask.js';
+import { handleCancel } from './commands/cancel.js';
+import { handleDiff } from './commands/diff.js';
 import { handleDone } from './commands/done.js';
+import { handleLogs } from './commands/logs.js';
 import { handleResume } from './commands/resume.js';
 import { handleStart } from './commands/start.js';
+import { handleStatus } from './commands/status.js';
 import { handleStopAll } from './commands/stop-all.js';
+import { handleTasks } from './commands/tasks.js';
 import { handleUpdate } from './commands/update.js';
+import { handleWorktree } from './commands/worktree.js';
 import type { CommandDefinition } from './types.js';
 
 export const COMMANDS: CommandDefinition[] = [
@@ -41,6 +47,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'View current project status', command: 'crew status' },
     ],
+    action: handleStatus,
   },
   {
     name: 'stop-all',
@@ -70,6 +77,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'List all tasks', command: 'crew tasks' },
     ],
+    action: handleTasks,
   },
   {
     name: 'logs',
@@ -86,6 +94,7 @@ export const COMMANDS: CommandDefinition[] = [
       { description: 'View logs for task-1', command: 'crew logs task-1' },
       { description: 'Follow live logs for task-1', command: 'crew logs task-1 --follow' },
     ],
+    action: handleLogs,
   },
   {
     name: 'diff',
@@ -98,6 +107,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'View diff for task-1', command: 'crew diff task-1' },
     ],
+    action: handleDiff,
   },
   {
     name: 'cancel',
@@ -110,6 +120,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'Cancel task-1', command: 'crew cancel task-1' },
     ],
+    action: handleCancel,
   },
   {
     name: 'approve',
@@ -161,6 +172,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'Garbage collect inactive task worktrees', command: 'crew worktree gc' },
     ],
+    action: handleWorktree,
   },
 
   // Agent commands

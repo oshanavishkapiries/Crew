@@ -236,6 +236,7 @@ export async function createPipelineHarness(
         CREW_SERVER_URL: server.url,
         CREW_HOME: crewHomeDir,
         CREW_SECRET: server.perStartSecret,
+        PATH: process.env.PATH || '',
         ...env,
       },
       extendEnv: false,

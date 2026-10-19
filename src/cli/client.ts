@@ -60,6 +60,30 @@ export async function postHumanAction<T>(endpoint: string, body?: unknown): Prom
 }
 
 /**
+ * GET from one of the server's human endpoints, authenticated via X-Crew-Secret (D13, D25).
+ */
+export async function getHumanAction<T>(endpoint: string): Promise<T> {
+  const { url, secret } = getServerInfo();
+  let res: Response;
+  try {
+    res = await fetch(`${url}${endpoint}`, {
+      method: 'GET',
+      headers: {
+        [SECRET_HEADER]: secret,
+      },
+    });
+  } catch (err) {
+    fail(`Failed to connect to Crew server at ${url}: ${(err as Error).message}`);
+  }
+
+  if (!res.ok) {
+    fail(`Request failed: ${res.status} ${await res.text()}`);
+  }
+
+  return (await res.json()) as T;
+}
+
+/**
  * POST to one of the current task's agent endpoints. Crew gives a spawned agent its
  * server URL, task and token through env vars, never in the prompt (D13).
  */
