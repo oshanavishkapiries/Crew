@@ -15,17 +15,18 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 
 ## Libraries
 
-| Area | Library | Purpose |
-| --- | --- | --- |
-| CLI | `commander` | Command parsing. Its declarations also generate `--help` and `docs/commands.md` (D3) |
-| HTTP server | Hono | REST + SSE API |
-| Database | SQLite via `better-sqlite3` | One DB at `~/.crew/crew.db` (D12) |
-| Migrations / ORM | Drizzle | Schema and migrations |
-| Processes | `execa` | Spawning agents (structured JSON events, D5) and running verify commands |
-| Git | git CLI wrapper | Worktrees, rebase, merge. No libgit bindings |
-| UI | Vite + React | Board UI, built at package time and served by the crew server |
-| Live updates | Server-Sent Events | No WebSockets |
-| Agent output view | Live log view of structured events | Replaces the design doc's xterm.js PTY terminal (D5) |
+| Area | Library | Version | Purpose |
+| --- | --- | --- | --- |
+| CLI | `commander` | 15.0.0 | Command parsing. Its declarations also generate `--help` and `docs/commands.md` (D3) |
+| HTTP server | `hono`, `@hono/node-server` | 4.13.13 / 2.1.5 | REST + SSE API |
+| Database | SQLite via `better-sqlite3` | 13.0.3 | One DB at `~/.crew/crew.db` (D12) |
+| Migrations / ORM | `drizzle-orm`, `drizzle-kit` | 0.45.4 / 0.31.11 | Schema and migrations |
+| Processes | `execa` | 10.2.0 | Spawning agents (structured JSON events, D5) and running verify commands |
+| Git | git CLI wrapper | — | Worktrees, rebase, merge. No libgit bindings |
+| Build / Dev runner | `tsup`, `tsx` | 9.0.0 / 4.23.15 | Bundling to `dist/cli.js` and running dev scripts |
+| UI | Vite + React | — | Board UI, built at package time and served by the crew server |
+| Live updates | Server-Sent Events | — | No WebSockets |
+| Agent output view | Live log view of structured events | — | Replaces the design doc's xterm.js PTY terminal (D5) |
 
 **Removed from the design doc:** `node-pty`. Spawn mode no longer uses a PTY (D5), which also keeps native build steps out of `npx` installs.
 
@@ -42,10 +43,11 @@ Tool versions checked on 2026-10-18: Claude Code 2.1.300, codex-cli 0.163.0.
 
 ## Testing and tooling
 
-| Area | Choice | Notes |
-| --- | --- | --- |
-| Test runner | Vitest | All tests |
-| Main test seam | In-process pipeline harness | Real server, temp git repo, fake adapter |
-| Adapter tests | Contract tests | Recorded `stream-json` / `--json` fixtures |
-| CI | Linux and macOS | D14 |
-| Telemetry | None | D18 |
+| Area | Choice | Version | Notes |
+| --- | --- | --- | --- |
+| Test runner | Vitest | 5.0.5 | All tests |
+| TypeScript | TypeScript | 7.0.2 | Typechecking and compilation |
+| Main test seam | In-process pipeline harness | — | Real server, temp git repo, fake adapter |
+| Adapter tests | Contract tests | — | Recorded `stream-json` / `--json` fixtures |
+| CI | Linux and macOS | — | D14 |
+| Telemetry | None | — | D18 |

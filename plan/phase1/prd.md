@@ -30,6 +30,7 @@ Decisions from the grilling session on 2026-10-18. Each is referenced in the tex
 | D17 | Antigravity is Pull mode only at launch. | Claude-decided |
 | D18 | No telemetry. | Claude-decided |
 | D19 | Permissions, stop-all, budget and loop limits, and Claude Code rate-limit handling move to milestone 2, so preview testers (D1) never run agents without them. Codex, Pull mode, heartbeat and Codex rate-limit handling stay in milestone 7. | user |
+| D20 | The Crew home directory defaults to `~/.crew` and can be overridden by the `CREW_HOME` environment variable, enabling isolated test environments with temporary databases, worktrees, and logs. | Claude-decided |
 
 ## Problem Statement
 

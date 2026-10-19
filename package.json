@@ -1,0 +1,45 @@
+{
+  "name": "crew",
+  "version": "0.1.0",
+  "description": "Turn AI coding agents into a dev team with its own memory",
+  "type": "module",
+  "bin": {
+    "crew": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "generate:docs": "tsx scripts/generate-docs.ts"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "orchestrator",
+    "claude-code",
+    "codex"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "better-sqlite3": "13.0.3",
+    "commander": "15.0.0",
+    "drizzle-orm": "0.45.4",
+    "execa": "10.2.0",
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.5",
+    "drizzle-kit": "0.31.11",
+    "tsup": "9.0.0",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}

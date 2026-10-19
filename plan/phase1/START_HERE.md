@@ -8,18 +8,18 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 
 ## 2. Read these, in this order
 
-1. [AGENTS.md](AGENTS.md): the rules. The most important one: **update the docs in the same change as the code.**
-2. [plan/phase1/prd.md](plan/phase1/prd.md): what to build. Read the **Decision Log** at the top first. It overrides the design doc wherever they disagree.
-3. [docs/architecture/project-structure.md](docs/architecture/project-structure.md): where code goes.
-4. [docs/architecture/project-techstack.md](docs/architecture/project-techstack.md): what to build it with.
-5. [plan/phase1/handoff.md](plan/phase1/handoff.md): what the last session did and left open.
-6. [docs/Crew Design Doc.md](<docs/Crew Design Doc.md>): background only. Skim it for the "why".
+1. [AGENTS.md](../../AGENTS.md): the rules. The most important one: **update the docs in the same change as the code.**
+2. [plan/phase1/prd.md](prd.md): what to build. Read the **Decision Log** at the top first. It overrides the design doc wherever they disagree.
+3. [docs/architecture/project-structure.md](../../docs/architecture/project-structure.md): where code goes.
+4. [docs/architecture/project-techstack.md](../../docs/architecture/project-techstack.md): what to build it with.
+5. [plan/phase1/handoff.md](handoff.md): what the last session did and left open.
+6. [docs/Crew Design Doc.md](<../../docs/Crew Design Doc.md>): background only. Skim it for the "why".
 
 ## 3. Where things stand
 
-- Planning is done: PRD, decisions D1–D19, architecture docs and agent rules.
-- **No application code exists yet.** There's no `package.json`, no `src/`, no tests.
-- No tickets exist yet. If the user asks for tickets first, use the `to-tickets` skill on the PRD. Otherwise start with milestone 1 below.
+- Planning is done: PRD, decisions D1–D20, architecture docs and agent rules.
+- **Milestone 1 (Core) is implemented and verified:** `package.json`, TypeScript, SQLite data model (all 12 PRD tables with Drizzle), server on 127.0.0.1 with Host-header check and SSE, task state machine & scheduler with dependency resolution, fake adapter, CLI command generator & staleness tests, and the in-process pipeline harness.
+- All 15 tests pass. Next up is Milestone 2 (Runner and core safety).
 
 ## 4. Things that are easy to get wrong
 
@@ -59,7 +59,7 @@ Milestone 1 is done when the harness tests pass, every state transition (valid a
 
 - Run the full test suite.
 - Check every doc in the AGENTS.md table against your diff.
-- Update [plan/phase1/handoff.md](plan/phase1/handoff.md) with what's done, what's next and anything left open.
+- Update [plan/phase1/handoff.md](handoff.md) with what's done, what's next and anything left open.
 - Tell the user, and wait for their go-ahead before starting the next milestone.
 
 ## 6. When you're unsure

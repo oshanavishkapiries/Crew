@@ -4,7 +4,7 @@ Rules for every AI agent (Claude Code, Codex or any other) working on the Crew r
 
 ## Read first
 
-- `START_HERE.md`: onboarding. Context, current state and how to start implementing.
+- `plan/phase1/START_HERE.md`: onboarding. Context, current state and how to start implementing.
 - `plan/phase1/prd.md`: what we're building and why. Its Decision Log (D1–D19) overrides `docs/Crew Design Doc.md` wherever they disagree.
 - `docs/architecture/project-structure.md`: where code goes.
 - `docs/architecture/project-techstack.md`: what we build with.
@@ -20,7 +20,7 @@ Docs are part of the change, not a follow-up. When your change touches something
 | CLI commands, arguments, flags or help text | Regenerate `docs/commands.md` from the command declarations (D3); never edit generated parts by hand |
 | A product or design decision, or anything that contradicts the PRD | `plan/phase1/prd.md`: add or update the entry in the Decision Log and fix the affected sections |
 | Work status at the end of a session | `plan/phase1/handoff.md` |
-| Project status, onboarding steps or the reading order | `START_HERE.md` (and `README.md` if its status or doc table changes) |
+| Project status, onboarding steps or the reading order | `plan/phase1/START_HERE.md` (and `README.md` if its status or doc table changes) |
 
 Before you finish, check every doc above against your diff. If a doc no longer matches the code, the work isn't done.
 

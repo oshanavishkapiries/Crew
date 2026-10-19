@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. No application code exists yet, so this is the **planned** layout. It's based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D19).
+The folder layout of the Crew repository. Milestone 1 (Core: CLI, server, database, scheduler, events, fake adapter, test harness) is implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D20).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -11,7 +11,6 @@ crew/
 ├─ AGENTS.md              # Rules for AI agents working on this repo (CLAUDE.md points here)
 ├─ CLAUDE.md              # Claude Code entry point; imports AGENTS.md
 ├─ README.md            # Banner, short intro and doc index
-├─ START_HERE.md        # Onboarding for AI agents: context and how to start implementing
 ├─ package.json           # "bin": { "crew": "dist/cli.js" }, run with `npx crew`
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
@@ -21,6 +20,7 @@ crew/
 │     └─ project-techstack.md   # Runtime, libraries and tooling
 ├─ plan/
 │  └─ phase1/
+│     ├─ START_HERE.md    # Onboarding for AI agents: context and how to start implementing
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
