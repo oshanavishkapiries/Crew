@@ -391,6 +391,8 @@ export class Runner extends EventEmitter {
     };
 
     this.liveRuns.set(runId, activeRun);
+    this.db.db.update(schema.agents).set({ status: 'busy' }).where(eq(schema.agents.id, agentId)).run();
+    this.emit('run_started', activeRun);
 
     // Reset no-output timer on every chunk
     const resetNoOutputTimer = () => {
@@ -514,6 +516,12 @@ export class Runner extends EventEmitter {
           }
         }
 
+        // Reset agent status back to idle if busy
+        const currentAgent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+        if (currentAgent && currentAgent.status === 'busy') {
+          this.db.db.update(schema.agents).set({ status: 'idle' }).where(eq(schema.agents.id, agentId)).run();
+        }
+
         const runResult: RunResult = {
           runId,
           taskId: task.id,
@@ -534,6 +542,10 @@ export class Runner extends EventEmitter {
       (err) => {
         this.cleanupTimers(activeRun);
         this.liveRuns.delete(runId);
+        const currentAgent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+        if (currentAgent && currentAgent.status === 'busy') {
+          this.db.db.update(schema.agents).set({ status: 'idle' }).where(eq(schema.agents.id, agentId)).run();
+        }
         logStream.end();
         rejectPromise(err);
       },
@@ -563,6 +575,7 @@ export class Runner extends EventEmitter {
   async killAll(exitReason: ExitReason = 'stopped'): Promise<number> {
     const runs = this.getLiveRuns();
     await Promise.all(runs.map((r) => this.killRun(r.id, exitReason)));
+    await Promise.all(runs.map((r) => r.promise.catch(() => {})));
     return runs.length;
   }
 

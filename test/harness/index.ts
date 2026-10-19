@@ -11,7 +11,7 @@ import { createCrewDatabase, type CrewDatabase } from '../../src/server/db/index
 import * as schema from '../../src/server/db/schema.js';
 import { EventBus } from '../../src/server/events/index.js';
 import { startServer, type RunningServer } from '../../src/server/index.js';
-import { Scheduler } from '../../src/server/scheduler/index.js';
+import { Scheduler, Dispatcher } from '../../src/server/scheduler/index.js';
 import { WorktreeManager } from '../../src/server/worktree/index.js';
 import { Runner, type Clock } from '../../src/server/runner/index.js';
 
@@ -20,6 +20,8 @@ export interface HarnessOptions {
   maxRuntimeMs?: number;
   noOutputTimeoutMs?: number;
   clock?: Clock;
+  maxParallelAgents?: number;
+  startDispatcher?: boolean;
 }
 
 export interface PipelineHarness {
@@ -29,6 +31,7 @@ export interface PipelineHarness {
   scheduler: Scheduler;
   worktreeManager: WorktreeManager;
   runner: Runner;
+  dispatcher: Dispatcher;
   fakeAdapter: FakeAdapter;
   workspaceId: string;
   boardId: string;
@@ -42,6 +45,8 @@ export interface PipelineHarness {
     title: string;
     description: string;
     acceptanceCriteria?: string;
+    roleId?: string;
+    assigneeAgentId?: string;
     blockedByIds?: string[];
   }) => Promise<typeof schema.tasks.$inferSelect>;
   runTaskWithAgent: (
@@ -54,7 +59,10 @@ export interface PipelineHarness {
     env?: Record<string, string>,
   ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
   /** Seed another agent in the workspace and return its token */
-  addAgent: (id: string) => string;
+  addAgent: (id: string, customRoleId?: string) => string;
+  waitForTaskStatus: (taskId: string, targetStatus: string, timeoutMs?: number) => Promise<typeof schema.tasks.$inferSelect>;
+  waitForTasksStatus: (taskIds: string[], targetStatus: string, timeoutMs?: number) => Promise<void>;
+  waitForLiveRuns: (expected?: number, timeoutMs?: number) => Promise<void>;
   getTask: (taskId: string) => typeof schema.tasks.$inferSelect | undefined;
   getMessages: (taskId: string) => (typeof schema.messages.$inferSelect)[];
   cleanup: () => Promise<void>;
@@ -168,11 +176,26 @@ export async function createPipelineHarness(
   });
   runner.registerAgentToken(agentId, agentToken);
 
+  const dispatcher = new Dispatcher({
+    db,
+    scheduler,
+    runner,
+    eventBus,
+    maxParallelAgents: options.maxParallelAgents ?? 3,
+    crewHome: crewHomeDir,
+  });
+
+  if (options.startDispatcher) {
+    dispatcher.start();
+  }
+
   const createTask = async (params: {
     id: string;
     title: string;
     description: string;
     acceptanceCriteria?: string;
+    roleId?: string;
+    assigneeAgentId?: string;
     blockedByIds?: string[];
   }) => {
     return scheduler.createTask({
@@ -181,8 +204,8 @@ export async function createPipelineHarness(
       title: params.title,
       description: params.description,
       acceptanceCriteria: params.acceptanceCriteria,
-      roleId,
-      assigneeAgentId: agentId,
+      roleId: params.roleId !== undefined ? params.roleId : roleId,
+      assigneeAgentId: 'assigneeAgentId' in params ? params.assigneeAgentId : agentId,
       blockedByIds: params.blockedByIds,
     });
   };
@@ -216,16 +239,17 @@ export async function createPipelineHarness(
     return { exitCode: result.exitCode ?? null, stdout: result.stdout, stderr: result.stderr };
   };
 
-  const addAgent = (id: string) => {
+  const addAgent = (id: string, customRoleId?: string) => {
     const token = 'crew_agent_test_' + crypto.randomBytes(16).toString('hex');
     db.db
       .insert(schema.agents)
       .values({
         id,
         workspaceId,
-        roleId,
+        roleId: customRoleId || roleId,
         name: `Fake Agent ${id}`,
         cliType: 'fake',
+        status: 'idle',
         tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
         createdAt: new Date(),
       })
@@ -238,11 +262,81 @@ export async function createPipelineHarness(
     return db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
   };
 
+  const waitForTaskStatus = async (
+    taskId: string,
+    targetStatus: string,
+    timeoutMs = 10000,
+  ): Promise<typeof schema.tasks.$inferSelect> => {
+    const current = getTask(taskId);
+    if (current && current.status === targetStatus) {
+      return current;
+    }
+
+    return new Promise<typeof schema.tasks.$inferSelect>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsubscribe();
+        const latest = getTask(taskId);
+        reject(
+          new Error(
+            `Timed out waiting for task ${taskId} to reach ${targetStatus} (current: ${latest?.status})`,
+          ),
+        );
+      }, timeoutMs);
+
+      const unsubscribe = eventBus.subscribeBoardEvents('*', (event) => {
+        if (event.type === 'task_status_changed') {
+          const data = event.data as { taskId: string; to: string };
+          if (data && data.taskId === taskId && data.to === targetStatus) {
+            clearTimeout(timer);
+            unsubscribe();
+            resolve(getTask(taskId)!);
+          }
+        }
+      });
+    });
+  };
+
+  const waitForTasksStatus = async (
+    taskIds: string[],
+    targetStatus: string,
+    timeoutMs = 15000,
+  ): Promise<void> => {
+    await Promise.all(taskIds.map((id) => waitForTaskStatus(id, targetStatus, timeoutMs)));
+  };
+
+  const waitForLiveRuns = async (expected = 0, timeoutMs = 10000): Promise<void> => {
+    if (runner.getLiveRuns().length === expected) return;
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        runner.off('run_ended', check);
+        runner.off('run_started', check);
+        reject(
+          new Error(
+            `Timed out waiting for live runs to reach ${expected} (current: ${runner.getLiveRuns().length})`,
+          ),
+        );
+      }, timeoutMs);
+
+      const check = () => {
+        if (runner.getLiveRuns().length === expected) {
+          clearTimeout(timer);
+          runner.off('run_ended', check);
+          runner.off('run_started', check);
+          resolve();
+        }
+      };
+
+      runner.on('run_ended', check);
+      runner.on('run_started', check);
+    });
+  };
+
   const getMessages = (taskId: string) => {
     return db.db.select().from(schema.messages).where(eq(schema.messages.taskId, taskId)).all();
   };
 
   const cleanup = async () => {
+    dispatcher.stop();
     await runner.killAll();
     await server.close();
     db.close();
@@ -268,6 +362,7 @@ export async function createPipelineHarness(
     scheduler,
     worktreeManager,
     runner,
+    dispatcher,
     fakeAdapter,
     workspaceId,
     boardId,
@@ -280,6 +375,9 @@ export async function createPipelineHarness(
     runTaskWithAgent,
     runCrew,
     addAgent,
+    waitForTaskStatus,
+    waitForTasksStatus,
+    waitForLiveRuns,
     getTask,
     getMessages,
     cleanup,

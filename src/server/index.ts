@@ -4,8 +4,9 @@ import { createApp } from './api/app.js';
 import { generatePerStartSecret } from './api/security.js';
 import { createCrewDatabase, getDb, type CrewDatabase } from './db/index.js';
 import { getEventBus, type EventBus } from './events/index.js';
-import { Scheduler } from './scheduler/index.js';
+import { Scheduler, Dispatcher } from './scheduler/index.js';
 import { WorktreeManager } from './worktree/index.js';
+import { Runner } from './runner/index.js';
 
 export interface ServerOptions {
   port?: number;
@@ -14,6 +15,10 @@ export interface ServerOptions {
   eventBus?: EventBus;
   scheduler?: Scheduler;
   worktreeManager?: WorktreeManager;
+  runner?: Runner;
+  dispatcher?: Dispatcher;
+  startDispatcher?: boolean;
+  maxParallelAgents?: number;
 }
 
 export interface RunningServer {
@@ -26,6 +31,8 @@ export interface RunningServer {
   eventBus: EventBus;
   scheduler: Scheduler;
   worktreeManager: WorktreeManager;
+  runner: Runner;
+  dispatcher: Dispatcher;
   close: () => Promise<void>;
 }
 
@@ -58,6 +65,30 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           const addr = (server as any).address?.();
           const actualPort = addr?.port ?? info.port;
           const url = `http://${host}:${actualPort}`;
+
+          const runner =
+            options.runner ||
+            new Runner({
+              db,
+              eventBus,
+              scheduler,
+              serverUrl: url,
+            });
+
+          const dispatcher =
+            options.dispatcher ||
+            new Dispatcher({
+              db,
+              scheduler,
+              runner,
+              eventBus,
+              maxParallelAgents: options.maxParallelAgents ?? 3,
+            });
+
+          if (options.startDispatcher) {
+            dispatcher.start();
+          }
+
           resolve({
             server: server as unknown as Server,
             port: actualPort,
@@ -68,8 +99,11 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             eventBus,
             scheduler,
             worktreeManager,
+            runner,
+            dispatcher,
             close: () =>
               new Promise<void>((res, rej) => {
+                dispatcher.stop();
                 server.close((err) => {
                   if (err) rej(err);
                   else res();
