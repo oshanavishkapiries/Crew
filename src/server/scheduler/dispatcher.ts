@@ -1,4 +1,4 @@
-import { eq, asc } from 'drizzle-orm';
+import { eq, asc, desc } from 'drizzle-orm';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CrewDatabase } from '../db/index.js';
@@ -56,6 +56,8 @@ export class Dispatcher {
         if (data?.to === 'ready' || data?.to === 'todo' || data?.to === 'doing') {
           this.scheduleDispatch();
         }
+      } else if (event.type === 'rate_limit_cleared') {
+        this.scheduleDispatch();
       }
     });
 
@@ -64,6 +66,7 @@ export class Dispatcher {
       this.scheduleDispatch();
     };
     this.runner.on('run_ended', this.onRunEndedBound);
+    this.runner.on('rate_limit_cleared', () => this.scheduleDispatch());
 
     // Slow safety tick (e.g. every 5 seconds)
     this.tickTimer = setInterval(() => {
@@ -184,7 +187,18 @@ export class Dispatcher {
         .run();
 
       try {
-        await this.runner.startRun({ taskId: task.id, agentId: agent.id });
+        const lastRun = this.db.db
+          .select()
+          .from(schema.runs)
+          .where(eq(schema.runs.taskId, task.id))
+          .orderBy(desc(schema.runs.startedAt))
+          .get();
+
+        if (lastRun?.sessionId && lastRun?.exitReason === 'rate-limited') {
+          await this.runner.resumeTask(task.id, 'Resume task after rate limit pause');
+        } else {
+          await this.runner.startRun({ taskId: task.id, agentId: agent.id });
+        }
       } catch {
         this.db.db
           .update(schema.agents)

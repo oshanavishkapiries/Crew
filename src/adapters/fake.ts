@@ -18,6 +18,7 @@ export interface FakeScriptStep {
   command?: string;
   durationMs?: number;
   exitCode?: number;
+  rateLimitResetTime?: string;
 }
 
 export class FakeAdapter implements AgentAdapter {
@@ -62,10 +63,11 @@ export class FakeAdapter implements AgentAdapter {
       const serverUrl = process.env.CREW_SERVER_URL || '';
       const token = process.env.CREW_AGENT_TOKEN || '';
       const cliPath = process.env.CREW_CLI_PATH || 'dist/cli.js';
+      const sessionId = process.env.CREW_SESSION_ID || '';
       // No shell: messages reach crew exactly as written, quotes and $() included
       const crew = (...args) => execFileSync(process.execPath, [cliPath, ...args], { stdio: 'inherit', env: process.env });
 
-      console.log(JSON.stringify({ type: 'start', data: { prompt: ${JSON.stringify(opts.prompt)} }, timestamp: new Date().toISOString() }));
+      console.log(JSON.stringify({ type: 'start', data: { prompt: ${JSON.stringify(opts.prompt)} }, sessionId, timestamp: new Date().toISOString() }));
 
       for (const step of steps) {
         if (step.type === 'update') {
@@ -80,7 +82,15 @@ export class FakeAdapter implements AgentAdapter {
           fs.writeFileSync(resolvedPath, step.content || '', 'utf-8');
           console.log(JSON.stringify({ type: 'file_edit', data: { file: resolvedPath }, timestamp: new Date().toISOString() }));
         } else if (step.type === 'rate_limit') {
-          console.log(JSON.stringify({ type: 'rate_limit', isError: true, rateLimitResetTime: new Date(Date.now() + 60000).toISOString(), timestamp: new Date().toISOString() }));
+          const payload = {
+            type: 'rate_limit',
+            isError: true,
+            sessionId,
+            rateLimitResetTime: step.rateLimitResetTime,
+            timestamp: new Date().toISOString(),
+          };
+          console.log(JSON.stringify(payload));
+          await new Promise((r) => setTimeout(r, 10000));
         } else if (step.type === 'done') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'done', result: step.result }, timestamp: new Date().toISOString() }));
           crew('done', '--result', step.result || 'done');
