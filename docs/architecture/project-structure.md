@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestone 1 (Core: CLI, server, database, scheduler, events, fake adapter, test harness) is implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D20).
+The folder layout of the Crew repository. Milestone 1 (Core: CLI, server, database, scheduler, events, fake adapter, test harness) is implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D26).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -28,10 +28,11 @@ crew/
 │  └─ phase1/
 │     ├─ START_HERE.md    # Onboarding for AI agents: context and how to start implementing
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
+│     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, phase, ticket, assign
-│  │                      # Human commands: start, init, status, stop-all, worktree gc,
+│  │                      # Human commands: start, init, status, stop-all, resume (D23), worktree gc,
 │  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16)
 │  │                      # Command declarations here are the single source for --help and docs/commands.md (D3)
 │  ├─ server/

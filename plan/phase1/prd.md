@@ -4,7 +4,7 @@ Source: `docs/Crew Design Doc.md`. Phase 1 is the whole first public release (bu
 
 ## Decision Log
 
-Decisions from the grilling session on 2026-10-18. Each is referenced in the text below by its ID.
+Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, and D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19. Each is referenced in the text below by its ID.
 
 - **user**: the user decided it directly.
 - **Claude-decided**: Claude recommended it, and the user accepted all remaining recommendations in advance. These are agreed but open to veto: review them first.
@@ -31,6 +31,12 @@ Decisions from the grilling session on 2026-10-18. Each is referenced in the tex
 | D18 | No telemetry. | Claude-decided |
 | D19 | Permissions, stop-all, budget and loop limits, and Claude Code rate-limit handling move to milestone 2, so preview testers (D1) never run agents without them. Codex, Pull mode, heartbeat and Codex rate-limit handling stay in milestone 7. | user |
 | D20 | The Crew home directory defaults to `~/.crew` and can be overridden by the `CREW_HOME` environment variable, enabling isolated test environments with temporary databases, worktrees, and logs. | Claude-decided |
+| D21 | Every Run stores an `exitReason` (`done`, `asked`, `exited`, `timeout`, `no-output`, `stopped`, `rate-limited`, `cancelled`, `resume-failed`), because the exit code alone can't tell a timeout, a stop-all and a crash apart. | user |
+| D22 | A run that hits max runtime, goes silent past the no-output timeout, or exits without `crew done` or `crew ask` counts as one retry, and the task is re-dispatched. Past the max it becomes `escalated`. There is no separate `failed` state. Runs ended by stop-all, a rate limit or a failed resume don't use up a retry. | user |
+| D23 | After `crew stop-all`, dispatch stays stopped, even across server restarts, until the user runs `crew resume` (or uses the Board's switch). | user |
+| D24 | Limit defaults: max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20. | user |
+| D25 | `crew start` writes `~/.crew/server.json` (mode 0600) with the server URL, the per-start secret and the pid, and deletes it on shutdown. Human CLI commands read the secret from it. The secret is never printed. | user |
+| D26 | The optional Claude Code Stop hook moves from milestone 2 to milestone 3, because it depends on verification results. | user |
 
 ## Problem Statement
 
@@ -222,8 +228,8 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 117. As a developer, I want a max number of parallel agents (default 3), so that I stay within my subscription limits.
 118. As a developer, I want all of a tool's agents to pause and retry with backoff (or until the reported reset time) when its adapter detects a rate limit, shown as "rate-limited" on the Board, without using up a retry, so that hitting a limit doesn't fail tasks (D7, Claude-decided).
 119. As a developer, I want limits on task depth, retries per task, runtime per run and tickets per phase, so that agents can't loop forever.
-120. As a developer, I want processes that exceed max runtime or hang without output killed and their task marked `failed`, so that stuck agents don't waste budget.
-121. As a developer, I want `crew stop-all` and the Board kill switch to stop every agent, so that I can halt the team in an emergency.
+120. As a developer, I want processes that exceed max runtime or hang without output killed, with the run counted as one retry and the task escalated past the max, so that stuck agents don't waste budget (D22, user).
+121. As a developer, I want `crew stop-all` and the Board kill switch to stop every agent and keep dispatch stopped until I run `crew resume`, even across restarts, so that I can halt the team in an emergency and an emergency stop never undoes itself (D23, user).
 122. As a developer, I want spawned agents allowed to edit and run commands only inside their worktree, plus `crew *` commands, so that they can work but can't harm my system.
 123. As a developer, I want `git push`, writes outside the worktree and destructive commands denied, so that agents can't publish or destroy anything.
 124. As a developer, I want "everything allowed" mode granted only inside the worktree, so that full autonomy stays contained.
@@ -234,7 +240,7 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 ### Tool adapters
 
 128. As a developer, I want a Claude Code adapter that runs `claude -p` headless with allowed/denied tool flags, so that Claude agents run under Crew's permissions.
-129. As a developer, I want an optional Claude Code Stop hook that keeps the agent from stopping before verification passes, so that agents don't quit early.
+129. As a developer, I want an optional Claude Code Stop hook that keeps the agent from stopping before verification passes, so that agents don't quit early. It lands in milestone 3, with verification (D26, user).
 130. As a developer, I want a Codex adapter that runs `codex exec` with sandbox and approval flags, so that Codex agents run under the same rules.
 131. As a contributor, I want adding a new AI tool to mean writing one adapter against a fixed interface, so that Crew can grow to more tools easily.
 132. As a developer, I want Antigravity agents usable in Pull mode until its headless interface is confirmed, so that I can still include it (D17, Claude-decided).
@@ -259,12 +265,12 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 
 ### Modules
 
-- **CLI:** human commands (`start`, `init`, `stop-all`, `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided); final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user).
+- **CLI:** human commands (`start`, `init`, `stop-all`, `resume` (D23, user), `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided); final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user). They find the running server and its per-start secret through `~/.crew/server.json` (D25, user).
 - **Commands reference:** every command's name, arguments, flags and help text are declared once. Both `--help` and the commands reference document are generated from those declarations, and handwritten examples sit around the generated parts (D3, user).
 - **API:** REST + SSE endpoints (contract below). Validates input, enforces role permissions (Orchestrator-only commands), and drives the other modules.
 - **DB:** schema and migrations for the full data model below.
 - **Scheduler:** task state machine, dependency resolution, dispatch decisions within budget, retry/escalation counts, loop-protection limits.
-- **Runner:** spawns adapter commands as child processes (D5, Claude-decided), parses their structured events through the adapter, streams them to the event bus and a log file, records each Run's session ID (D6, Claude-decided), resumes or respawns blocked tasks after an answer (D4, user), enforces max runtime and no-output timeouts, kills processes, records Runs.
+- **Runner:** spawns adapter commands as child processes (D5, Claude-decided), parses their structured events through the adapter, streams them to the event bus and a log file, records each Run's session ID (D6, Claude-decided), resumes or respawns blocked tasks after an answer (D4, user), enforces max runtime and no-output timeouts, kills processes, records Runs with an exit reason (D21, user).
 - **Worktree manager:** creates `crew/<task-id>-<slug>` branches and worktrees under the Crew home directory per workspace (D12, Claude-decided), cleans them up on merged/cancelled, and runs gc for abandoned ones.
 - **Verify:** runs the gate pipeline (diff → commands → review) and stores a VerificationResult per step.
 - **Merge:** merge queue processed one item at a time: rebase onto latest default branch, re-run verify commands, merge with the configured strategy (squash by default), create conflict sub-tasks on rebase conflict. Merges run in an internal integration worktree and only ever target the local default branch; Crew never pushes. After a merge, the default branch ref is updated only if the user's own checkout isn't on that branch, or is on it and clean (then fast-forwarded). Otherwise the queue pauses and a warning is shown on the Board and in `crew status` (D11, Claude-decided).
@@ -300,7 +306,7 @@ interface AgentAdapter {
 ```
 
 - The `AgentEvent` stream includes the session ID, and rate-limit events carry the reset time when the tool reports one. `buildResume` was added during grilling (D4, user) (D6, Claude-decided).
-- **claude-code:** `claude -p --output-format stream-json` headless, with a Crew-generated `--session-id`, resumed with `--resume <id>` (D5, Claude-decided) (D6, Claude-decided); permissions mapped to allowed/denied tool flags; `installExtras` installs an optional Stop hook that blocks stopping before verification passes.
+- **claude-code:** `claude -p --output-format stream-json` headless, with a Crew-generated `--session-id`, resumed with `--resume <id>` (D5, Claude-decided) (D6, Claude-decided); permissions mapped to allowed/denied tool flags; `installExtras` installs an optional Stop hook that blocks stopping before verification passes (milestone 3, D26, user).
 - **codex:** `codex exec --json`; permissions mapped to sandbox and approval flags; session ID captured from its events and resumed with `codex exec resume <id>` (D5, Claude-decided) (D6, Claude-decided).
 - **fake:** a scripted adapter that runs a script of `crew` CLI calls and file edits inside the worktree. Used for all pipeline tests and for local demos.
 - **antigravity:** Pull mode only until its headless interface is confirmed (D17, Claude-decided).
@@ -327,6 +333,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 - `merge-queue → merged` after rebase, re-verify and merge succeed. On conflict, a "rebase + resolve" sub-task is created for the same role and linked from the MergeQueueItem.
 - `doing → blocked` on `crew ask`: the agent's process ends. `blocked → doing` on answer: the runner resumes the same session, or falls back to a fresh process with task context, the Q&A and a summary of the current diff (D4, user).
 - A rate-limited run pauses its task without changing `retries` (D7, Claude-decided).
+- A run that times out, goes silent or exits without `crew done` or `crew ask` counts as one retry, and the task is re-dispatched (D22, user). Runs ended by stop-all, a rate limit or a failed resume don't count.
 - Any retrying state → `escalated` when `retries` exceeds the max (default 3).
 - `cancelled` from any non-terminal state, by the human.
 - The scheduler is the only writer of task status; every other module requests transitions through it, and invalid transitions are rejected.
@@ -341,7 +348,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | Agent | id, workspaceId, roleId, name, personality, systemPrompt, cliType, mode (spawn / pull), status, lastHeartbeatAt, tokenHash (D13, Claude-decided) |
 | Task | id, boardId, title, description, acceptanceCriteria, status, assigneeAgentId, roleId, createdBy, parentTaskId, depth, retries, branch, worktreePath |
 | TaskDependency | taskId, blockedByTaskId |
-| Run | id, taskId, agentId, adapter, pid, sessionId (D6, Claude-decided), resumedFromRunId (D4, user), startedAt, endedAt, exitCode, logPath |
+| Run | id, taskId, agentId, adapter, pid, sessionId (D6, Claude-decided), resumedFromRunId (D4, user), startedAt, endedAt, exitCode, exitReason (D21, user), logPath |
 | VerificationResult | id, runId, step (diff / lint / typecheck / test / review), passed, output |
 | Message | id, taskId, fromAgentId, type (comment / question / answer / result), body |
 | Memory | id, workspaceId, layer (project / role / task), roleId, taskId, title, body, source, promotedAt |
@@ -366,7 +373,8 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | `GET /api/tasks/:id/diff` | Live git diff |
 | `GET /api/tasks` | Lists tasks and states (Board and `crew tasks`) (D16, Claude-decided) |
 | `POST /api/tasks/:id/cancel` | Cancels a task (Board and terminal) (D2, user) |
-| `POST /api/control/stop-all` | Kill switch |
+| `POST /api/control/stop-all` | Kill switch; dispatch stays stopped (D23, user) |
+| `POST /api/control/resume` | Restarts dispatch after stop-all (D23, user) |
 | `GET /api/board/:id/events` | SSE, live UI updates |
 
 - The long-poll wait is always shorter than a typical agent Bash timeout (90 seconds default) and returns an explicit "no task, call again" response.
@@ -377,7 +385,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 - `crew.config.ts` holds verify commands, roles, limits (max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy.
 - Verify commands are a named list. Each entry has a command, an optional working directory, a timeout, and optional path globs; an entry with globs runs only when the task's changed files match them. During merge-queue re-verification, every entry matching the rebased diff runs again (D10, Claude-decided).
-- Defaults: max parallel agents 3, max retries 3, squash merge, long-poll wait 90 seconds, memory injection budget about 8k tokens (D15, Claude-decided), rate-limit backoff from 1 minute doubling up to 30 minutes (D7, Claude-decided).
+- Defaults: max parallel agents 3, max retries 3, max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20 (D24, user), squash merge, long-poll wait 90 seconds, memory injection budget about 8k tokens (D15, Claude-decided), rate-limit backoff from 1 minute doubling up to 30 minutes (D7, Claude-decided).
 
 ### Permissions
 
@@ -392,6 +400,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 - The server binds to 127.0.0.1 only and rejects requests whose Host header isn't a localhost name, which blocks DNS-rebinding attacks from web pages.
 - Each agent gets a random token, stored only as a hash. Spawned agents get their token through an environment variable, never in the prompt text. Pull-mode agents get theirs in the connect prompt.
 - `crew start` creates a per-start secret that the Board and the human CLI commands use, so other local processes and web pages can't call human endpoints.
+- `crew start` writes the server URL, the per-start secret and its pid to `~/.crew/server.json` with mode 0600, and deletes it on shutdown. Human CLI commands read the secret from there; it is never printed (D25, user).
 - How it's enforced: agents send their token in the `X-Crew-Agent-Token` header and can act only on tasks assigned to them (403 otherwise). Human endpoints, including the SSE streams, need the per-start secret in `X-Crew-Secret`. Missing or unknown credentials get 401.
 
 ### Rate limits (D7, Claude-decided)
@@ -435,7 +444,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 - One primary seam for almost all behaviour: start the real crew server in-process against a temp repo, register agents that use the **fake adapter**, and let the fake adapter run scripted sequences of real `crew` CLI commands and file edits inside its worktree.
 - Assertions are made on task states and transitions, DB rows (Runs, VerificationResults, Messages, Memory, MergeQueueItems), SSE events, and the final git state (branches, worktrees, commits on main).
-- This seam covers: the full state machine, dependencies and dispatch, worktree lifecycle, every verification gate, retries and escalation, merge queue, rebase and conflict sub-tasks, memory injection and promotion, phase workflow and human gates, Pull mode long-poll and heartbeat/stale handling, budget and loop limits, timeouts and kills, rate-limit pause and backoff, permissions checks, and stop-all. It also covers: resuming a blocked task's session and the fresh-process fallback (D4, user); every human CLI command, driven through the real CLI (D2, user); path-filtered verify commands (D10, Claude-decided); the merge queue pausing when the user's checkout is dirty and fast-forwarding it when clean (D11, Claude-decided); rejection of bad Host headers, bad tokens and missing per-start secrets (D13, Claude-decided); rate-limited runs not using up retries (D7, Claude-decided); and "changes requested" counting toward retries (D8, Claude-decided).
+- This seam covers: the full state machine, dependencies and dispatch, worktree lifecycle, every verification gate, retries and escalation, merge queue, rebase and conflict sub-tasks, memory injection and promotion, phase workflow and human gates, Pull mode long-poll and heartbeat/stale handling, budget and loop limits, timeouts and kills, rate-limit pause and backoff, permissions checks, and stop-all. It also covers: resuming a blocked task's session and the fresh-process fallback (D4, user); every human CLI command, driven through the real CLI (D2, user); path-filtered verify commands (D10, Claude-decided); the merge queue pausing when the user's checkout is dirty and fast-forwarding it when clean (D11, Claude-decided); rejection of bad Host headers, bad tokens and missing per-start secrets (D13, Claude-decided); rate-limited runs not using up retries (D7, Claude-decided); "changes requested" counting toward retries (D8, Claude-decided); timed-out, silent or exited runs counting as one retry, with the right exit reason (D21, D22, user); and dispatch staying stopped after stop-all, across a restart, until `crew resume` (D23, user).
 - The fake adapter emits the same structured events as the real adapters (including session IDs and rate-limit events) and supports resume (D5, Claude-decided).
 - Every failure path named in the release criterion (verification failure, conflict, rate limit, hung process) has at least one harness test.
 
@@ -484,8 +493,8 @@ todo → ready → doing → verifying → review → merge-queue → merged
 The release is one version, but built in this order, each milestone the foundation for the next:
 
 1. **Core:** server, SQLite, full data model, task state machine, fake adapter.
-2. **Runner and core safety:** adapter interface, Claude Code adapter, structured-event runner with session resume, timeouts, worktree manager (D5, Claude-decided) (D4, user). Also permissions, stop-all, budget and loop limits, and Claude Code rate-limit handling, so that no real agent ever runs without them (D19, user).
-3. **Verification:** gates pipeline, retries, escalation.
+2. **Runner and core safety:** adapter interface, Claude Code adapter, structured-event runner with session resume, timeouts, worktree manager (D5, Claude-decided) (D4, user). Also permissions, stop-all, budget and loop limits, and Claude Code rate-limit handling, so that no real agent ever runs without them (D19, user). Plan: `milestone-2.md`.
+3. **Verification:** gates pipeline, retries, escalation, and the Claude Code Stop hook (D26, user).
 4. **Merge:** dependencies, merge queue, rebase, conflict tasks.
 5. **Memory and workflow:** memory layers, injection, `crew phase`, human gates.
    → **Private preview** for trusted testers once milestone 5 is done (D1, user).

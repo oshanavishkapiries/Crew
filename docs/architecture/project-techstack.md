@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D20). Milestone 1 is scaffolded; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D26). Milestone 1 is scaffolded; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 

@@ -35,10 +35,11 @@ A review of milestone 1 found and fixed:
 ## Decisions added
 
 - **D20 (Claude-decided):** The Crew home directory defaults to `~/.crew` and can be overridden by the `CREW_HOME` environment variable, enabling isolated test environments with temporary databases, worktrees, and logs.
+- **D21–D26 (user, proposed by Claude in `milestone-2.md`, approved 2026-10-19):** run exit reasons, failed runs count as retries (no `failed` state), stop-all stays stopped until `crew resume`, limit defaults, `~/.crew/server.json` for the human CLI's secret, and the Stop hook moved to milestone 3.
 
 ## Suggested next steps
 
-- **Milestone 2: Runner and core safety**
+- **Milestone 2: Runner and core safety.** Plan: [milestone-2.md](milestone-2.md). Its decisions are approved and logged as D21–D26 in the PRD, so coding can start at tracer bullet 0 (migrations).
   - Adapter interface & Claude Code adapter (`claude -p --output-format stream-json --session-id <uuid>`)
   - Structured-event runner with session resume (D4, D5, D6)
   - Worktree manager: create `crew/<task-id>-<slug>` branches and worktrees under Crew home

@@ -12,15 +12,16 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 2. [plan/phase1/prd.md](prd.md): what to build. Read the **Decision Log** at the top first. It overrides the design doc wherever they disagree.
 3. [docs/architecture/project-structure.md](../../docs/architecture/project-structure.md): where code goes.
 4. [docs/architecture/project-techstack.md](../../docs/architecture/project-techstack.md): what to build it with.
+   - Working on milestone 2? Read [milestone-2.md](milestone-2.md) next: the design, the tracer bullets and decisions D21–D26.
 5. [plan/phase1/handoff.md](handoff.md): what the last session did and left open.
 6. [docs/Crew Design Doc.md](<../../docs/Crew Design Doc.md>): background only. Skim it for the "why".
 
 ## 3. Where things stand
 
-- Planning is done: PRD, decisions D1–D20, architecture docs and agent rules.
+- Planning is done: PRD, decisions D1–D26, architecture docs and agent rules.
 - **Milestone 1 (Core) is implemented and verified:** `package.json`, TypeScript, SQLite data model (all 12 PRD tables with Drizzle), server on 127.0.0.1 with Host-header check and SSE, task state machine & scheduler with dependency resolution, fake adapter, CLI command generator & staleness tests, and the in-process pipeline harness.
 - A review pass fixed the gaps milestone 1 left: D13 token and secret checks, tests that ran a stale build, type errors, stub commands exiting 0, non-atomic task creation, 500s for refused transitions, shell quoting in the fake adapter, and IPv6 Host parsing.
-- `npm test` typechecks, builds `dist/` and runs all 27 tests. Next up is Milestone 2 (Runner and core safety).
+- `npm test` typechecks, builds `dist/` and runs all 27 tests. Next up is Milestone 2 (Runner and core safety). Its plan is in [milestone-2.md](milestone-2.md), and the decisions it raised are approved as D21–D26.
 
 ## 4. Things that are easy to get wrong
 
