@@ -10,6 +10,7 @@ import { getEventBus, type EventBus } from './events/index.js';
 import { Scheduler, Dispatcher } from './scheduler/index.js';
 import { WorktreeManager } from './worktree/index.js';
 import { Runner } from './runner/index.js';
+import { Verifier } from './verify/index.js';
 
 export interface ServerOptions {
   port?: number;
@@ -22,6 +23,9 @@ export interface ServerOptions {
   dispatcher?: Dispatcher;
   startDispatcher?: boolean;
   maxParallelAgents?: number;
+  verifier?: Verifier;
+  startVerifier?: boolean;
+  maxParallelVerifications?: number;
 }
 
 export interface RunningServer {
@@ -36,6 +40,7 @@ export interface RunningServer {
   worktreeManager: WorktreeManager;
   runner: Runner;
   dispatcher: Dispatcher;
+  verifier: Verifier;
   close: () => Promise<void>;
 }
 
@@ -67,6 +72,17 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       maxParallelAgents: options.maxParallelAgents ?? 3,
     });
 
+  const verifier =
+    options.verifier ||
+    new Verifier({
+      db,
+      eventBus,
+      scheduler,
+      worktreeManager,
+      runner,
+      maxParallelVerifications: options.maxParallelVerifications ?? 2,
+    });
+
   const app = createApp({
     db,
     eventBus,
@@ -74,6 +90,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     worktreeManager,
     runner,
     dispatcher,
+    verifier,
     perStartSecret,
   });
 
@@ -110,6 +127,10 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             dispatcher.start();
           }
 
+          if (options.startVerifier) {
+            verifier.start();
+          }
+
           resolve({
             server: server as unknown as Server,
             port: actualPort,
@@ -122,6 +143,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             worktreeManager,
             runner,
             dispatcher,
+            verifier,
             close: () =>
               new Promise<void>((res, rej) => {
                 try {
@@ -130,6 +152,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                   }
                 } catch {}
                 dispatcher.stop();
+                verifier.stop();
                 server.close((err) => {
                   if (err) rej(err);
                   else res();

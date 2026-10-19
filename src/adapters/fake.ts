@@ -6,6 +6,7 @@ export interface FakeScriptStep {
     | 'done'
     | 'ask'
     | 'edit_file'
+    | 'symlink'
     | 'custom_command'
     | 'rate_limit'
     | 'hang'
@@ -14,6 +15,7 @@ export interface FakeScriptStep {
   message?: string;
   result?: string;
   filePath?: string;
+  targetPath?: string;
   content?: string;
   command?: string;
   durationMs?: number;
@@ -25,6 +27,7 @@ export class FakeAdapter implements AgentAdapter {
   id: 'fake' = 'fake';
   public refuseResume = false;
   private scriptedSteps: FakeScriptStep[] = [];
+  private runScripts: FakeScriptStep[][] = [];
   private resumeSteps?: FakeScriptStep[];
 
   constructor(scriptedSteps: FakeScriptStep[] = []) {
@@ -33,6 +36,10 @@ export class FakeAdapter implements AgentAdapter {
 
   setScript(steps: FakeScriptStep[]): void {
     this.scriptedSteps = steps;
+  }
+
+  setRunScripts(scripts: FakeScriptStep[][]): void {
+    this.runScripts = scripts.map((s) => [...s]);
   }
 
   setResumeScript(steps: FakeScriptStep[]): void {
@@ -51,7 +58,8 @@ export class FakeAdapter implements AgentAdapter {
     serverUrl?: string;
     agentToken?: string;
   }): { command: string; args: string[]; env: Record<string, string> } {
-    const stepsJson = JSON.stringify(this.scriptedSteps);
+    const steps = this.runScripts.length > 0 ? this.runScripts.shift()! : this.scriptedSteps;
+    const stepsJson = JSON.stringify(steps);
     // Node script that executes the script steps and emits structured JSON lines to stdout
     const script = `
       import { execFileSync } from 'node:child_process';
@@ -81,6 +89,13 @@ export class FakeAdapter implements AgentAdapter {
           }
           fs.writeFileSync(resolvedPath, step.content || '', 'utf-8');
           console.log(JSON.stringify({ type: 'file_edit', data: { file: resolvedPath }, timestamp: new Date().toISOString() }));
+        } else if (step.type === 'symlink' && step.filePath && step.targetPath) {
+          const resolvedPath = path.isAbsolute(step.filePath) ? step.filePath : path.resolve(step.filePath);
+          fs.symlinkSync(step.targetPath, resolvedPath);
+          console.log(JSON.stringify({ type: 'symlink', data: { file: resolvedPath, target: step.targetPath }, timestamp: new Date().toISOString() }));
+        } else if (step.type === 'custom_command' && step.command) {
+          execFileSync('sh', ['-c', step.command], { stdio: 'inherit' });
+          console.log(JSON.stringify({ type: 'custom_command', data: { command: step.command }, timestamp: new Date().toISOString() }));
         } else if (step.type === 'rate_limit') {
           const payload = {
             type: 'rate_limit',

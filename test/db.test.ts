@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import Database from 'better-sqlite3';
 import { eq } from 'drizzle-orm';
+import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ensureCrewHome, getCrewDbPath, getCrewHome } from '../src/server/config.js';
 import { createCrewDatabase, schema } from '../src/server/db/index.js';
@@ -315,9 +316,9 @@ describe('Crew Home and Database (D12, D20)', () => {
     // Now open with createCrewDatabase: it should baseline 0000 and run 0001
     const { db, sqlite, close } = createCrewDatabase({ dbPath: oldDbPath });
     try {
-      // 1. __drizzle_migrations exists and has 2 applied migrations
+      // 1. __drizzle_migrations exists and has 3 applied migrations
       const migrationRows = sqlite.prepare('SELECT * FROM __drizzle_migrations ORDER BY created_at ASC').all() as Array<{ hash: string; created_at: number }>;
-      expect(migrationRows).toHaveLength(2);
+      expect(migrationRows).toHaveLength(3);
 
       // 2. Legacy data is preserved
       const legacyWs = db.select().from(schema.workspaces).all();
@@ -328,16 +329,79 @@ describe('Crew Home and Database (D12, D20)', () => {
       expect(legacyRuns).toHaveLength(1);
       expect(legacyRuns[0].id).toBe('run-old');
       expect(legacyRuns[0].exitReason).toBeNull();
+      expect(legacyRuns[0].kind).toBe('work');
 
-      // 3. Newly added columns exit_reason and prompt exist and accept writes
+      // 3. Newly added columns exit_reason, prompt, and kind exist and accept writes
       db.update(schema.runs)
-        .set({ exitReason: 'done', prompt: 'test prompt' })
+        .set({ exitReason: 'done', prompt: 'test prompt', kind: 'work' })
         .where(eq(schema.runs.id, 'run-old'))
         .run();
 
       const updatedRun = db.select().from(schema.runs).where(eq(schema.runs.id, 'run-old')).all();
       expect(updatedRun[0].exitReason).toBe('done');
       expect(updatedRun[0].prompt).toBe('test prompt');
+      expect(updatedRun[0].kind).toBe('work');
+    } finally {
+      close();
+    }
+  });
+
+  it('upgrades a milestone 2 database to milestone 3, preserving data and adding reviewer_agent_id and runs.kind', () => {
+    const m2DbPath = path.join(tempDir, 'milestone2.db');
+    const rawSqlite = new Database(m2DbPath);
+
+    // Apply 0000 and 0001 migrations
+    const drizzleDir = path.resolve(import.meta.dirname, '../drizzle');
+    const mig0000 = fs.readFileSync(path.join(drizzleDir, '0000_narrow_thor_girl.sql'), 'utf-8');
+    const mig0001 = fs.readFileSync(path.join(drizzleDir, '0001_dark_deadpool.sql'), 'utf-8');
+
+    rawSqlite.exec(mig0000);
+    rawSqlite.exec(mig0001);
+
+    rawSqlite.exec(`
+      CREATE TABLE IF NOT EXISTS "__drizzle_migrations" (
+        id SERIAL PRIMARY KEY,
+        hash text NOT NULL,
+        created_at numeric
+      );
+    `);
+    const migrationFiles = readMigrationFiles({ migrationsFolder: drizzleDir });
+    rawSqlite.prepare('INSERT INTO "__drizzle_migrations" ("hash", "created_at") VALUES (?, ?)').run(migrationFiles[0].hash, migrationFiles[0].folderMillis);
+    rawSqlite.prepare('INSERT INTO "__drizzle_migrations" ("hash", "created_at") VALUES (?, ?)').run(migrationFiles[1].hash, migrationFiles[1].folderMillis);
+
+    // Seed milestone 2 task and run
+    const now = Date.now();
+    rawSqlite.prepare(`INSERT INTO workspaces (id, name, repo_path, default_branch, created_at) VALUES (?, ?, ?, ?, ?)`).run('ws-m2', 'M2 Workspace', '/repo', 'main', now);
+    rawSqlite.prepare(`INSERT INTO boards (id, workspace_id, current_phase, created_at) VALUES (?, ?, ?, ?)`).run('board-m2', 'ws-m2', 'dispatch', now);
+    rawSqlite.prepare(`INSERT INTO roles (id, name, default_prompt, permission_profile, created_at) VALUES (?, ?, ?, ?, ?)`).run('role-m2', 'dev', 'prompt', '{}', now);
+    rawSqlite.prepare(`INSERT INTO agents (id, workspace_id, role_id, name, cli_type, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run('agent-m2', 'ws-m2', 'role-m2', 'Agent M2', 'fake', 'hash', now);
+    rawSqlite.prepare(`INSERT INTO tasks (id, board_id, title, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`).run('task-m2', 'board-m2', 'Task M2', 'Desc', now, now);
+    rawSqlite.prepare(`INSERT INTO runs (id, task_id, agent_id, adapter, started_at, exit_reason) VALUES (?, ?, ?, ?, ?, ?)`).run('run-m2', 'task-m2', 'agent-m2', 'fake', now, 'done');
+    rawSqlite.close();
+
+    // Open with createCrewDatabase: it should apply 0002
+    const { db, sqlite, close } = createCrewDatabase({ dbPath: m2DbPath });
+    try {
+      const migrations = sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
+      expect(migrations).toHaveLength(3);
+
+      const task = db.select().from(schema.tasks).where(eq(schema.tasks.id, 'task-m2')).get();
+      expect(task).toBeDefined();
+      expect(task?.reviewerAgentId).toBeNull();
+
+      const run = db.select().from(schema.runs).where(eq(schema.runs.id, 'run-m2')).get();
+      expect(run).toBeDefined();
+      expect(run?.kind).toBe('work');
+      expect(run?.exitReason).toBe('done');
+
+      // Test writing to new columns
+      db.update(schema.tasks)
+        .set({ reviewerAgentId: 'agent-m2' })
+        .where(eq(schema.tasks.id, 'task-m2'))
+        .run();
+
+      const updatedTask = db.select().from(schema.tasks).where(eq(schema.tasks.id, 'task-m2')).get();
+      expect(updatedTask?.reviewerAgentId).toBe('agent-m2');
     } finally {
       close();
     }
@@ -351,7 +415,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     const second = createCrewDatabase({ dbPath });
     try {
       const migrationRows = second.sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-      expect(migrationRows).toHaveLength(2);
+      expect(migrationRows).toHaveLength(3);
     } finally {
       second.close();
     }

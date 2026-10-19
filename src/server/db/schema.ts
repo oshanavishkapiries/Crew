@@ -63,6 +63,7 @@ export const tasks = sqliteTable('tasks', {
   acceptanceCriteria: text('acceptance_criteria').notNull().default(''),
   status: text('status').notNull().default('todo'),
   assigneeAgentId: text('assignee_agent_id').references(() => agents.id),
+  reviewerAgentId: text('reviewer_agent_id').references(() => agents.id),
   roleId: text('role_id').references(() => roles.id),
   createdBy: text('created_by').notNull().default('human'),
   parentTaskId: text('parent_task_id'),
@@ -114,6 +115,7 @@ export const runs = sqliteTable('runs', {
   endedAt: integer('ended_at', { mode: 'timestamp' }),
   exitCode: integer('exit_code'),
   exitReason: text('exit_reason').$type<ExitReason>(), // D21
+  kind: text('kind').notNull().default('work').$type<'work' | 'review'>(), // D34
   logPath: text('log_path'),
   prompt: text('prompt'),
 });
@@ -135,7 +137,7 @@ export const messages = sqliteTable('messages', {
     .notNull()
     .references(() => tasks.id, { onDelete: 'cascade' }),
   fromAgentId: text('from_agent_id').references(() => agents.id),
-  type: text('type').notNull(), // 'comment' | 'question' | 'answer' | 'result'
+  type: text('type').notNull(), // 'comment' | 'question' | 'answer' | 'result' | 'feedback'
   body: text('body').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });

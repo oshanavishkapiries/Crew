@@ -14,6 +14,7 @@ import { startServer, type RunningServer } from '../../src/server/index.js';
 import { Scheduler, Dispatcher } from '../../src/server/scheduler/index.js';
 import { WorktreeManager } from '../../src/server/worktree/index.js';
 import { Runner, type Clock } from '../../src/server/runner/index.js';
+import type { Verifier } from '../../src/server/verify/index.js';
 
 export interface HarnessOptions {
   maxRetries?: number;
@@ -22,6 +23,7 @@ export interface HarnessOptions {
   clock?: Clock;
   maxParallelAgents?: number;
   startDispatcher?: boolean;
+  startVerifier?: boolean;
 }
 
 export interface PipelineHarness {
@@ -32,6 +34,7 @@ export interface PipelineHarness {
   worktreeManager: WorktreeManager;
   runner: Runner;
   dispatcher: Dispatcher;
+  verifier: Verifier;
   fakeAdapter: FakeAdapter;
   workspaceId: string;
   boardId: string;
@@ -63,8 +66,10 @@ export interface PipelineHarness {
   waitForTaskStatus: (taskId: string, targetStatus: string, timeoutMs?: number) => Promise<typeof schema.tasks.$inferSelect>;
   waitForTasksStatus: (taskIds: string[], targetStatus: string, timeoutMs?: number) => Promise<void>;
   waitForLiveRuns: (expected?: number, timeoutMs?: number) => Promise<void>;
+  waitForVerificationStep: (taskId: string, step: string, timeoutMs?: number) => Promise<any>;
   getTask: (taskId: string) => typeof schema.tasks.$inferSelect | undefined;
   getMessages: (taskId: string) => (typeof schema.messages.$inferSelect)[];
+  getVerificationResults: (taskId?: string) => (typeof schema.verificationResults.$inferSelect)[];
   cleanup: () => Promise<void>;
 }
 
@@ -130,6 +135,7 @@ export async function createPipelineHarness(
     runner,
     dispatcher,
     startDispatcher: options.startDispatcher,
+    startVerifier: options.startVerifier,
   });
 
   const now = new Date();
@@ -341,8 +347,38 @@ export async function createPipelineHarness(
     return db.db.select().from(schema.messages).where(eq(schema.messages.taskId, taskId)).all();
   };
 
+  const getVerificationResults = (taskId?: string) => {
+    if (!taskId) {
+      return db.db.select().from(schema.verificationResults).all();
+    }
+    const taskRuns = db.db.select({ id: schema.runs.id }).from(schema.runs).where(eq(schema.runs.taskId, taskId)).all();
+    const runIds = new Set(taskRuns.map((r) => r.id));
+    return db.db.select().from(schema.verificationResults).all().filter((vr) => runIds.has(vr.runId));
+  };
+
+  const waitForVerificationStep = async (taskId: string, step: string, timeoutMs = 15000): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        unsub();
+        reject(new Error(`Timed out waiting for verification step ${step} on task ${taskId}`));
+      }, timeoutMs);
+
+      const unsub = eventBus.subscribeBoardEvents(boardId, (event) => {
+        if (event.type === 'verification_step') {
+          const data = event.data as { taskId?: string; step?: string; passed?: boolean };
+          if (data?.taskId === taskId && data?.step === step) {
+            clearTimeout(timer);
+            unsub();
+            resolve(data);
+          }
+        }
+      });
+    });
+  };
+
   const cleanup = async () => {
     dispatcher.stop();
+    server.verifier.stop();
     await runner.killAll();
     // Tests may have closed the server already (e.g. the server.json lifecycle test)
     await server.close().catch(() => {});
@@ -370,6 +406,7 @@ export async function createPipelineHarness(
     worktreeManager,
     runner,
     dispatcher,
+    verifier: server.verifier,
     fakeAdapter,
     workspaceId,
     boardId,
@@ -385,8 +422,10 @@ export async function createPipelineHarness(
     waitForTaskStatus,
     waitForTasksStatus,
     waitForLiveRuns,
+    waitForVerificationStep,
     getTask,
     getMessages,
+    getVerificationResults,
     cleanup,
   };
 }

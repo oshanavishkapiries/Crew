@@ -119,6 +119,7 @@ export interface StartRunOptions {
   resumedFromRunId?: string;
   sessionId?: string;
   isResume?: boolean;
+  kind?: 'work' | 'review';
 }
 
 export interface ActiveRun {
@@ -155,6 +156,7 @@ export class Runner extends EventEmitter {
   private eventBus: EventBus;
   private scheduler: Scheduler;
   private adapters: Map<string, AgentAdapter> = new Map();
+  private mainCheckoutSnapshots = new Map<string, string>();
   private clock: Clock;
   private maxRuntimeMs: number;
   private noOutputTimeoutMs: number;
@@ -251,6 +253,10 @@ export class Runner extends EventEmitter {
     return this.liveRuns.get(runId);
   }
 
+  getMainCheckoutSnapshot(runId: string): string | undefined {
+    return this.mainCheckoutSnapshots.get(runId);
+  }
+
   async startRun(options: StartRunOptions): Promise<ActiveRun> {
     const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, options.taskId)).get();
     if (!task) throw new Error(`Task not found: ${options.taskId}`);
@@ -276,6 +282,29 @@ export class Runner extends EventEmitter {
       : undefined;
     const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
 
+    // Check for feedback messages on this task (user stories 49, 78, 79, 91, D33)
+    const feedbackMessages = this.db.db
+      .select()
+      .from(schema.messages)
+      .where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'feedback')))
+      .orderBy(asc(schema.messages.createdAt))
+      .all();
+
+    let feedbackSection = '';
+    if (feedbackMessages.length > 0) {
+      const latest = feedbackMessages[feedbackMessages.length - 1];
+      const earlier = feedbackMessages.slice(0, -1);
+      const parts = [`Latest verification feedback:\n${latest.body}`];
+      if (earlier.length > 0) {
+        const earlierList = earlier.map((f, i) => `- Attempt ${i + 1}: ${f.body}`).join('\n');
+        parts.push(`Earlier failure attempts:\n${earlierList}`);
+      }
+      parts.push(
+        'Please address the feedback above, fix the problems, commit your changes, and call crew done again.'
+      );
+      feedbackSection = parts.join('\n\n');
+    }
+
     // Default prompt if not provided
     const prompt =
       options.prompt ||
@@ -285,6 +314,7 @@ export class Runner extends EventEmitter {
         `Task: ${task.title}`,
         task.description ? `Description: ${task.description}` : '',
         task.acceptanceCriteria ? `Acceptance Criteria: ${task.acceptanceCriteria}` : '',
+        feedbackSection,
       ]
         .filter(Boolean)
         .join('\n\n');
@@ -348,6 +378,16 @@ export class Runner extends EventEmitter {
     const logPath = path.join(logsDir, `${runId}.jsonl`);
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
+    // Take snapshot of main checkout git status for out-of-worktree diff gate check (D31)
+    let mainCheckoutSnapshot = '';
+    if (workspace?.repoPath && fs.existsSync(workspace.repoPath)) {
+      try {
+        const statusRes = await execa('git', ['status', '--porcelain'], { cwd: workspace.repoPath, reject: false });
+        mainCheckoutSnapshot = statusRes.stdout || '';
+      } catch {}
+    }
+    this.mainCheckoutSnapshots.set(runId, mainCheckoutSnapshot);
+
     // Insert Run in DB
     const startedAt = new Date();
     this.db.db
@@ -360,6 +400,7 @@ export class Runner extends EventEmitter {
         startedAt,
         sessionId,
         resumedFromRunId: options.resumedFromRunId || null,
+        kind: options.kind || 'work',
         logPath,
         prompt,
       })

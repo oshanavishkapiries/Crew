@@ -53,7 +53,7 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit samples (D5, D7)
 ```

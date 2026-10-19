@@ -17,6 +17,7 @@ import {
 } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
 import type { Runner } from '../runner/index.js';
+import type { Verifier } from '../verify/index.js';
 import {
   AGENT_TOKEN_HEADER,
   hashToken,
@@ -33,6 +34,7 @@ export interface AppContext {
   worktreeManager?: WorktreeManager;
   runner?: Runner;
   dispatcher?: Dispatcher;
+  verifier?: Verifier;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -219,6 +221,11 @@ export function createApp(ctx: AppContext): Hono {
     const body = await c.req.json().catch(() => ({}));
     const result = body.result || 'Work completed';
 
+    const liveRun = ctx.runner?.getLiveRunByTaskId(task.id);
+    if (liveRun) {
+      liveRun.exitReason = 'done';
+    }
+
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'verifying', {
       reason: result,
       alongside: () =>
@@ -246,6 +253,11 @@ export function createApp(ctx: AppContext): Hono {
 
     if (!question) {
       return c.json({ error: 'Question body is required' }, 400);
+    }
+
+    const liveRun = ctx.runner?.getLiveRunByTaskId(task.id);
+    if (liveRun) {
+      liveRun.exitReason = 'asked';
     }
 
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'blocked', {
