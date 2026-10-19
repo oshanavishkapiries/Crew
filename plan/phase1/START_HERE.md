@@ -12,17 +12,18 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 2. [plan/phase1/prd.md](prd.md): what to build. Read the **Decision Log** at the top first. It overrides the design doc wherever they disagree.
 3. [docs/architecture/project-structure.md](../../docs/architecture/project-structure.md): where code goes.
 4. [docs/architecture/project-techstack.md](../../docs/architecture/project-techstack.md): what to build it with.
+   - Working on milestone 3? Read [milestone-3.md](milestone-3.md): the design, tracer bullets and decisions D29–D37 (approved).
    - Working on milestone 2? Read [milestone-2.md](milestone-2.md) next: the design, the tracer bullets and decisions D21–D26.
 5. [plan/phase1/handoff.md](handoff.md): what the last session did and left open.
 6. [docs/Crew Design Doc.md](<../../docs/Crew Design Doc.md>): background only. Skim it for the "why".
 
 ## 3. Where things stand
 
-- Planning is done: PRD, decisions D1–D27, architecture docs and agent rules.
+- Planning is done: PRD, decisions D1–D37, architecture docs and agent rules.
 - **Milestone 1 (Core) and Milestone 2 (Runner and core safety) are implemented and verified:**
   - Milestone 1: SQLite schema with Drizzle, Hono server on 127.0.0.1 with Host-header DNS rebinding check, D13 auth tokens/secrets, task scheduler state machine, and in-process pipeline harness.
   - Milestone 2: Drizzle migrations baseline with `runs.exitReason`, git worktree manager on dispatch, child process runner with process group kill on timeouts, parallel dispatcher (max 3), `crew ask` / `crew answer` with session resume and git diff fallback, `crew stop-all` / `crew resume`, rate limit pause and backoff schedule, Claude Code adapter with contract tests and recorded fixtures, and human CLI (`status`, `tasks`, `diff`, `logs`, `cancel`, `worktree gc`, `answer`).
-- `npm test` typechecks, builds `dist/` and runs all 64 tests across 16 test suites. The smoke run with real Claude Code passed (`npm run smoke`). Next: Milestone 3 (Verifier & review gate).
+- `npm test` typechecks, builds `dist/` and runs all 64 tests across 16 test suites. The smoke run with real Claude Code passed (`npm run smoke`). Next: Milestone 3 (Verification); its approved plan is in `milestone-3.md` (D29–D37).
 
 ## 4. Things that are easy to get wrong
 
