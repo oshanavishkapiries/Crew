@@ -460,7 +460,18 @@ export function createApp(ctx: AppContext): Hono {
       .orderBy(asc(schema.runs.startedAt))
       .all();
 
-    return c.json({ success: true, task, messages, runs });
+    const runIds = runs.map((r) => r.id);
+    const verificationResults =
+      runIds.length > 0
+        ? ctx.db.db
+            .select()
+            .from(schema.verificationResults)
+            .where(inArray(schema.verificationResults.runId, runIds))
+            .orderBy(asc(schema.verificationResults.createdAt))
+            .all()
+        : [];
+
+    return c.json({ success: true, task, messages, runs, verificationResults });
   });
 
   // PRD line 370: POST /api/tasks/:id/answer (human secret)
@@ -611,6 +622,13 @@ export function createApp(ctx: AppContext): Hono {
       taskCounts[t.status] = (taskCounts[t.status] || 0) + 1;
     }
 
+    const verifyingTasks = tasks
+      .filter((t) => t.status === 'verifying')
+      .map((t) => ({ id: t.id, title: t.title }));
+    const reviewTasks = tasks
+      .filter((t) => t.status === 'review')
+      .map((t) => ({ id: t.id, title: t.title, reviewerAgentId: t.reviewerAgentId }));
+
     return c.json({
       stopped: isStopped,
       agents: agents.map((a) => ({
@@ -623,6 +641,8 @@ export function createApp(ctx: AppContext): Hono {
       rateLimits,
       taskCounts,
       totalTasks: tasks.length,
+      verifyingTasks,
+      reviewTasks,
     });
   });
 

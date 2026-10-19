@@ -5,6 +5,7 @@ import { handleDiff } from './commands/diff.js';
 import { handleDone } from './commands/done.js';
 import { handleHook } from './commands/hook.js';
 import { handleLogs } from './commands/logs.js';
+import { handleResults } from './commands/results.js';
 import { handleResume } from './commands/resume.js';
 import { handleReview } from './commands/review.js';
 import { handleStart } from './commands/start.js';
@@ -110,6 +111,19 @@ export const COMMANDS: CommandDefinition[] = [
       { description: 'View diff for task-1', command: 'crew diff task-1' },
     ],
     action: handleDiff,
+  },
+  {
+    name: 'results',
+    category: 'human',
+    summary: 'Print verification results for a task',
+    description: 'Displays the pass/fail status of all verification steps and output of failed steps.',
+    args: [
+      { name: 'task', description: 'Task ID or slug', required: true },
+    ],
+    examples: [
+      { description: 'View verification results for task-1', command: 'crew results task-1' },
+    ],
+    action: handleResults,
   },
   {
     name: 'cancel',

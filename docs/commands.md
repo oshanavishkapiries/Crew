@@ -148,6 +148,24 @@ crew diff task-1
 
 ---
 
+### `crew results`
+
+Displays the pass/fail status of all verification steps and output of failed steps.
+
+**Arguments:**
+
+- `task` (required): Task ID or slug
+
+**Examples:**
+
+View verification results for task-1:
+
+```bash
+crew results task-1
+```
+
+---
+
 ### `crew cancel`
 
 Cancels the specified task from any non-terminal state.

@@ -7,6 +7,8 @@ interface StatusResponse {
   rateLimits: Array<{ cliType: string; isPaused: boolean; resetTime?: number; backoffStep: number }>;
   taskCounts: Record<string, number>;
   totalTasks: number;
+  verifyingTasks?: Array<{ id: string; title: string }>;
+  reviewTasks?: Array<{ id: string; title: string; reviewerAgentId?: string | null }>;
 }
 
 export async function handleStatus(): Promise<void> {
@@ -35,6 +37,21 @@ export async function handleStatus(): Promise<void> {
     for (const r of pausedRateLimits) {
       const resetStr = r.resetTime ? new Date(r.resetTime).toISOString() : 'unknown';
       console.log(`  - Tool ${r.cliType}: backoff step ${r.backoffStep}, resets at ${resetStr}`);
+    }
+  }
+
+  if (status.verifyingTasks && status.verifyingTasks.length > 0) {
+    console.log(`\nVerifying Tasks (${status.verifyingTasks.length}):`);
+    for (const t of status.verifyingTasks) {
+      console.log(`  - Task ${t.id}: ${t.title}`);
+    }
+  }
+
+  if (status.reviewTasks && status.reviewTasks.length > 0) {
+    console.log(`\nReview Tasks (${status.reviewTasks.length}):`);
+    for (const t of status.reviewTasks) {
+      const reviewer = t.reviewerAgentId ? ` (Reviewer: ${t.reviewerAgentId})` : '';
+      console.log(`  - Task ${t.id}: ${t.title}${reviewer}`);
     }
   }
 
