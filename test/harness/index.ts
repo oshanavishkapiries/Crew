@@ -13,9 +13,13 @@ import { EventBus } from '../../src/server/events/index.js';
 import { startServer, type RunningServer } from '../../src/server/index.js';
 import { Scheduler } from '../../src/server/scheduler/index.js';
 import { WorktreeManager } from '../../src/server/worktree/index.js';
+import { Runner, type Clock } from '../../src/server/runner/index.js';
 
 export interface HarnessOptions {
   maxRetries?: number;
+  maxRuntimeMs?: number;
+  noOutputTimeoutMs?: number;
+  clock?: Clock;
 }
 
 export interface PipelineHarness {
@@ -24,6 +28,7 @@ export interface PipelineHarness {
   eventBus: EventBus;
   scheduler: Scheduler;
   worktreeManager: WorktreeManager;
+  runner: Runner;
   fakeAdapter: FakeAdapter;
   workspaceId: string;
   boardId: string;
@@ -42,7 +47,7 @@ export interface PipelineHarness {
   runTaskWithAgent: (
     taskId: string,
     script: FakeScriptStep[],
-  ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
+  ) => Promise<{ exitCode: number | null; stdout: string; stderr: string; exitReason?: schema.ExitReason }>;
   /** Run the real crew CLI with extra env vars (e.g. a specific agent's token) */
   runCrew: (
     args: string[],
@@ -150,6 +155,19 @@ export async function createPipelineHarness(
   const fakeAdapter = new FakeAdapter();
   const cliPath = path.resolve(import.meta.dirname, '../../dist/cli.js');
 
+  const runner = new Runner({
+    db,
+    eventBus,
+    scheduler,
+    adapters: { fake: fakeAdapter },
+    clock: options.clock,
+    maxRuntimeMs: options.maxRuntimeMs,
+    noOutputTimeoutMs: options.noOutputTimeoutMs,
+    serverUrl: server.url,
+    crewHome: crewHomeDir,
+  });
+  runner.registerAgentToken(agentId, agentToken);
+
   const createTask = async (params: {
     id: string;
     title: string;
@@ -172,63 +190,19 @@ export async function createPipelineHarness(
   const runTaskWithAgent = async (taskId: string, script: FakeScriptStep[]) => {
     fakeAdapter.setScript(script);
 
-    // Transition task to doing (creates worktree and branch)
-    await scheduler.transitionTask(taskId, 'doing', { reason: 'Agent spawned' });
-
+    // Transition task to doing (creates worktree and branch if not already doing)
     const currentTask = db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get()!;
-    const workDir = currentTask.worktreePath || repoDir;
+    if (currentTask.status === 'ready') {
+      await scheduler.transitionTask(taskId, 'doing', { reason: 'Agent spawned' });
+    }
 
-    const spawnConfig = fakeAdapter.buildSpawn({
-      prompt: 'Work on ' + taskId,
-      workDir,
-      permissions: { allowBash: true },
-      taskId,
-      serverUrl: server.url,
-      agentToken,
-    });
-
-    const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-      ...spawnConfig.env,
-      CREW_CLI_PATH: cliPath,
-      CREW_SERVER_URL: server.url,
-      CREW_TASK_ID: taskId,
-      CREW_AGENT_TOKEN: agentToken,
-    };
-
-    const runId = 'run-' + Date.now();
-    db.db
-      .insert(schema.runs)
-      .values({
-        id: runId,
-        taskId,
-        agentId,
-        adapter: 'fake',
-        startedAt: new Date(),
-      })
-      .run();
-
-    const subprocess = execa(spawnConfig.command, spawnConfig.args, {
-      cwd: workDir,
-      env,
-      reject: false,
-    });
-
-    const result = await subprocess;
-
-    db.db
-      .update(schema.runs)
-      .set({
-        endedAt: new Date(),
-        exitCode: result.exitCode ?? 0,
-      })
-      .where(eq(schema.runs.id, runId))
-      .run();
+    const result = await runner.runTask(taskId);
 
     return {
       exitCode: result.exitCode ?? null,
       stdout: result.stdout,
-      stderr: result.stderr,
+      stderr: '',
+      exitReason: result.exitReason,
     };
   };
 
@@ -256,6 +230,7 @@ export async function createPipelineHarness(
         createdAt: new Date(),
       })
       .run();
+    runner.registerAgentToken(id, token);
     return token;
   };
 
@@ -268,6 +243,7 @@ export async function createPipelineHarness(
   };
 
   const cleanup = async () => {
+    await runner.killAll();
     await server.close();
     db.close();
 
@@ -291,6 +267,7 @@ export async function createPipelineHarness(
     eventBus,
     scheduler,
     worktreeManager,
+    runner,
     fakeAdapter,
     workspaceId,
     boardId,

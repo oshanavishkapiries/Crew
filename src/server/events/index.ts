@@ -36,10 +36,11 @@ export class EventBus {
       timestamp: new Date().toISOString(),
     };
     this.emitter.emit(`run:${runId}`, fullEvent);
+    this.emitter.emit('run:*', { runId, ...fullEvent });
   }
 
   subscribeRunEvents(runId: string, listener: (event: CrewEvent) => void): () => void {
-    const channel = `run:${runId}`;
+    const channel = runId === '*' ? 'run:*' : `run:${runId}`;
     this.emitter.on(channel, listener);
     return () => {
       this.emitter.off(channel, listener);
