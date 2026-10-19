@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core) and 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) are implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D37).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D37).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -17,7 +17,7 @@ crew/
 ├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
 ├─ drizzle.config.ts      # drizzle-kit config for generating migrations
 ├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
-├─ scripts/               # Dev scripts: generate-docs.ts (docs/commands.md), smoke-milestone-2.ts (`npm run smoke`, real Claude Code, manual)
+├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts (`npm run smoke:m3`, manual)
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -29,12 +29,12 @@ crew/
 │     ├─ START_HERE.md    # Onboarding for AI agents: context and how to start implementing
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
-│     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (approved)
+│     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
-│  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, phase, ticket, assign
+│  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
 │  │                      # Human commands: start, init, status, stop-all, resume (D23), worktree gc,
-│  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16)
+│  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16), results
 │  │                      # Command declarations here are the single source for --help and docs/commands.md (D3)
 │  ├─ server/
 │  │  ├─ api/             # REST + SSE endpoints, Host-header and token checks (D13)
@@ -53,9 +53,9 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook
    ├─ adapters/           # Adapter contract tests
-   └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit samples (D5, D7)
+   └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit and hook-blocked samples (D5, D7, D26)
 ```
 
 ## Runtime folders (outside the repo)
@@ -68,6 +68,8 @@ Crew writes its state to the user's machine, not to the repo it manages (D12):
 ├─ server.json            # URL, per-start secret and pid of the running server, mode 0600; deleted on shutdown (D25)
 ├─ stopped                # Marker file: dispatch stays stopped until `crew resume` (D23)
 ├─ rate-limits.json       # Persisted rate-limit pauses and backoff step (D7)
+├─ claude-settings.json   # Stop hook settings passed to Claude Code via --settings (D26, D36)
+├─ hook-stops/            # Per-run block counters for crew hook stop (D36)
 ├─ bin/                   # `crew` shim put on the agent's PATH
 ├─ logs/                  # Run logs (agent event streams, <run-id>.jsonl)
 └─ worktrees/

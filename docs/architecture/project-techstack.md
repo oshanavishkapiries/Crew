@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D37). Milestones 1 and 2 are implemented; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D37). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 
@@ -35,7 +35,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 
 | Tool | Headless command | Session resume | Status |
 | --- | --- | --- | --- |
-| Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestone 2) |
+| Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestones 2 and 3: runner, resume, permissions, rate-limits, read-only review, stop hook) |
 | Codex | `codex exec --json` | `codex exec resume <id>` | Launch (milestone 7) |
 | Antigravity | Unknown | — | Pull mode only (D17) |
 | Fake | Scripted `crew` calls | Supported | Tests and demos |

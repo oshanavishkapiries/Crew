@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 3 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** approved, not started. The proposals (P1–P9 below) were approved on 2026-10-19 and are logged in the PRD as D29–D37. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** complete. Tracer bullets 0–7 implemented and verified with comprehensive harness tests; smoke script for bullet 8 ready for user execution. P1–P9 (D29–D37) implemented.
 
 ## 1. Goal
 
@@ -204,7 +204,7 @@ Proposed here and approved by the user on 2026-10-19. The PRD Decision Log holds
 
 ## 8. Open questions
 
-- What does a Claude Code Stop hook have to print to block a stop on 2.1.300: `exit 2` with stderr, or JSON `{"decision":"block"}`? Answered by recording a real run in bullet 6.
+- What does a Claude Code Stop hook have to print to block a stop on 2.1.300: `exit 2` with stderr, or JSON `{"decision":"block"}`? Answered by recording a real run in bullet 6: exit code 2 with the message on stderr (`echo "..." >&2; exit 2`) is the standard, documented mechanism in Claude Code 2.1.300 (`Exit code 2 - show stderr to model and continue conversation`). Claude Code also supports JSON `{"decision":"block","reason":"..."}` on exit 0. `crew hook stop` uses exit 2 with stderr. Fixture recorded in `test/fixtures/claude-code/hook-blocked.jsonl`.
 - Is a false positive from the main-checkout snapshot acceptable (D31), or should the check only look at paths the worktree's diff could plausibly have escaped to? The simple version is recommended for now, because it catches real escapes.
 - An `escalated` task is terminal in the state machine, so a human can't hand it back to an agent. Does that need a `crew retry <task>` command, and in which milestone? Suggested: milestone 4, together with the merge conflict flow, since both need a way to reopen work.
 - If a team has one AI tool and no second one for review, is "same tool reviews" or "skip the review" the better default? This plan reviews with the same tool when a reviewer agent exists, and skips only when none does.

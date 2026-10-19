@@ -17,7 +17,8 @@
     "typecheck": "tsc -p test/tsconfig.json",
     "test": "npm run typecheck && vitest run",
     "generate:docs": "tsx scripts/generate-docs.ts",
-    "smoke": "tsx scripts/smoke-milestone-2.ts"
+    "smoke": "tsx scripts/smoke-milestone-2.ts",
+    "smoke:m3": "tsx scripts/smoke-milestone-3.ts"
   },
   "engines": {
     "node": ">=22.0.0"

@@ -1,37 +1,49 @@
-# Handoff: Crew Phase 1 — Milestones 1 and 2 done, Milestone 3 planned
+# Handoff: Crew Phase 1 — Milestones 1, 2, and 3 done, Milestone 4 next
 
 ## Where things stand
 
 - Repo: `/home/oshan/Projects/Crew`
-- Branch: `main` holds milestones 1 and 2 (the milestone 3 plan is on `docs/milestone-3-plan` until merged).
-- **Milestone 2 (Runner and core safety) is fully implemented and tested:**
-  1. **Bullet 0 (Migrations):** Versioned Drizzle migrator baselines legacy unversioned databases, adds `runs.exitReason` (D21) and `runs.prompt`.
-  2. **Bullet 1 (Worktree on dispatch):** `WorktreeManager` creates isolated git worktrees at `~/.crew/worktrees/<workspace>/<task-id>` with branch `crew/<task-id>-<slug>` on `ready → doing`, removes the worktree but keeps the branch on `cancel` (the work is not lost), and kills a running agent first, and `worktree gc` cleans up orphan worktrees.
-  3. **Bullet 2 (Runner with fake adapter):** Spawns agent processes via `execa` with `detached: true` in task worktrees, injects `crew` binary shim in PATH, records `runs` entries, and streams structured events both to disk (`~/.crew/logs/...`) and SSE.
-  4. **Bullet 3 (Timeouts and kill):** Handles max runtime (default 30m) and no-output (default 5m) timeouts, kills whole process group with negative PID (`-pid`), escalates task past `maxRetries` (D22).
-  5. **Bullet 4 (Dispatcher):** Parallel agent dispatcher (max 3 concurrent runs), assigns ready tasks to matching idle agents by role, and recovers orphaned `doing` tasks on startup without retry penalties.
-  6. **Bullet 5 (Ask and resume):** Fake and real agent `ask` steps block tasks; `crew answer` resumes the session preserving the same session UUID; graceful fallback with git diff summary if resume is refused.
-  7. **Bullet 6 (Stop-all and resume):** `crew stop-all` kills all live runs (`exitReason: 'stopped'`), marks agents `stopped`, creates `<crewHome>/stopped` marker, and prevents task dispatch without burning retries; `crew resume` clears marker, restores agents to `idle`, and re-dispatches.
-  8. **Bullet 7 (Rate limits):** When an agent hits rate limits (`isRateLimit`), run is terminated (`exitReason: 'rate-limited'`) without retry penalty, all agents of that tool marked `rate-limited`, exponential backoff (1 → 2 → 4 → 8 → 16 → 30 min) or reported reset time scheduled with injectable clock, pause state persisted in DB and `<crewHome>/rate-limits.json`, session resumed upon clearance.
-  9. **Bullet 8 (Claude Code adapter):** `ClaudeCodeAdapter` implementing `AgentAdapter` (`buildSpawn`, `buildResume`, `parseOutput`, `isRateLimit`, `detect`), permission profiles (`default`, `full`), safety denied tools, and recorded real and synthetic fixtures in `test/fixtures/claude-code/`.
-  10. **Bullet 9 (Human CLI):** Discovery via `~/.crew/server.json` (0600 mode, D25), `crew status`, `crew tasks`, `crew diff`, `crew logs` (with `-f, --follow`), `crew cancel`, `crew worktree gc`, and `crew answer`.
-  11. **Bullet 10 (Smoke script):** Standalone integration smoke script `scripts/smoke-milestone-2.ts` (`npm run smoke`) run by the user on 2026-10-19 with real Claude Code 2.1.300: passed (task reached `verifying` in 16s). The first attempt hung because `allowed_warning` rate-limit events were wrongly treated as limits; fixed and covered by a test.
-- `rm -rf dist && npm test` passes 100%: 64 tests passing across 16 test suites.
+- Branch: `feat/milestone-3-verification` holds Milestone 3.
+- **Milestone 3 (Verification) is fully implemented and tested:**
+  1. **Bullet 0 (Diff gate & failure loop):** Migration `0002_silent_owl.sql` adds `runs.kind` (`work` | `review`, default `work`) and `tasks.reviewer_agent_id`. Diff gate auto-commits leftover agent changes, fails empty diffs ("no changes against <base>"), runs out-of-worktree check (symlink escape + main checkout porcelain status snapshot), commits failure feedback message in transaction, and injects failure feedback into the next run's prompt.
+  2. **Bullet 1 (Escalation):** Verified end to end that tasks repeatedly failing verification escalate to `escalated` once `retries` exceed `maxRetries`, recording VerificationResults and events.
+  3. **Bullet 2 (Command gates):** Shell command runner for `workspaces.config.verifyCommands` (D10, D29) with per-command cwd, timeouts with process group kill (`-pid`), path-filtering with `picomatch@4.0.7` (D37), all-failures-together feedback collection (D32), and output capping (64 KB in DB, 4 KB per failure in feedback).
+  4. **Bullet 3 (The pass path):** Diff and command gates pass, review step skips cleanly with visible status when no reviewer exists (`review → merge-queue`, D34), and tasks reach `merge-queue` in order.
+  5. **Bullet 4 (Reviewer gate):** Reviewer selection preferring a different `cliType` (D8), `read-only` permission profile (denies edits/writes), `crew review approve` (`review → merge-queue`) and `crew review changes --feedback "..."` (`review → doing` charging author a retry), token auth isolation (reviewer token rejected on author endpoints, author token rejected on `/review`), and reviewer crash recovery (up to 2 runs before escalating, author not charged, D35).
+  6. **Bullet 5 (Interruptions):** Verifier restart recovery re-enqueues `verifying` and unreviewed `review` tasks and replaces partial verification results (§4.6); `crew stop-all` terminates active command subprocesses and Reviewers, and `crew resume` restarts pipelines without charging retries; `crew cancel` aborts in-flight commands and kills reviewer before removing worktrees; rate-limited Reviewers pause and resume without retry penalties; concurrency limited to `maxParallelVerifications` (default 2, D37).
+  7. **Bullet 6 (Stop hook):** Crew-written `<crewHome>/claude-settings.json` configuring Stop hook (D26, D36); hidden agent command `crew hook stop` that checks `stop_hook_active` on stdin, blocks while `doing` (exit code 2 with stderr), allows when status != `doing`, and gives up after 2 blocks; adapter contract tests for `--settings` flag and `read-only` profile; real hook-blocked fixture recorded in `test/fixtures/claude-code/hook-blocked.jsonl`.
+  8. **Bullet 7 (Human CLI):** `crew results <task>` prints pass/fail for each verification step followed by the output of failed steps; `GET /api/tasks/:id` extended with `verificationResults`; `crew status` and `GET /api/status` extended with `verifyingTasks` and `reviewTasks` lists; `docs/commands.md` regenerated via `npm run generate:docs`.
+  9. **Bullet 8 (Smoke script):** `scripts/smoke-milestone-3.ts` (`npm run smoke:m3`) written and verified with `npm run typecheck`. Ready for manual run by user.
+- `rm -rf dist && npm test` passes 100%: 99 tests passing across 24 test suites.
 
-## Open items
+## Open questions answered in Milestone 3
 
-- **D27 (approved, in the PRD):** test files run serially with a 30 second timeout.
-- **D28 (waiting for the user):** `ClaudeCodeAdapter` accepts an optional `maxBudgetUsd`, passed as `--max-budget-usd`. The smoke script uses 0.50. Approve it for the PRD, or drop the option.
-- **Resume classification:** a resumed run counts as `resume-failed` only when it emitted no events. A resume that crashes after output counts as a normal `exited` run (one retry). Left as is; the user can change it.
-- **Still open from earlier:** `crew init` and `crew.config.ts` loading (milestone 5 at the latest), and how the Board sends the per-start secret on SSE (milestone 6).
+- **Stop hook format on Claude Code 2.1.300:** Verified live with real Claude Code 2.1.300 runs and binary analysis. Claude Code uses exit code 2 with stderr (`echo "..." >&2; exit 2`) as its standard blocking mechanism (`Exit code 2 - show stderr to model and continue conversation`). It also supports exit code 0 with JSON `{"decision":"block","reason":"..."}`. On subsequent turn, Claude Code sends `"stop_hook_active": true` on stdin to prevent infinite loops. `crew hook stop` uses exit 2 with stderr. Real fixture recorded in `test/fixtures/claude-code/hook-blocked.jsonl`.
 
-## Open questions answered
+## How to run the Milestone 3 smoke test
 
-- **Claude Code rate-limit event shape:** Real Claude Code emits `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":...,"rateLimitType":"five_hour",...}}`. `allowed_warning` (usage warning) also appears and is NOT a limit; only a status not starting with `allowed`, or error code 429, blocks the run. Synthetic fixture generated and verified.
-- **`--verbose` requirement:** When using `-p` (`--print`), `--output-format=stream-json` strictly requires `--verbose`.
-- **`--disallowedTools` under `bypassPermissions`:** Explicitly verified live; Claude Code blocked the disallowed tool and returned `permission_denied`.
-- **Minimum Claude Code version:** Set to `2.1.0`.
+Run the smoke script using:
+```bash
+npm run smoke:m3
+```
+or
+```bash
+npx tsx scripts/smoke-milestone-3.ts
+```
+The script will:
+1. Detect local Claude Code CLI version.
+2. Initialize throwaway Git repo and temporary `CREW_HOME`.
+3. Start the Crew server with Dispatcher, Runner, and Verifier.
+4. Configure `verifyCommands` (`test -f smoke.txt`) and Stop hook in workspace config.
+5. Seed Author agent (`claude-code`) and Reviewer agent (`claude-code`).
+6. Dispatch task to Author to create `smoke.txt`.
+7. Author creates file, calls `crew done`, triggers diff gate and verifyCommand (`test -f smoke.txt`).
+8. Reviewer reviews diff in `read-only` mode and approves.
+9. Task reaches `merge-queue`.
+10. Runs `crew results` CLI and verifies worktree diff and file contents.
 
 ## Next steps
 
-- Milestone 3 (Verification): `plan/phase1/milestone-3.md` is approved and logged as D29–D37. Start at tracer bullet 0 (diff gate and the failure loop). Install `picomatch` (pinned) when bullet 2 needs it, and add it to project-techstack.md.
+- User runs `npm run smoke:m3` and inspects results.
+- Merge `feat/milestone-3-verification` to `main`.
+- Plan and implement Milestone 4: Merge Queue and Rebase (`merge-queue → merged`).
