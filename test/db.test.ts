@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import Database from 'better-sqlite3';
+import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ensureCrewHome, getCrewDbPath, getCrewHome } from '../src/server/config.js';
 import { createCrewDatabase, schema } from '../src/server/db/index.js';
@@ -247,6 +249,111 @@ describe('Crew Home and Database (D12, D20)', () => {
       }).toThrow();
     } finally {
       close();
+    }
+  });
+
+  it('baselines an old unversioned DB created by initial script and upgrades it with exit_reason and prompt', () => {
+    const oldDbPath = path.join(tempDir, 'legacy.db');
+    const rawSqlite = new Database(oldDbPath);
+
+    // Simulate legacy schema created by INITIAL_MIGRATION_SQL (no __drizzle_migrations table, no exit_reason, no prompt)
+    rawSqlite.exec(`
+      CREATE TABLE workspaces (
+        id text PRIMARY KEY NOT NULL,
+        name text NOT NULL,
+        repo_path text NOT NULL,
+        default_branch text DEFAULT 'main' NOT NULL,
+        config text,
+        created_at integer NOT NULL
+      );
+      CREATE TABLE tasks (
+        id text PRIMARY KEY NOT NULL,
+        board_id text NOT NULL,
+        title text NOT NULL,
+        description text NOT NULL,
+        acceptance_criteria text DEFAULT '' NOT NULL,
+        status text DEFAULT 'todo' NOT NULL,
+        assignee_agent_id text,
+        role_id text,
+        created_by text DEFAULT 'human' NOT NULL,
+        parent_task_id text,
+        depth integer DEFAULT 0 NOT NULL,
+        retries integer DEFAULT 0 NOT NULL,
+        branch text,
+        worktree_path text,
+        created_at integer NOT NULL,
+        updated_at integer NOT NULL
+      );
+      CREATE TABLE runs (
+        id text PRIMARY KEY NOT NULL,
+        task_id text NOT NULL,
+        agent_id text NOT NULL,
+        adapter text NOT NULL,
+        pid integer,
+        session_id text,
+        resumed_from_run_id text,
+        started_at integer NOT NULL,
+        ended_at integer,
+        exit_code integer,
+        log_path text
+      );
+    `);
+
+    // Insert legacy data
+    const now = Date.now();
+    rawSqlite.prepare(`INSERT INTO workspaces (id, name, repo_path, created_at) VALUES (?, ?, ?, ?)`).run('ws-legacy', 'Legacy Workspace', '/repo', now);
+    rawSqlite.prepare(`INSERT INTO runs (id, task_id, agent_id, adapter, started_at) VALUES (?, ?, ?, ?, ?)`).run('run-old', 'task-1', 'agent-1', 'fake', now);
+    rawSqlite.close();
+
+    // Verify rawSqlite has no exit_reason column and no __drizzle_migrations
+    const checkRaw = new Database(oldDbPath);
+    const hasMigrationsBefore = checkRaw.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'").get();
+    expect(hasMigrationsBefore).toBeUndefined();
+    expect(() => checkRaw.prepare('SELECT exit_reason FROM runs').all()).toThrow();
+    checkRaw.close();
+
+    // Now open with createCrewDatabase: it should baseline 0000 and run 0001
+    const { db, sqlite, close } = createCrewDatabase({ dbPath: oldDbPath });
+    try {
+      // 1. __drizzle_migrations exists and has 2 applied migrations
+      const migrationRows = sqlite.prepare('SELECT * FROM __drizzle_migrations ORDER BY created_at ASC').all() as Array<{ hash: string; created_at: number }>;
+      expect(migrationRows).toHaveLength(2);
+
+      // 2. Legacy data is preserved
+      const legacyWs = db.select().from(schema.workspaces).all();
+      expect(legacyWs).toHaveLength(1);
+      expect(legacyWs[0].id).toBe('ws-legacy');
+
+      const legacyRuns = db.select().from(schema.runs).all();
+      expect(legacyRuns).toHaveLength(1);
+      expect(legacyRuns[0].id).toBe('run-old');
+      expect(legacyRuns[0].exitReason).toBeNull();
+
+      // 3. Newly added columns exit_reason and prompt exist and accept writes
+      db.update(schema.runs)
+        .set({ exitReason: 'done', prompt: 'test prompt' })
+        .where(eq(schema.runs.id, 'run-old'))
+        .run();
+
+      const updatedRun = db.select().from(schema.runs).where(eq(schema.runs.id, 'run-old')).all();
+      expect(updatedRun[0].exitReason).toBe('done');
+      expect(updatedRun[0].prompt).toBe('test prompt');
+    } finally {
+      close();
+    }
+  });
+
+  it('reopening an up-to-date DB is a safe no-op', () => {
+    const dbPath = path.join(tempDir, 'reopen.db');
+    const first = createCrewDatabase({ dbPath });
+    first.close();
+
+    const second = createCrewDatabase({ dbPath });
+    try {
+      const migrationRows = second.sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
+      expect(migrationRows).toHaveLength(2);
+    } finally {
+      second.close();
     }
   });
 });

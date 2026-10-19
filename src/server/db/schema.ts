@@ -87,6 +87,17 @@ export const taskDependencies = sqliteTable(
   (t) => [primaryKey({ columns: [t.taskId, t.blockedByTaskId] })],
 );
 
+export type ExitReason =
+  | 'done'
+  | 'asked'
+  | 'exited'
+  | 'timeout'
+  | 'no-output'
+  | 'stopped'
+  | 'rate-limited'
+  | 'cancelled'
+  | 'resume-failed';
+
 export const runs = sqliteTable('runs', {
   id: text('id').primaryKey(),
   taskId: text('task_id')
@@ -102,7 +113,9 @@ export const runs = sqliteTable('runs', {
   startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
   endedAt: integer('ended_at', { mode: 'timestamp' }),
   exitCode: integer('exit_code'),
+  exitReason: text('exit_reason').$type<ExitReason>(), // D21
   logPath: text('log_path'),
+  prompt: text('prompt'),
 });
 
 export const verificationResults = sqliteTable('verification_results', {
