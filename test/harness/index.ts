@@ -41,6 +41,13 @@ export interface PipelineHarness {
     taskId: string,
     script: FakeScriptStep[],
   ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
+  /** Run the real crew CLI with extra env vars (e.g. a specific agent's token) */
+  runCrew: (
+    args: string[],
+    env?: Record<string, string>,
+  ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
+  /** Seed another agent in the workspace and return its token */
+  addAgent: (id: string) => string;
   getTask: (taskId: string) => typeof schema.tasks.$inferSelect | undefined;
   getMessages: (taskId: string) => (typeof schema.messages.$inferSelect)[];
   cleanup: () => Promise<void>;
@@ -134,7 +141,7 @@ export async function createPipelineHarness(
     .run();
 
   const fakeAdapter = new FakeAdapter();
-  const cliPath = path.resolve(__dirname, '../../dist/cli.js');
+  const cliPath = path.resolve(import.meta.dirname, '../../dist/cli.js');
 
   const createTask = async (params: {
     id: string;
@@ -215,6 +222,33 @@ export async function createPipelineHarness(
     };
   };
 
+  const runCrew = async (args: string[], env: Record<string, string> = {}) => {
+    const result = await execa(process.execPath, [cliPath, ...args], {
+      cwd: repoDir,
+      env: { CREW_SERVER_URL: server.url, ...env },
+      extendEnv: false,
+      reject: false,
+    });
+    return { exitCode: result.exitCode ?? null, stdout: result.stdout, stderr: result.stderr };
+  };
+
+  const addAgent = (id: string) => {
+    const token = 'crew_agent_test_' + crypto.randomBytes(16).toString('hex');
+    db.db
+      .insert(schema.agents)
+      .values({
+        id,
+        workspaceId,
+        roleId,
+        name: `Fake Agent ${id}`,
+        cliType: 'fake',
+        tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
+        createdAt: new Date(),
+      })
+      .run();
+    return token;
+  };
+
   const getTask = (taskId: string) => {
     return db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
   };
@@ -256,6 +290,8 @@ export async function createPipelineHarness(
     crewHomeDir,
     createTask,
     runTaskWithAgent,
+    runCrew,
+    addAgent,
     getTask,
     getMessages,
     cleanup,

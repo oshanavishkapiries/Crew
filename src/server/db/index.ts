@@ -1,13 +1,17 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import Database from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { type BetterSQLite3Database, drizzle } from 'drizzle-orm/better-sqlite3';
 import { ensureCrewHome, getCrewDbPath } from '../config.js';
 import * as schema from './schema.js';
 
 export * as schema from './schema.js';
 
-export type CrewDatabase = ReturnType<typeof createCrewDatabase>;
+export interface CrewDatabase {
+  db: BetterSQLite3Database<typeof schema>;
+  sqlite: Database.Database;
+  close: () => void;
+}
 
 export interface DatabaseOptions {
   dbPath?: string;
@@ -168,7 +172,7 @@ export function runMigrations(sqlite: Database.Database): void {
   sqlite.exec(INITIAL_MIGRATION_SQL);
 }
 
-export function createCrewDatabase(options: DatabaseOptions = {}) {
+export function createCrewDatabase(options: DatabaseOptions = {}): CrewDatabase {
   let sqlite: Database.Database;
 
   if (options.inMemory) {

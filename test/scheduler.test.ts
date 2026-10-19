@@ -7,6 +7,7 @@ import {
   DependencyCycleError,
   InvalidTransitionError,
   Scheduler,
+  TaskNotFoundError,
 } from '../src/server/scheduler/index.js';
 
 describe('Task State Machine and Dependencies (PRD lines 308-332)', () => {
@@ -223,5 +224,59 @@ describe('Task State Machine and Dependencies (PRD lines 308-332)', () => {
     await expect(scheduler.addDependency('cycle-2', 'cycle-1')).rejects.toThrow(
       DependencyCycleError,
     );
+  });
+
+  it('creates nothing when a blocker does not exist', async () => {
+    const events: unknown[] = [];
+    eventBus.subscribeBoardEvents('board-1', (e) => events.push(e));
+
+    await expect(
+      scheduler.createTask({
+        id: 'orphan',
+        boardId: 'board-1',
+        title: 'Orphan',
+        description: 'Blocked by a missing task',
+        blockedByIds: ['does-not-exist'],
+      }),
+    ).rejects.toThrow(TaskNotFoundError);
+
+    expect(db.db.select().from(schema.tasks).where(eq(schema.tasks.id, 'orphan')).get()).toBeUndefined();
+    expect(db.db.select().from(schema.taskDependencies).all()).toHaveLength(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it('creates nothing when a task would block itself', async () => {
+    await expect(
+      scheduler.createTask({
+        id: 'self',
+        boardId: 'board-1',
+        title: 'Self',
+        description: 'Blocked by itself',
+        blockedByIds: ['self'],
+      }),
+    ).rejects.toThrow(DependencyCycleError);
+
+    expect(db.db.select().from(schema.tasks).where(eq(schema.tasks.id, 'self')).get()).toBeUndefined();
+  });
+
+  it('rolls back extra writes when a transition is refused', async () => {
+    await scheduler.createTask({ id: 'atomic', boardId: 'board-1', title: 'Atomic', description: 'Desc' });
+    let ran = false;
+
+    // ready -> verifying is invalid, so the alongside write must never happen
+    await expect(
+      scheduler.transitionTask('atomic', 'verifying', { alongside: () => (ran = true) }),
+    ).rejects.toThrow(InvalidTransitionError);
+    expect(ran).toBe(false);
+
+    // A failing extra write leaves the status unchanged
+    await expect(
+      scheduler.transitionTask('atomic', 'doing', {
+        alongside: () => {
+          throw new Error('write failed');
+        },
+      }),
+    ).rejects.toThrow('write failed');
+    expect(db.db.select().from(schema.tasks).where(eq(schema.tasks.id, 'atomic')).get()!.status).toBe('ready');
   });
 });

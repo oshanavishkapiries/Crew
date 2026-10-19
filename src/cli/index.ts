@@ -37,7 +37,9 @@ export function createCli(commands: CommandDefinition[] = COMMANDS): Command {
       if (def.action) {
         await def.action(...args);
       } else {
-        console.log(`crew ${def.name}: command not implemented in this build.`);
+        // Fail loudly: a stub that exits 0 (e.g. stop-all) would look like it worked
+        console.error(`crew ${def.name}: command not implemented in this build.`);
+        process.exitCode = 1;
       }
     });
   }

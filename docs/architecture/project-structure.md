@@ -12,6 +12,12 @@ crew/
 ├─ CLAUDE.md              # Claude Code entry point; imports AGENTS.md
 ├─ README.md            # Banner, short intro and doc index
 ├─ package.json           # "bin": { "crew": "dist/cli.js" }, run with `npx crew`
+├─ tsconfig.json          # Compiler settings for src/
+├─ tsup.config.ts         # Bundles src/ into dist/ (cli.js, index.js)
+├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
+├─ drizzle.config.ts      # drizzle-kit config for generating migrations
+├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
+├─ scripts/               # Dev scripts, e.g. generate-docs.ts for docs/commands.md
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -24,7 +30,7 @@ crew/
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
-│  ├─ cli/                # Agent commands: join, next, update, ask, remember, done, phase, ticket, assign
+│  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, phase, ticket, assign
 │  │                      # Human commands: start, init, status, stop-all, worktree gc,
 │  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16)
 │  │                      # Command declarations here are the single source for --help and docs/commands.md (D3)
@@ -43,6 +49,8 @@ crew/
 │  └─ roles/              # Built-in roles: orchestrator, architect, backend, frontend, qa, reviewer
 ├─ ui/                    # Board UI (Vite + React), built and served by the server
 └─ test/
+   ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
+   ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
    ├─ harness/            # In-process pipeline harness: real server, temp git repo, fake adapter
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit samples (D5, D7)

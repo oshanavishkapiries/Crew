@@ -1,11 +1,24 @@
 import { eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import { EventBus, getEventBus } from '../events/index.js';
-import { Scheduler } from '../scheduler/index.js';
-import { hostHeaderMiddleware } from './security.js';
+import type { EventBus } from '../events/index.js';
+import {
+  DependencyCycleError,
+  InvalidTransitionError,
+  type Scheduler,
+  type Task,
+  TaskNotFoundError,
+} from '../scheduler/index.js';
+import {
+  AGENT_TOKEN_HEADER,
+  hashToken,
+  hostHeaderMiddleware,
+  SECRET_HEADER,
+  secretsMatch,
+} from './security.js';
 
 export interface AppContext {
   db: CrewDatabase;
@@ -14,11 +27,73 @@ export interface AppContext {
   perStartSecret: string;
 }
 
+type Agent = typeof schema.agents.$inferSelect;
+
+type Caller = { kind: 'human' } | { kind: 'agent'; agent: Agent };
+
+function newMessageId(): string {
+  return 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+}
+
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
 
   // D13: Host-header validation middleware on all routes
   app.use('*', hostHeaderMiddleware());
+
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof TaskNotFoundError) return c.json({ error: err.message }, 404);
+    if (err instanceof InvalidTransitionError || err instanceof DependencyCycleError) {
+      return c.json({ error: err.message }, 409);
+    }
+    console.error(err);
+    return c.json({ error: 'Internal server error' }, 500);
+  });
+
+  // D13: the Board and human CLI send the per-start secret; agents send their own token
+  const identify = (c: Context): Caller | null => {
+    if (secretsMatch(c.req.header(SECRET_HEADER), ctx.perStartSecret)) {
+      return { kind: 'human' };
+    }
+    const token = c.req.header(AGENT_TOKEN_HEADER);
+    if (!token) return null;
+    const agent = ctx.db.db
+      .select()
+      .from(schema.agents)
+      .where(eq(schema.agents.tokenHash, hashToken(token)))
+      .get();
+    return agent ? { kind: 'agent', agent } : null;
+  };
+
+  const unauthorized = () =>
+    new HTTPException(401, {
+      res: Response.json({ error: 'Unauthorized: missing or invalid credentials (D13)' }, { status: 401 }),
+    });
+
+  const forbidden = (message: string) =>
+    new HTTPException(403, { res: Response.json({ error: `Forbidden: ${message}` }, { status: 403 }) });
+
+  const requireHuman = (c: Context): void => {
+    if (identify(c)?.kind !== 'human') throw unauthorized();
+  };
+
+  const loadTask = (taskId: string): Task => {
+    const task = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+    if (!task) throw new TaskNotFoundError(taskId);
+    return task;
+  };
+
+  // Each agent token acts only for that agent, on tasks assigned to it (user story 125)
+  const requireAssignedAgent = (c: Context, taskId: string): { agent: Agent; task: Task } => {
+    const caller = identify(c);
+    if (caller?.kind !== 'agent') throw unauthorized();
+    const task = loadTask(taskId);
+    if (task.assigneeAgentId !== caller.agent.id) {
+      throw forbidden(`task ${taskId} is not assigned to this agent`);
+    }
+    return { agent: caller.agent, task };
+  };
 
   // Health check endpoint
   app.get('/health', (c) => {
@@ -30,6 +105,7 @@ export function createApp(ctx: AppContext): Hono {
 
   // PRD line 369: SSE endpoint for live board events
   app.get('/api/board/:id/events', async (c) => {
+    requireHuman(c);
     const boardId = c.req.param('id');
 
     return streamSSE(c, async (stream) => {
@@ -68,6 +144,7 @@ export function createApp(ctx: AppContext): Hono {
 
   // PRD line 364: SSE endpoint for live agent run stream
   app.get('/api/runs/:id/stream', async (c) => {
+    requireHuman(c);
     const runId = c.req.param('id');
 
     return streamSSE(c, async (stream) => {
@@ -104,27 +181,16 @@ export function createApp(ctx: AppContext): Hono {
 
   // PRD line 358: POST /api/tasks/:id/report
   app.post('/api/tasks/:id/report', async (c) => {
-    const taskId = c.req.param('id');
+    const { agent, task } = requireAssignedAgent(c, c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
     const message = body.message || 'Progress update';
 
-    const task = ctx.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get();
-
-    if (!task) {
-      return c.json({ error: `Task not found: ${taskId}` }, 404);
-    }
-
-    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     ctx.db.db
       .insert(schema.messages)
       .values({
-        id: msgId,
-        taskId,
-        fromAgentId: task.assigneeAgentId,
+        id: newMessageId(),
+        taskId: task.id,
+        fromAgentId: agent.id,
         type: 'comment',
         body: message,
         createdAt: new Date(),
@@ -133,7 +199,7 @@ export function createApp(ctx: AppContext): Hono {
 
     ctx.eventBus.publishBoardEvent(task.boardId, {
       type: 'task_progress',
-      data: { taskId, message },
+      data: { taskId: task.id, message },
     });
 
     return c.json({ success: true, message: 'Progress recorded' });
@@ -141,35 +207,24 @@ export function createApp(ctx: AppContext): Hono {
 
   // PRD line 361: POST /api/tasks/:id/done
   app.post('/api/tasks/:id/done', async (c) => {
-    const taskId = c.req.param('id');
+    const { agent, task } = requireAssignedAgent(c, c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
     const result = body.result || 'Work completed';
 
-    const task = ctx.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get();
-
-    if (!task) {
-      return c.json({ error: `Task not found: ${taskId}` }, 404);
-    }
-
-    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    ctx.db.db
-      .insert(schema.messages)
-      .values({
-        id: msgId,
-        taskId,
-        fromAgentId: task.assigneeAgentId,
-        type: 'result',
-        body: result,
-        createdAt: new Date(),
-      })
-      .run();
-
-    const updatedTask = await ctx.scheduler.transitionTask(taskId, 'verifying', {
+    const updatedTask = await ctx.scheduler.transitionTask(task.id, 'verifying', {
       reason: result,
+      alongside: () =>
+        ctx.db.db
+          .insert(schema.messages)
+          .values({
+            id: newMessageId(),
+            taskId: task.id,
+            fromAgentId: agent.id,
+            type: 'result',
+            body: result,
+            createdAt: new Date(),
+          })
+          .run(),
     });
 
     return c.json({ success: true, status: updatedTask.status });
@@ -177,7 +232,7 @@ export function createApp(ctx: AppContext): Hono {
 
   // PRD line 359: POST /api/tasks/:id/question
   app.post('/api/tasks/:id/question', async (c) => {
-    const taskId = c.req.param('id');
+    const { agent, task } = requireAssignedAgent(c, c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
     const question = body.question;
 
@@ -185,47 +240,34 @@ export function createApp(ctx: AppContext): Hono {
       return c.json({ error: 'Question body is required' }, 400);
     }
 
-    const task = ctx.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get();
-
-    if (!task) {
-      return c.json({ error: `Task not found: ${taskId}` }, 404);
-    }
-
-    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    ctx.db.db
-      .insert(schema.messages)
-      .values({
-        id: msgId,
-        taskId,
-        fromAgentId: task.assigneeAgentId,
-        type: 'question',
-        body: question,
-        createdAt: new Date(),
-      })
-      .run();
-
-    const updatedTask = await ctx.scheduler.transitionTask(taskId, 'blocked', {
+    const updatedTask = await ctx.scheduler.transitionTask(task.id, 'blocked', {
       reason: question,
+      alongside: () =>
+        ctx.db.db
+          .insert(schema.messages)
+          .values({
+            id: newMessageId(),
+            taskId: task.id,
+            fromAgentId: agent.id,
+            type: 'question',
+            body: question,
+            createdAt: new Date(),
+          })
+          .run(),
     });
 
     return c.json({ success: true, status: updatedTask.status });
   });
 
-  // GET /api/tasks/:id
+  // GET /api/tasks/:id: the human, or the agent the task is assigned to
   app.get('/api/tasks/:id', async (c) => {
     const taskId = c.req.param('id');
-    const task = ctx.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get();
+    const caller = identify(c);
+    if (!caller) throw unauthorized();
 
-    if (!task) {
-      return c.json({ error: `Task not found: ${taskId}` }, 404);
+    const task = loadTask(taskId);
+    if (caller.kind === 'agent' && task.assigneeAgentId !== caller.agent.id) {
+      throw forbidden(`task ${taskId} is not assigned to this agent`);
     }
 
     return c.json({ success: true, task });

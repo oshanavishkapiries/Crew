@@ -1,7 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
-import type { EventBus } from '../events/index.js';
+import type { CrewEvent, EventBus } from '../events/index.js';
 
 export type TaskStatus =
   | 'todo'
@@ -14,6 +14,15 @@ export type TaskStatus =
   | 'blocked'
   | 'escalated'
   | 'cancelled';
+
+export type Task = typeof schema.tasks.$inferSelect;
+
+export class TaskNotFoundError extends Error {
+  constructor(public readonly taskId: string) {
+    super(`Task not found: ${taskId}`);
+    this.name = 'TaskNotFoundError';
+  }
+}
 
 export class InvalidTransitionError extends Error {
   constructor(
@@ -42,7 +51,14 @@ export interface TransitionContext {
   reason?: string;
   errorSummary?: string;
   incrementRetries?: boolean;
+  /**
+   * Extra writes (e.g. the agent's message) that must commit or roll back together with
+   * this transition. Runs after the transition is validated, inside the same transaction.
+   */
+  alongside?: () => void;
 }
+
+type PendingEvent = { boardId: string; event: Omit<CrewEvent, 'timestamp'> };
 
 export class Scheduler {
   private maxRetries: number;
@@ -102,6 +118,109 @@ export class Scheduler {
    * Check whether all blockers for a task are in 'merged' status
    */
   async areDependenciesSatisfied(taskId: string): Promise<boolean> {
+    return this.dependenciesMerged(taskId);
+  }
+
+  /**
+   * Add a dependency with cycle detection
+   */
+  async addDependency(taskId: string, blockedByTaskId: string): Promise<void> {
+    this.inTransaction(() => this.insertDependency(taskId, blockedByTaskId));
+  }
+
+  /**
+   * Transition task status. The scheduler is the only writer of task status.
+   * Events are published only after the transaction commits.
+   */
+  async transitionTask(
+    taskId: string,
+    requestedStatus: TaskStatus,
+    context: TransitionContext = {},
+  ): Promise<Task> {
+    const pending: PendingEvent[] = [];
+    const task = this.inTransaction(() =>
+      this.applyTransition(taskId, requestedStatus, context, pending),
+    );
+    this.publish(pending);
+    return task;
+  }
+
+  /**
+   * Create a task and set its initial state (ready if no blockers, todo if blockers exist).
+   * All-or-nothing: a bad blocker or a cycle leaves no task behind.
+   */
+  async createTask(params: {
+    id: string;
+    boardId: string;
+    title: string;
+    description: string;
+    acceptanceCriteria?: string;
+    roleId?: string;
+    assigneeAgentId?: string;
+    createdBy?: string;
+    parentTaskId?: string;
+    depth?: number;
+    blockedByIds?: string[];
+  }): Promise<Task> {
+    const pending: PendingEvent[] = [];
+
+    const task = this.inTransaction(() => {
+      const now = new Date();
+
+      this.db.db
+        .insert(schema.tasks)
+        .values({
+          id: params.id,
+          boardId: params.boardId,
+          title: params.title,
+          description: params.description,
+          acceptanceCriteria: params.acceptanceCriteria || '',
+          status: 'todo',
+          roleId: params.roleId,
+          assigneeAgentId: params.assigneeAgentId,
+          createdBy: params.createdBy || 'human',
+          parentTaskId: params.parentTaskId,
+          depth: params.depth || 0,
+          retries: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run();
+
+      for (const blockerId of params.blockedByIds ?? []) {
+        this.insertDependency(params.id, blockerId);
+      }
+
+      if (this.dependenciesMerged(params.id)) {
+        return this.applyTransition(params.id, 'ready', { reason: 'No unmerged blockers' }, pending);
+      }
+      return this.getTaskOrThrow(params.id);
+    });
+
+    this.publish(pending);
+    return task;
+  }
+
+  private inTransaction<T>(fn: () => T): T {
+    return this.db.sqlite.transaction(fn)();
+  }
+
+  private publish(pending: PendingEvent[]): void {
+    if (!this.eventBus) return;
+    for (const { boardId, event } of pending) {
+      this.eventBus.publishBoardEvent(boardId, event);
+    }
+  }
+
+  private getTaskOrThrow(taskId: string): Task {
+    const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+    if (!task) {
+      throw new TaskNotFoundError(taskId);
+    }
+    return task;
+  }
+
+  private dependenciesMerged(taskId: string): boolean {
     const deps = this.db.db
       .select({ blockedByTaskId: schema.taskDependencies.blockedByTaskId })
       .from(schema.taskDependencies)
@@ -122,13 +241,13 @@ export class Scheduler {
     return blockers.every((b) => b.status === 'merged');
   }
 
-  /**
-   * Add a dependency with cycle detection
-   */
-  async addDependency(taskId: string, blockedByTaskId: string): Promise<void> {
+  private insertDependency(taskId: string, blockedByTaskId: string): void {
     if (taskId === blockedByTaskId) {
       throw new DependencyCycleError(taskId, blockedByTaskId);
     }
+
+    this.getTaskOrThrow(taskId);
+    this.getTaskOrThrow(blockedByTaskId);
 
     // Check for direct or indirect cycle: does taskId already block blockedByTaskId?
     const hasPath = (current: string, target: string, visited = new Set<string>()): boolean => {
@@ -163,24 +282,13 @@ export class Scheduler {
       .run();
   }
 
-  /**
-   * Transition task status. The scheduler is the only writer of task status.
-   */
-  async transitionTask(
+  private applyTransition(
     taskId: string,
     requestedStatus: TaskStatus,
-    context: TransitionContext = {},
-  ): Promise<typeof schema.tasks.$inferSelect> {
-    const task = this.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get();
-
-    if (!task) {
-      throw new Error(`Task not found: ${taskId}`);
-    }
-
+    context: TransitionContext,
+    pending: PendingEvent[],
+  ): Task {
+    const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
 
     if (!this.isValidTransition(currentStatus, requestedStatus)) {
@@ -188,17 +296,16 @@ export class Scheduler {
     }
 
     // Special rule: todo -> ready requires all dependencies to be merged
-    if (requestedStatus === 'ready') {
-      const satisfied = await this.areDependenciesSatisfied(taskId);
-      if (!satisfied) {
-        throw new InvalidTransitionError(
-          taskId,
-          currentStatus,
-          requestedStatus,
-          `Cannot transition task ${taskId} to ready: unfinished dependencies exist.`,
-        );
-      }
+    if (requestedStatus === 'ready' && !this.dependenciesMerged(taskId)) {
+      throw new InvalidTransitionError(
+        taskId,
+        currentStatus,
+        requestedStatus,
+        `Cannot transition task ${taskId} to ready: unfinished dependencies exist.`,
+      );
     }
+
+    context.alongside?.();
 
     let finalStatus = requestedStatus;
     let newRetries = task.retries;
@@ -214,26 +321,19 @@ export class Scheduler {
       }
     }
 
-    const now = new Date();
     this.db.db
       .update(schema.tasks)
       .set({
         status: finalStatus,
         retries: newRetries,
-        updatedAt: now,
+        updatedAt: new Date(),
       })
       .where(eq(schema.tasks.id, taskId))
       .run();
 
-    const updatedTask = this.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, taskId))
-      .get()!;
-
-    // Publish event
-    if (this.eventBus) {
-      this.eventBus.publishBoardEvent(task.boardId, {
+    pending.push({
+      boardId: task.boardId,
+      event: {
         type: 'task_status_changed',
         data: {
           taskId,
@@ -242,21 +342,21 @@ export class Scheduler {
           retries: newRetries,
           reason: context.reason,
         },
-      });
-    }
+      },
+    });
 
     // When a task is merged, unblock any downstream tasks whose blockers are now all merged
     if (finalStatus === 'merged') {
-      await this.promoteReadyDependents(taskId);
+      this.promoteReadyDependents(taskId, pending);
     }
 
-    return updatedTask;
+    return this.getTaskOrThrow(taskId);
   }
 
   /**
    * Checks downstream tasks that were blocked by this task; promotes them to 'ready' if all blockers merged.
    */
-  private async promoteReadyDependents(mergedTaskId: string): Promise<void> {
+  private promoteReadyDependents(mergedTaskId: string, pending: PendingEvent[]): void {
     const dependentEdges = this.db.db
       .select({ taskId: schema.taskDependencies.taskId })
       .from(schema.taskDependencies)
@@ -270,71 +370,14 @@ export class Scheduler {
         .where(eq(schema.tasks.id, edge.taskId))
         .get();
 
-      if (dependentTask && dependentTask.status === 'todo') {
-        const canReady = await this.areDependenciesSatisfied(dependentTask.id);
-        if (canReady) {
-          await this.transitionTask(dependentTask.id, 'ready', {
-            reason: `All dependencies merged (last: ${mergedTaskId})`,
-          });
-        }
+      if (dependentTask && dependentTask.status === 'todo' && this.dependenciesMerged(dependentTask.id)) {
+        this.applyTransition(
+          dependentTask.id,
+          'ready',
+          { reason: `All dependencies merged (last: ${mergedTaskId})` },
+          pending,
+        );
       }
     }
-  }
-
-  /**
-   * Helper to create a task and set its initial state (ready if no blockers, todo if blockers exist)
-   */
-  async createTask(params: {
-    id: string;
-    boardId: string;
-    title: string;
-    description: string;
-    acceptanceCriteria?: string;
-    roleId?: string;
-    assigneeAgentId?: string;
-    createdBy?: string;
-    parentTaskId?: string;
-    depth?: number;
-    blockedByIds?: string[];
-  }): Promise<typeof schema.tasks.$inferSelect> {
-    const now = new Date();
-
-    this.db.db
-      .insert(schema.tasks)
-      .values({
-        id: params.id,
-        boardId: params.boardId,
-        title: params.title,
-        description: params.description,
-        acceptanceCriteria: params.acceptanceCriteria || '',
-        status: 'todo',
-        roleId: params.roleId,
-        assigneeAgentId: params.assigneeAgentId,
-        createdBy: params.createdBy || 'human',
-        parentTaskId: params.parentTaskId,
-        depth: params.depth || 0,
-        retries: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
-
-    if (params.blockedByIds && params.blockedByIds.length > 0) {
-      for (const blockerId of params.blockedByIds) {
-        await this.addDependency(params.id, blockerId);
-      }
-    }
-
-    // If no blockers, transition to ready
-    const hasUnmergedBlockers = !(await this.areDependenciesSatisfied(params.id));
-    if (!hasUnmergedBlockers) {
-      await this.transitionTask(params.id, 'ready', { reason: 'No unmerged blockers' });
-    }
-
-    return this.db.db
-      .select()
-      .from(schema.tasks)
-      .where(eq(schema.tasks.id, params.id))
-      .get()!;
   }
 }

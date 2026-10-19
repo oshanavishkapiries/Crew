@@ -19,7 +19,8 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 
 - Planning is done: PRD, decisions D1–D20, architecture docs and agent rules.
 - **Milestone 1 (Core) is implemented and verified:** `package.json`, TypeScript, SQLite data model (all 12 PRD tables with Drizzle), server on 127.0.0.1 with Host-header check and SSE, task state machine & scheduler with dependency resolution, fake adapter, CLI command generator & staleness tests, and the in-process pipeline harness.
-- All 15 tests pass. Next up is Milestone 2 (Runner and core safety).
+- A review pass fixed the gaps milestone 1 left: D13 token and secret checks, tests that ran a stale build, type errors, stub commands exiting 0, non-atomic task creation, 500s for refused transitions, shell quoting in the fake adapter, and IPv6 Host parsing.
+- `npm test` typechecks, builds `dist/` and runs all 27 tests. Next up is Milestone 2 (Runner and core safety).
 
 ## 4. Things that are easy to get wrong
 

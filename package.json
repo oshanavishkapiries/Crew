@@ -10,7 +10,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsup",
-    "test": "vitest run",
+    "typecheck": "tsc -p test/tsconfig.json",
+    "test": "npm run typecheck && vitest run",
     "generate:docs": "tsx scripts/generate-docs.ts"
   },
   "engines": {

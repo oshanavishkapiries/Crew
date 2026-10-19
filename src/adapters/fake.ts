@@ -36,7 +36,7 @@ export class FakeAdapter implements AgentAdapter {
     const stepsJson = JSON.stringify(this.scriptedSteps);
     // Node one-liner that executes the script steps and emits structured JSON lines to stdout
     const script = `
-      import { execSync } from 'node:child_process';
+      import { execFileSync } from 'node:child_process';
       import * as fs from 'node:fs';
       import * as path from 'node:path';
 
@@ -44,13 +44,16 @@ export class FakeAdapter implements AgentAdapter {
       const taskId = process.env.CREW_TASK_ID || '';
       const serverUrl = process.env.CREW_SERVER_URL || '';
       const token = process.env.CREW_AGENT_TOKEN || '';
+      const cliPath = process.env.CREW_CLI_PATH || 'dist/cli.js';
+      // No shell: messages reach crew exactly as written, quotes and $() included
+      const crew = (...args) => execFileSync(process.execPath, [cliPath, ...args], { stdio: 'inherit', env: process.env });
 
       console.log(JSON.stringify({ type: 'start', data: { prompt: ${JSON.stringify(opts.prompt)} }, timestamp: new Date().toISOString() }));
 
       for (const step of steps) {
         if (step.type === 'update') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'update', message: step.message }, timestamp: new Date().toISOString() }));
-          execSync(\`node \${process.env.CREW_CLI_PATH || 'dist/cli.js'} update "\${step.message || 'update'}"\`, { stdio: 'inherit', env: process.env });
+          crew('update', '--', step.message || 'update');
         } else if (step.type === 'edit_file' && step.filePath) {
           fs.writeFileSync(step.filePath, step.content || '', 'utf-8');
           console.log(JSON.stringify({ type: 'file_edit', data: { file: step.filePath }, timestamp: new Date().toISOString() }));
@@ -58,7 +61,7 @@ export class FakeAdapter implements AgentAdapter {
           console.log(JSON.stringify({ type: 'rate_limit', isError: true, rateLimitResetTime: new Date(Date.now() + 60000).toISOString(), timestamp: new Date().toISOString() }));
         } else if (step.type === 'done') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'done', result: step.result }, timestamp: new Date().toISOString() }));
-          execSync(\`node \${process.env.CREW_CLI_PATH || 'dist/cli.js'} done --result "\${step.result || 'done'}"\`, { stdio: 'inherit', env: process.env });
+          crew('done', '--result', step.result || 'done');
         }
       }
 

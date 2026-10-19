@@ -392,6 +392,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 - The server binds to 127.0.0.1 only and rejects requests whose Host header isn't a localhost name, which blocks DNS-rebinding attacks from web pages.
 - Each agent gets a random token, stored only as a hash. Spawned agents get their token through an environment variable, never in the prompt text. Pull-mode agents get theirs in the connect prompt.
 - `crew start` creates a per-start secret that the Board and the human CLI commands use, so other local processes and web pages can't call human endpoints.
+- How it's enforced: agents send their token in the `X-Crew-Agent-Token` header and can act only on tasks assigned to them (403 otherwise). Human endpoints, including the SSE streams, need the per-start secret in `X-Crew-Secret`. Missing or unknown credentials get 401.
 
 ### Rate limits (D7, Claude-decided)
 
@@ -502,5 +503,6 @@ Milestone 8 succeeds, the full pipeline tests pass with the fake adapter, and ev
 
 - Does Antigravity have a headless / CLI interface? Its `--help` output is needed.
 - What exactly do Claude Code and Codex rate-limit events look like? The detection strategy is decided (D7, Claude-decided), but real samples are needed for the fixtures.
+- How does the Board send the per-start secret on its SSE streams? Browser `EventSource` can't set custom headers, so milestone 6 needs another carrier, for example an HttpOnly cookie set when the server serves the Board. Never a URL query parameter.
 - Can the npm package be published as `crew`? The name was unpublished in 2024 and currently returns 404. Try to reserve it early, with a scoped name as the fallback.
 - Resolved during grilling: how a spawned agent resumes after `crew ask` (D4, user), and how `crew.config.ts` handles monorepos (D10, Claude-decided).
