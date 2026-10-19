@@ -237,10 +237,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     const data = event.data as any;
     if (!data) return false;
 
-    // 1. rate_limit_event with non-allowed status
+    // 1. rate_limit_event that blocks the run. Claude Code sends one every turn:
+    //    'allowed' and 'allowed_warning' (usage past a threshold, seen live) both mean keep going.
     if (event.type === 'rate_limit_event') {
       const info = data.rate_limit_info;
-      if (info && info.status !== 'allowed') {
+      if (info && !String(info.status).startsWith('allowed')) {
         return true;
       }
       if (info && info.overageStatus === 'rejected' && (info.utilization ?? 0) >= 1) {

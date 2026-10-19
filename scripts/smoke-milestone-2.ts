@@ -203,6 +203,12 @@ async function runSmoke(): Promise<void> {
       console.log(diffResult.stdout || '(no diff)');
     }
 
+    // The task reaches 'verifying' when the agent calls `crew done`, a moment before its process
+    // exits and the run row is finalised. Wait for that so the summary below is complete.
+    for (let i = 0; i < 30 && runner.getLiveRuns().length > 0; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
     // Inspect run record
     const run = db.db.select().from(schema.runs).where(eq(schema.runs.taskId, taskId)).get();
     if (run) {

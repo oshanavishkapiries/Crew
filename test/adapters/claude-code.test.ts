@@ -201,6 +201,25 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
       expect(adapter.isRateLimit(allowedEvent)).toBe(false);
     });
 
+    it('returns false for rate_limit_event with allowed_warning, which only warns about usage', () => {
+      // Recorded from a real run at 85% weekly usage; treating it as a limit killed the smoke run
+      const warningEvent = {
+        type: 'rate_limit_event',
+        data: {
+          rate_limit_info: {
+            status: 'allowed_warning',
+            resetsAt: 1792432800,
+            rateLimitType: 'seven_day',
+            utilization: 0.85,
+            overageStatus: 'rejected',
+            surpassedThreshold: 0.75,
+          },
+        },
+        timestamp: new Date().toISOString(),
+      };
+      expect(adapter.isRateLimit(warningEvent)).toBe(false);
+    });
+
     it('returns true for rate_limit_event when status is rejected', () => {
       const rejectedEvent = {
         type: 'rate_limit_event',

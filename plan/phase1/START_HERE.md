@@ -22,7 +22,7 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 - **Milestone 1 (Core) and Milestone 2 (Runner and core safety) are implemented and verified:**
   - Milestone 1: SQLite schema with Drizzle, Hono server on 127.0.0.1 with Host-header DNS rebinding check, D13 auth tokens/secrets, task scheduler state machine, and in-process pipeline harness.
   - Milestone 2: Drizzle migrations baseline with `runs.exitReason`, git worktree manager on dispatch, child process runner with process group kill on timeouts, parallel dispatcher (max 3), `crew ask` / `crew answer` with session resume and git diff fallback, `crew stop-all` / `crew resume`, rate limit pause and backoff schedule, Claude Code adapter with contract tests and recorded fixtures, and human CLI (`status`, `tasks`, `diff`, `logs`, `cancel`, `worktree gc`, `answer`).
-- `npm test` typechecks, builds `dist/` and runs all 64 tests across 16 test suites. Ready for user smoke run (`npm run smoke`) before starting Milestone 3 (Verifier & review gate).
+- `npm test` typechecks, builds `dist/` and runs all 64 tests across 16 test suites. The smoke run with real Claude Code passed (`npm run smoke`). Next: Milestone 3 (Verifier & review gate).
 
 ## 4. Things that are easy to get wrong
 

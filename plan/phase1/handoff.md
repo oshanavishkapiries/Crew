@@ -15,7 +15,7 @@
   8. **Bullet 7 (Rate limits):** When an agent hits rate limits (`isRateLimit`), run is terminated (`exitReason: 'rate-limited'`) without retry penalty, all agents of that tool marked `rate-limited`, exponential backoff (1 → 2 → 4 → 8 → 16 → 30 min) or reported reset time scheduled with injectable clock, pause state persisted in DB and `<crewHome>/rate-limits.json`, session resumed upon clearance.
   9. **Bullet 8 (Claude Code adapter):** `ClaudeCodeAdapter` implementing `AgentAdapter` (`buildSpawn`, `buildResume`, `parseOutput`, `isRateLimit`, `detect`), permission profiles (`default`, `full`), safety denied tools, and recorded real and synthetic fixtures in `test/fixtures/claude-code/`.
   10. **Bullet 9 (Human CLI):** Discovery via `~/.crew/server.json` (0600 mode, D25), `crew status`, `crew tasks`, `crew diff`, `crew logs` (with `-f, --follow`), `crew cancel`, `crew worktree gc`, and `crew answer`.
-  11. **Bullet 10 (Smoke script):** Standalone integration smoke script `scripts/smoke-milestone-2.ts` (`npm run smoke`) ready for manual verification by the user.
+  11. **Bullet 10 (Smoke script):** Standalone integration smoke script `scripts/smoke-milestone-2.ts` (`npm run smoke`) run by the user on 2026-10-19 with real Claude Code 2.1.300: passed (task reached `verifying` in 16s). The first attempt hung because `allowed_warning` rate-limit events were wrongly treated as limits; fixed and covered by a test.
 - `rm -rf dist && npm test` passes 100%: 64 tests passing across 16 test suites.
 
 ## Open items & Decisions Proposed
@@ -26,7 +26,7 @@
 
 ## Open questions answered
 
-- **Claude Code rate-limit event shape:** Real Claude Code emits `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":...,"rateLimitType":"five_hour",...}}`. Under rate limiting, `status !== 'allowed'` or error code 429. Synthetic fixture generated and verified.
+- **Claude Code rate-limit event shape:** Real Claude Code emits `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":...,"rateLimitType":"five_hour",...}}`. `allowed_warning` (usage warning) also appears and is NOT a limit; only a status not starting with `allowed`, or error code 429, blocks the run. Synthetic fixture generated and verified.
 - **`--verbose` requirement:** When using `-p` (`--print`), `--output-format=stream-json` strictly requires `--verbose`.
 - **`--disallowedTools` under `bypassPermissions`:** Explicitly verified live; Claude Code blocked the disallowed tool and returned `permission_denied`.
 - **Minimum Claude Code version:** Set to `2.1.0`.

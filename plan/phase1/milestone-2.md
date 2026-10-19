@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 2 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** implemented, pending manual smoke run (bullet 10) and the user's review. After the first review, `crew cancel` was fixed to kill a live run, and human commands now refuse a stale `server.json` whose pid is dead. All tracer bullets 0–9 implemented and verified with 64 passing automated tests across 16 suites. Smoke script `scripts/smoke-milestone-2.ts` prepared.
+**Status:** implemented and smoke-tested with real Claude Code 2.1.300 (task reached `verifying`, `smoke.txt` landed in the worktree), pending the user's review. The first smoke run exposed a false positive: `allowed_warning` rate-limit events were treated as limits (fixed). After the first review, `crew cancel` was fixed to kill a live run, and human commands now refuse a stale `server.json` whose pid is dead. All tracer bullets 0–9 implemented and verified with 64 passing automated tests across 16 suites. Smoke script `scripts/smoke-milestone-2.ts` prepared.
 
 ## 1. Goal
 
@@ -223,7 +223,7 @@ Proposed here and approved by the user on 2026-10-19. The PRD Decision Log holds
 | D26 | The Claude Code Stop hook moves to milestone 3 |
 
 ## 8. Open questions
-- What do Claude Code `stream-json` rate-limit events look like? (PRD open question, answered by bullet 8: `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed",...}}`. Under rate limiting, `status !== 'allowed'` or code 429 error occurs.)
+- What do Claude Code `stream-json` rate-limit events look like? (PRD open question, answered by bullet 8: `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed",...}}`. Status values seen: `allowed`, `allowed_warning` (usage past a threshold, run continues; seen live at 85% weekly usage) and, in the synthetic fixture, `rejected`. Only a status that doesn't start with `allowed`, or a 429 or rate_limit_error event, blocks the run.)
 - Is `--verbose` required with `stream-json` under `-p`? Yes, Claude Code requires `--verbose` when using `--output-format=stream-json` with `-p` (`--print`).
 - Do `--disallowedTools` rules hold under `bypassPermissions`? Verified live: yes, Claude Code blocks the disallowed tool and returns `permission_denied`. However, `ClaudeCodeAdapter` conservatively uses `acceptEdits` / `dontAsk`.
 - Minimum Claude Code version set: `2.1.0`.
