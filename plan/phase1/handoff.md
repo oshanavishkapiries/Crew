@@ -1,46 +1,37 @@
-# Handoff: Crew Phase 1 — Milestone 1 (Core) Complete
+# Handoff: Crew Phase 1 — Milestone 2 (Runner and Core Safety) Complete
 
 ## Where things stand
 
 - Repo: `/home/oshan/Projects/Crew`
-- Branch: `feat/milestone-1-core`. Milestone 1 is committed (`51a6a96`); the review fixes below are uncommitted, waiting for the user's review.
-- **Milestone 1 (Core) is fully implemented and tested:**
-  1. **Scaffolding:** `package.json` with `"bin": { "crew": "./dist/cli.js" }`, TypeScript (ESM, NodeNext), Vitest, pinned exact versions. `crew --help` works directly.
-  2. **Commands reference generator & staleness test (D3):** `src/cli/declarations.ts` is the single source of truth for Commander CLI and markdown reference. `scripts/generate-docs.ts` generates `docs/commands.md`. `test/commands-reference.test.ts` fails if `docs/commands.md` drifts.
-  3. **Crew home and database (D12, D20):** SQLite database initialized at `~/.crew/crew.db` (overrideable with `CREW_HOME` per D20). Complete Drizzle schema for all 12 PRD tables (`workspaces`, `boards`, `roles`, `agents`, `tasks`, `task_dependencies`, `runs`, `verification_results`, `messages`, `memory`, `phase_outputs`, `merge_queue_items`) with foreign keys and WAL mode.
-  4. **Server & Security (D13):** Hono HTTP server bound to `127.0.0.1` with DNS-rebinding Host-header check middleware and SSE streams (`/api/board/:id/events` and `/api/runs/:id/stream`). Agent endpoints check the hashed agent token (`X-Crew-Agent-Token`) and the task's assignee; human endpoints and SSE need the per-start secret (`X-Crew-Secret`).
-  5. **State machine & scheduler:** Task state machine with all transitions, retry counting, escalation on retry limit (default 3), and dependency resolution (downstream tasks stay in `todo` until blockers are `merged`, with automatic promotion to `ready`).
-  6. **Fake adapter and in-process pipeline harness:** `FakeAdapter` in `src/adapters/fake.ts` running scripted `crew` CLI calls and structured events. Pipeline harness in `test/harness/index.ts` boots in-process server, temporary git repo, and drives real `crew update` and `crew done` calls from `todo` to `verifying`.
-- `npm test` typechecks, builds `dist/` and runs 27 tests across 6 suites (adds `test/harness/agent-commands.test.ts`).
+- Branch: `feat/milestone-2-runner` (base commit: `5d35720` on `main`).
+- **Milestone 2 (Runner and core safety) is fully implemented and tested:**
+  1. **Bullet 0 (Migrations):** Versioned Drizzle migrator baselines legacy unversioned databases, adds `runs.exitReason` (D21) and `runs.prompt`.
+  2. **Bullet 1 (Worktree on dispatch):** `WorktreeManager` creates isolated git worktrees at `~/.crew/worktrees/<workspace>/<task-id>` with branch `crew/<task-id>-<slug>` on `ready → doing`, removes worktree and deletes branch on `cancel`, and `worktree gc` cleans up orphan worktrees.
+  3. **Bullet 2 (Runner with fake adapter):** Spawns agent processes via `execa` with `detached: true` in task worktrees, injects `crew` binary shim in PATH, records `runs` entries, and streams structured events both to disk (`~/.crew/logs/...`) and SSE.
+  4. **Bullet 3 (Timeouts and kill):** Handles max runtime (default 30m) and no-output (default 5m) timeouts, kills whole process group with negative PID (`-pid`), escalates task past `maxRetries` (D22).
+  5. **Bullet 4 (Dispatcher):** Parallel agent dispatcher (max 3 concurrent runs), assigns ready tasks to matching idle agents by role, and recovers orphaned `doing` tasks on startup without retry penalties.
+  6. **Bullet 5 (Ask and resume):** Fake and real agent `ask` steps block tasks; `crew answer` resumes the session preserving the same session UUID; graceful fallback with git diff summary if resume is refused.
+  7. **Bullet 6 (Stop-all and resume):** `crew stop-all` kills all live runs (`exitReason: 'stopped'`), marks agents `stopped`, creates `<crewHome>/stopped` marker, and prevents task dispatch without burning retries; `crew resume` clears marker, restores agents to `idle`, and re-dispatches.
+  8. **Bullet 7 (Rate limits):** When an agent hits rate limits (`isRateLimit`), run is terminated (`exitReason: 'rate-limited'`) without retry penalty, all agents of that tool marked `rate-limited`, exponential backoff (1 → 2 → 4 → 8 → 16 → 30 min) or reported reset time scheduled with injectable clock, pause state persisted in DB and `<crewHome>/rate-limits.json`, session resumed upon clearance.
+  9. **Bullet 8 (Claude Code adapter):** `ClaudeCodeAdapter` implementing `AgentAdapter` (`buildSpawn`, `buildResume`, `parseOutput`, `isRateLimit`, `detect`), permission profiles (`default`, `full`), safety denied tools, and recorded real and synthetic fixtures in `test/fixtures/claude-code/`.
+  10. **Bullet 9 (Human CLI):** Discovery via `~/.crew/server.json` (0600 mode, D25), `crew status`, `crew tasks`, `crew diff`, `crew logs` (with `-f, --follow`), `crew cancel`, `crew worktree gc`, and `crew answer`.
+  11. **Bullet 10 (Smoke script):** Standalone integration smoke script `scripts/smoke-milestone-2.ts` (`npm run smoke`) ready for manual verification by the user.
+- `rm -rf dist && npm test` passes 100%: 62 tests passing across 15 test suites.
 
-## Review fixes (uncommitted)
+## Open items & Decisions Proposed
 
-A review of milestone 1 found and fixed:
+- **D27 (proposed):** Vitest executes test suites serially (`fileParallelism: false`, `testTimeout: 30000`) to prevent CPU and process contention when multiple in-process server/agent/git test harnesses run simultaneously.
+- **D28 (proposed):** `ClaudeCodeAdapter` accepts optional `maxBudgetUsd?: number` to enforce safety caps (`--max-budget-usd <amount>`) during agent execution.
+- **D29 (proposed):** `WorktreeManager.cleanup()` uses `git branch -D` to reliably delete unmerged task branches on cancellation or completion.
 
-1. **No auth (D13, user story 125):** tokens and the per-start secret existed but were never checked. Now 401 for missing or unknown credentials, 403 when an agent touches a task not assigned to it.
-2. **Tests ran a stale build:** the harness calls `dist/cli.js`, which nothing rebuilt. `test/global-setup.ts` now builds before every run.
-3. **Type errors:** `tsc` had 2 errors and nothing ran it. Added `npm run typecheck` (`test/tsconfig.json`, also covers tests and scripts) and made `npm test` run it first.
-4. **Stub commands exited 0:** e.g. `crew stop-all` looked like it worked. They now print to stderr and exit 1.
-5. **Non-atomic writes:** `createTask`, dependency inserts and transitions run in one SQLite transaction, and events publish only after commit. A transition's extra writes (the agent's message) go through `TransitionContext.alongside`. A missing blocker throws `TaskNotFoundError`.
-6. **500s for expected errors:** the API maps not-found to 404 and refused transitions or cycles to 409.
-7. **Shell quoting in the fake adapter:** it now runs `crew` with `execFileSync`, no shell.
-8. **IPv6 Host header:** `[::1]:4000` is parsed correctly.
+## Open questions answered
 
-## Open items
+- **Claude Code rate-limit event shape:** Real Claude Code emits `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":...,"rateLimitType":"five_hour",...}}`. Under rate limiting, `status !== 'allowed'` or error code 429. Synthetic fixture generated and verified.
+- **`--verbose` requirement:** When using `-p` (`--print`), `--output-format=stream-json` strictly requires `--verbose`.
+- **`--disallowedTools` under `bypassPermissions`:** Explicitly verified live; Claude Code blocked the disallowed tool and returned `permission_denied`.
+- **Minimum Claude Code version:** Set to `2.1.0`.
 
-- `package.json` points `"types"` at `dist/index.d.ts`, but `tsup` runs with `dts: false`, so no declarations are emitted. Decide whether the package needs types before publishing.
-- The Board's SSE streams need the per-start secret, but `EventSource` can't send headers (PRD open questions, milestone 6).
-- Unimplemented commands are still listed in `--help`. They fail clearly, and each lands with its milestone (D2).
+## Next steps
 
-## Decisions added
-
-- **D20 (Claude-decided):** The Crew home directory defaults to `~/.crew` and can be overridden by the `CREW_HOME` environment variable, enabling isolated test environments with temporary databases, worktrees, and logs.
-- **D21–D26 (user, proposed by Claude in `milestone-2.md`, approved 2026-10-19):** run exit reasons, failed runs count as retries (no `failed` state), stop-all stays stopped until `crew resume`, limit defaults, `~/.crew/server.json` for the human CLI's secret, and the Stop hook moved to milestone 3.
-
-## Suggested next steps
-
-- **Milestone 2: Runner and core safety.** Plan: [milestone-2.md](milestone-2.md). Its decisions are approved and logged as D21–D26 in the PRD, so coding can start at tracer bullet 0 (migrations).
-  - Adapter interface & Claude Code adapter (`claude -p --output-format stream-json --session-id <uuid>`)
-  - Structured-event runner with session resume (D4, D5, D6)
-  - Worktree manager: create `crew/<task-id>-<slug>` branches and worktrees under Crew home
-  - Core safety: permission profile mapping, `crew stop-all`, budget and loop limits, and Claude Code rate-limit handling (D19).
+- Run smoke test: `npm run smoke` (seeds throwaway repo, starts server, runs real Claude Code agent with `--max-budget-usd 0.50`, verifies task reaches `verifying`).
+- Proceed to **Milestone 3: Verifier and merge queue** (D8, D10, D11, D26).

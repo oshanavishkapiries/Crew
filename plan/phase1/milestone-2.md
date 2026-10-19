@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 2 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** approved, not started. The decisions this plan proposed were approved on 2026-10-19 and are logged in the PRD as D21–D26.
+**Status:** implemented, pending manual smoke run (bullet 10). All tracer bullets 0–9 implemented and verified with 62 passing automated tests across 15 suites. Smoke script `scripts/smoke-milestone-2.ts` prepared.
 
 ## 1. Goal
 
@@ -223,7 +223,16 @@ Proposed here and approved by the user on 2026-10-19. The PRD Decision Log holds
 | D26 | The Claude Code Stop hook moves to milestone 3 |
 
 ## 8. Open questions
+- What do Claude Code `stream-json` rate-limit events look like? (PRD open question, answered by bullet 8: `{"type":"rate_limit_event","rate_limit_info":{"status":"allowed",...}}`. Under rate limiting, `status !== 'allowed'` or code 429 error occurs.)
+- Is `--verbose` required with `stream-json` under `-p`? Yes, Claude Code requires `--verbose` when using `--output-format=stream-json` with `-p` (`--print`).
+- Do `--disallowedTools` rules hold under `bypassPermissions`? Verified live: yes, Claude Code blocks the disallowed tool and returns `permission_denied`. However, `ClaudeCodeAdapter` conservatively uses `acceptEdits` / `dontAsk`.
+- Minimum Claude Code version set: `2.1.0`.
 
-- What do Claude Code `stream-json` rate-limit events look like? (PRD open question, answered by bullet 8.)
-- Do `--disallowedTools` rules hold under `bypassPermissions`? Until proven, `full` mode doesn't use it.
-- When do `crew init` and `crew.config.ts` loading land? Milestone 2 runs with defaults and server options. The private preview after milestone 5 needs both, so they belong in milestone 5 at the latest.
+## 9. Proposed during implementation
+
+Items decided during implementation of Milestone 2:
+
+1. **Vitest serial file execution:** Set `fileParallelism: false` and `testTimeout: 30000` in `vitest.config.ts`. The pipeline harness creates real HTTP servers, databases, and subprocesses for each test file. Serial file execution prevents CPU and process contention across tests.
+2. **Claude Code budget limit support:** Added `maxBudgetUsd?: number` option to `ClaudeCodeAdapter` constructor options, which passes `--max-budget-usd <amount>` to `claude` CLI in `buildSpawn` and `buildResume` (used in smoke script with `0.50` to safeguard spending).
+3. **Forced branch deletion on worktree cleanup:** `WorktreeManager.cleanup()` uses `git branch -D` so that unmerged worktree branches for cancelled or completed tasks are reliably deleted during cleanup.
+

@@ -19,9 +19,10 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 ## 3. Where things stand
 
 - Planning is done: PRD, decisions D1–D26, architecture docs and agent rules.
-- **Milestone 1 (Core) is implemented and verified:** `package.json`, TypeScript, SQLite data model (all 12 PRD tables with Drizzle), server on 127.0.0.1 with Host-header check and SSE, task state machine & scheduler with dependency resolution, fake adapter, CLI command generator & staleness tests, and the in-process pipeline harness.
-- A review pass fixed the gaps milestone 1 left: D13 token and secret checks, tests that ran a stale build, type errors, stub commands exiting 0, non-atomic task creation, 500s for refused transitions, shell quoting in the fake adapter, and IPv6 Host parsing.
-- `npm test` typechecks, builds `dist/` and runs all 27 tests. Next up is Milestone 2 (Runner and core safety). Its plan is in [milestone-2.md](milestone-2.md), and the decisions it raised are approved as D21–D26.
+- **Milestone 1 (Core) and Milestone 2 (Runner and core safety) are implemented and verified:**
+  - Milestone 1: SQLite schema with Drizzle, Hono server on 127.0.0.1 with Host-header DNS rebinding check, D13 auth tokens/secrets, task scheduler state machine, and in-process pipeline harness.
+  - Milestone 2: Drizzle migrations baseline with `runs.exitReason`, git worktree manager on dispatch, child process runner with process group kill on timeouts, parallel dispatcher (max 3), `crew ask` / `crew answer` with session resume and git diff fallback, `crew stop-all` / `crew resume`, rate limit pause and backoff schedule, Claude Code adapter with contract tests and recorded fixtures, and human CLI (`status`, `tasks`, `diff`, `logs`, `cancel`, `worktree gc`, `answer`).
+- `npm test` typechecks, builds `dist/` and runs all 62 tests across 15 test suites. Ready for user smoke run (`npm run smoke`) before starting Milestone 3 (Verifier & review gate).
 
 ## 4. Things that are easy to get wrong
 

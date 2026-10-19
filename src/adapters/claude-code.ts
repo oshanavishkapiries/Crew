@@ -29,6 +29,8 @@ export const MINIMUM_CLAUDE_CODE_VERSION = '2.1.0';
 export class ClaudeCodeAdapter implements AgentAdapter {
   id: 'claude-code' = 'claude-code';
 
+  constructor(private options: { maxBudgetUsd?: number } = {}) {}
+
   async detect(): Promise<{ installed: boolean; version?: string; headless: boolean }> {
     try {
       const result = await execa('claude', ['--version'], { reject: false });
@@ -126,6 +128,10 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       disallowedTools.join(' '),
     ];
 
+    if (this.options.maxBudgetUsd !== undefined) {
+      args.push('--max-budget-usd', String(this.options.maxBudgetUsd));
+    }
+
     return {
       command: 'claude',
       args,
@@ -165,6 +171,10 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       '--disallowedTools',
       disallowedTools.join(' '),
     ];
+
+    if (this.options.maxBudgetUsd !== undefined) {
+      args.push('--max-budget-usd', String(this.options.maxBudgetUsd));
+    }
 
     return {
       command: 'claude',
