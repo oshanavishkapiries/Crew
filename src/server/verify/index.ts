@@ -331,7 +331,80 @@ export class Verifier {
       return;
     }
 
-    // Next gates (review gate) will be added in subsequent tracer bullets
+    if (this.isStopped()) return;
+
+    // Check task status before transitioning
+    const currentTask = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+    if (!currentTask || currentTask.status !== 'verifying' || this.isStopped()) {
+      return;
+    }
+
+    // Transition verifying -> review
+    await this.scheduler.transitionTask(task.id, 'review', {
+      reason: 'Diff and command gates passed',
+    });
+
+    if (this.isStopped()) return;
+
+    // Check for a reviewer agent in the workspace (D8, D34)
+    const reviewerAgents = workspace
+      ? this.db.db
+          .select({
+            agent: schema.agents,
+            role: schema.roles,
+          })
+          .from(schema.agents)
+          .innerJoin(schema.roles, eq(schema.agents.roleId, schema.roles.id))
+          .where(
+            and(
+              eq(schema.agents.workspaceId, workspace.id),
+              eq(schema.roles.name, 'reviewer'),
+            ),
+          )
+          .all()
+      : [];
+
+    if (reviewerAgents.length === 0) {
+      // Review step is skipped (D34)
+      const vrId = 'vr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      this.db.db
+        .insert(schema.verificationResults)
+        .values({
+          id: vrId,
+          runId: lastRun.id,
+          step: 'review',
+          passed: true,
+          output: 'skipped: no reviewer agent',
+          createdAt: new Date(),
+        })
+        .run();
+
+      if (this.isStopped()) return;
+
+      this.eventBus.publishBoardEvent(task.boardId, {
+        type: 'verification_step',
+        data: {
+          taskId: task.id,
+          step: 'review',
+          passed: true,
+        },
+      });
+
+      if (this.isStopped()) return;
+
+      const freshTask = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+      if (!freshTask || freshTask.status !== 'review' || this.isStopped()) {
+        return;
+      }
+
+      // Transition review -> merge-queue
+      await this.scheduler.transitionTask(task.id, 'merge-queue', {
+        reason: 'Review skipped: no reviewer agent',
+      });
+      return;
+    }
+
+    // Active reviewer execution will be added in bullet 4
   }
 
   private async executeVerifyCommand(
