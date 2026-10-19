@@ -34,12 +34,12 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 
 | Tool | Headless command | Session resume | Status |
 | --- | --- | --- | --- |
-| Claude Code | `claude -p --output-format stream-json --session-id <uuid>` | `--resume <id>` | Launch (milestone 2) |
+| Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestone 2) |
 | Codex | `codex exec --json` | `codex exec resume <id>` | Launch (milestone 7) |
 | Antigravity | Unknown | — | Pull mode only (D17) |
 | Fake | Scripted `crew` calls | Supported | Tests and demos |
 
-Tool versions checked on 2026-10-18: Claude Code 2.1.300, codex-cli 0.163.0.
+Tool versions checked on 2026-10-18: Claude Code 2.1.300 (minimum supported 2.1.0), codex-cli 0.163.0.
 
 ## Testing and tooling
 

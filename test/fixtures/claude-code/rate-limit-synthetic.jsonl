@@ -1,0 +1,2 @@
+{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1792406400,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false},"uuid":"b8290454-e075-448e-8e94-2e3f31ebe01f","session_id":"c115c935-6316-4ae9-8869-82597eedb4af","_synthetic":true}
+{"type":"error","error":{"type":"rate_limit_error","message":"Rate limit reached. Please wait before retrying.","resetsAt":1792406400},"uuid":"a1230454-e075-448e-8e94-2e3f31ebe020","session_id":"c115c935-6316-4ae9-8869-82597eedb4af","_synthetic":true}

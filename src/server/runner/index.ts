@@ -5,6 +5,7 @@ import { EventEmitter } from 'node:events';
 import { eq, desc, asc, and } from 'drizzle-orm';
 import { execa, type ResultPromise } from 'execa';
 import type { AgentAdapter, AgentEvent, PermissionProfile } from '../../adapters/types.js';
+import { ClaudeCodeAdapter } from '../../adapters/claude-code.js';
 import { getCrewHome, getCrewLogsDir } from '../config.js';
 import { findPackageRoot, type CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -185,6 +186,9 @@ export class Runner extends EventEmitter {
       for (const [name, adapter] of Object.entries(options.adapters)) {
         this.registerAdapter(name, adapter);
       }
+    }
+    if (!this.adapters.has('claude-code')) {
+      this.registerAdapter('claude-code', new ClaudeCodeAdapter());
     }
 
     this.loadRateLimits();
