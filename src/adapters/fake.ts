@@ -55,8 +55,13 @@ export class FakeAdapter implements AgentAdapter {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'update', message: step.message }, timestamp: new Date().toISOString() }));
           crew('update', '--', step.message || 'update');
         } else if (step.type === 'edit_file' && step.filePath) {
-          fs.writeFileSync(step.filePath, step.content || '', 'utf-8');
-          console.log(JSON.stringify({ type: 'file_edit', data: { file: step.filePath }, timestamp: new Date().toISOString() }));
+          const resolvedPath = path.isAbsolute(step.filePath) ? step.filePath : path.resolve(step.filePath);
+          const parentDir = path.dirname(resolvedPath);
+          if (!fs.existsSync(parentDir)) {
+            fs.mkdirSync(parentDir, { recursive: true });
+          }
+          fs.writeFileSync(resolvedPath, step.content || '', 'utf-8');
+          console.log(JSON.stringify({ type: 'file_edit', data: { file: resolvedPath }, timestamp: new Date().toISOString() }));
         } else if (step.type === 'rate_limit') {
           console.log(JSON.stringify({ type: 'rate_limit', isError: true, rateLimitResetTime: new Date(Date.now() + 60000).toISOString(), timestamp: new Date().toISOString() }));
         } else if (step.type === 'done') {

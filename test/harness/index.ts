@@ -12,6 +12,7 @@ import * as schema from '../../src/server/db/schema.js';
 import { EventBus } from '../../src/server/events/index.js';
 import { startServer, type RunningServer } from '../../src/server/index.js';
 import { Scheduler } from '../../src/server/scheduler/index.js';
+import { WorktreeManager } from '../../src/server/worktree/index.js';
 
 export interface HarnessOptions {
   maxRetries?: number;
@@ -22,6 +23,7 @@ export interface PipelineHarness {
   db: CrewDatabase;
   eventBus: EventBus;
   scheduler: Scheduler;
+  worktreeManager: WorktreeManager;
   fakeAdapter: FakeAdapter;
   workspaceId: string;
   boardId: string;
@@ -71,10 +73,14 @@ export async function createPipelineHarness(
   process.env.CREW_HOME = crewHomeDir;
   ensureCrewHome();
 
-  // 3. Database, event bus, scheduler
+  // 3. Database, event bus, scheduler, worktree manager
   const db = createCrewDatabase({ dbPath: path.join(crewHomeDir, 'crew.db') });
   const eventBus = new EventBus();
-  const scheduler = new Scheduler(db, eventBus, { maxRetries: options.maxRetries ?? 3 });
+  const worktreeManager = new WorktreeManager(db);
+  const scheduler = new Scheduler(db, eventBus, {
+    maxRetries: options.maxRetries ?? 3,
+    worktreeManager,
+  });
 
   // 4. Start real server on ephemeral port
   const server = await startServer({
@@ -83,6 +89,7 @@ export async function createPipelineHarness(
     db,
     eventBus,
     scheduler,
+    worktreeManager,
   });
 
   const now = new Date();
@@ -165,12 +172,15 @@ export async function createPipelineHarness(
   const runTaskWithAgent = async (taskId: string, script: FakeScriptStep[]) => {
     fakeAdapter.setScript(script);
 
-    // Transition task to doing
+    // Transition task to doing (creates worktree and branch)
     await scheduler.transitionTask(taskId, 'doing', { reason: 'Agent spawned' });
+
+    const currentTask = db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get()!;
+    const workDir = currentTask.worktreePath || repoDir;
 
     const spawnConfig = fakeAdapter.buildSpawn({
       prompt: 'Work on ' + taskId,
-      workDir: repoDir,
+      workDir,
       permissions: { allowBash: true },
       taskId,
       serverUrl: server.url,
@@ -199,7 +209,7 @@ export async function createPipelineHarness(
       .run();
 
     const subprocess = execa(spawnConfig.command, spawnConfig.args, {
-      cwd: repoDir,
+      cwd: workDir,
       env,
       reject: false,
     });
@@ -280,6 +290,7 @@ export async function createPipelineHarness(
     db,
     eventBus,
     scheduler,
+    worktreeManager,
     fakeAdapter,
     workspaceId,
     boardId,

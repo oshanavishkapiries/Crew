@@ -12,6 +12,7 @@ import {
   type Task,
   TaskNotFoundError,
 } from '../scheduler/index.js';
+import type { WorktreeManager } from '../worktree/index.js';
 import {
   AGENT_TOKEN_HEADER,
   hashToken,
@@ -25,6 +26,7 @@ export interface AppContext {
   eventBus: EventBus;
   scheduler: Scheduler;
   perStartSecret: string;
+  worktreeManager?: WorktreeManager;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -271,6 +273,29 @@ export function createApp(ctx: AppContext): Hono {
     }
 
     return c.json({ success: true, task });
+  });
+
+  // PRD line 375: POST /api/tasks/:id/cancel (human secret)
+  app.post('/api/tasks/:id/cancel', async (c) => {
+    requireHuman(c);
+    const taskId = c.req.param('id');
+    const task = loadTask(taskId);
+
+    const updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
+      reason: 'Cancelled by human',
+    });
+
+    return c.json({ success: true, status: updatedTask.status });
+  });
+
+  // POST /api/worktrees/gc (human secret)
+  app.post('/api/worktrees/gc', async (c) => {
+    requireHuman(c);
+    if (!ctx.worktreeManager) {
+      return c.json({ success: true, removed: [] });
+    }
+    const removed = await ctx.worktreeManager.gc();
+    return c.json({ success: true, removed });
   });
 
   return app;

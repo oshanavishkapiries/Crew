@@ -5,6 +5,7 @@ import { generatePerStartSecret } from './api/security.js';
 import { createCrewDatabase, getDb, type CrewDatabase } from './db/index.js';
 import { getEventBus, type EventBus } from './events/index.js';
 import { Scheduler } from './scheduler/index.js';
+import { WorktreeManager } from './worktree/index.js';
 
 export interface ServerOptions {
   port?: number;
@@ -12,6 +13,7 @@ export interface ServerOptions {
   db?: CrewDatabase;
   eventBus?: EventBus;
   scheduler?: Scheduler;
+  worktreeManager?: WorktreeManager;
 }
 
 export interface RunningServer {
@@ -23,6 +25,7 @@ export interface RunningServer {
   db: CrewDatabase;
   eventBus: EventBus;
   scheduler: Scheduler;
+  worktreeManager: WorktreeManager;
   close: () => Promise<void>;
 }
 
@@ -31,13 +34,15 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const port = options.port !== undefined ? options.port : 4000;
   const db = options.db || getDb();
   const eventBus = options.eventBus || getEventBus();
-  const scheduler = options.scheduler || new Scheduler(db, eventBus);
+  const worktreeManager = options.worktreeManager || new WorktreeManager(db);
+  const scheduler = options.scheduler || new Scheduler(db, eventBus, { worktreeManager });
   const perStartSecret = generatePerStartSecret();
 
   const app = createApp({
     db,
     eventBus,
     scheduler,
+    worktreeManager,
     perStartSecret,
   });
 
@@ -62,6 +67,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             db,
             eventBus,
             scheduler,
+            worktreeManager,
             close: () =>
               new Promise<void>((res, rej) => {
                 server.close((err) => {

@@ -3,6 +3,8 @@ import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import type { CrewEvent, EventBus } from '../events/index.js';
 
+import type { WorktreeManager } from '../worktree/index.js';
+
 export type TaskStatus =
   | 'todo'
   | 'ready'
@@ -45,6 +47,7 @@ export class DependencyCycleError extends Error {
 
 export interface SchedulerOptions {
   maxRetries?: number;
+  worktreeManager?: WorktreeManager;
 }
 
 export interface TransitionContext {
@@ -62,6 +65,7 @@ type PendingEvent = { boardId: string; event: Omit<CrewEvent, 'timestamp'> };
 
 export class Scheduler {
   private maxRetries: number;
+  public readonly worktreeManager?: WorktreeManager;
 
   constructor(
     private db: CrewDatabase,
@@ -69,6 +73,7 @@ export class Scheduler {
     options: SchedulerOptions = {},
   ) {
     this.maxRetries = options.maxRetries ?? 3;
+    this.worktreeManager = options.worktreeManager;
   }
 
   /**
@@ -137,12 +142,36 @@ export class Scheduler {
     requestedStatus: TaskStatus,
     context: TransitionContext = {},
   ): Promise<Task> {
+    const task = this.getTaskOrThrow(taskId);
+    const currentStatus = task.status as TaskStatus;
+
+    if (!this.isValidTransition(currentStatus, requestedStatus)) {
+      throw new InvalidTransitionError(taskId, currentStatus, requestedStatus);
+    }
+
+    let createdWorktree: { worktreePath: string; branch: string } | null = null;
+    if (requestedStatus === 'doing' && this.worktreeManager) {
+      createdWorktree = await this.worktreeManager.ensureWorktree(task);
+    }
+
     const pending: PendingEvent[] = [];
-    const task = this.inTransaction(() =>
-      this.applyTransition(taskId, requestedStatus, context, pending),
-    );
-    this.publish(pending);
-    return task;
+    try {
+      const updatedTask = this.inTransaction(() =>
+        this.applyTransition(taskId, requestedStatus, context, pending, createdWorktree),
+      );
+      this.publish(pending);
+
+      if (requestedStatus === 'cancelled' && this.worktreeManager) {
+        await this.worktreeManager.removeWorktree(task);
+      }
+
+      return updatedTask;
+    } catch (err) {
+      if (createdWorktree && currentStatus === 'ready' && this.worktreeManager) {
+        await this.worktreeManager.removeWorktree(task).catch(() => {});
+      }
+      throw err;
+    }
   }
 
   /**
@@ -287,6 +316,7 @@ export class Scheduler {
     requestedStatus: TaskStatus,
     context: TransitionContext,
     pending: PendingEvent[],
+    createdWorktree?: { worktreePath: string; branch: string } | null,
   ): Task {
     const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
@@ -326,6 +356,12 @@ export class Scheduler {
       .set({
         status: finalStatus,
         retries: newRetries,
+        ...(createdWorktree
+          ? {
+              branch: createdWorktree.branch,
+              worktreePath: createdWorktree.worktreePath,
+            }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.tasks.id, taskId))

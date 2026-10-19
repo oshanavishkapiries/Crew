@@ -29,7 +29,7 @@ describe('In-process Pipeline Harness (PRD Milestone 1)', () => {
     expect(initialTask.status).toBe('ready');
 
     // 2. Run fake agent that executes real crew update and crew done CLI calls
-    const authFilePath = path.join(harness.repoDir, 'auth.ts');
+    const authFileName = 'auth.ts';
 
     const result = await harness.runTaskWithAgent(taskId, [
       {
@@ -38,7 +38,7 @@ describe('In-process Pipeline Harness (PRD Milestone 1)', () => {
       },
       {
         type: 'edit_file',
-        filePath: authFilePath,
+        filePath: authFileName,
         content: 'export const token = "auth-token-123";\n',
       },
       {
@@ -53,10 +53,12 @@ describe('In-process Pipeline Harness (PRD Milestone 1)', () => {
 
     expect(result.exitCode).toBe(0);
 
-    // 3. Verify task reached 'verifying' state
+    // 3. Verify task reached 'verifying' state and has worktree/branch
     const taskAfter = harness.getTask(taskId);
     expect(taskAfter).toBeDefined();
     expect(taskAfter!.status).toBe('verifying');
+    expect(taskAfter!.branch).toBe('crew/task-milestone1-1-build-authentication-module');
+    expect(taskAfter!.worktreePath).toBeDefined();
 
     // 4. Verify progress and done messages were recorded in DB
     const messages = harness.getMessages(taskId);
@@ -72,8 +74,11 @@ describe('In-process Pipeline Harness (PRD Milestone 1)', () => {
     expect(doneMessages).toHaveLength(1);
     expect(doneMessages[0].body).toContain('Authentication module completed');
 
-    // 5. Verify file was created in repository workdir
-    expect(fs.existsSync(authFilePath)).toBe(true);
-    expect(fs.readFileSync(authFilePath, 'utf-8')).toBe('export const token = "auth-token-123";\n');
+    // 5. Verify file was created in task worktree, NOT in repo root
+    const worktreeAuthFile = path.join(taskAfter!.worktreePath!, authFileName);
+    const repoAuthFile = path.join(harness.repoDir, authFileName);
+    expect(fs.existsSync(worktreeAuthFile)).toBe(true);
+    expect(fs.readFileSync(worktreeAuthFile, 'utf-8')).toBe('export const token = "auth-token-123";\n');
+    expect(fs.existsSync(repoAuthFile)).toBe(false);
   });
 });
