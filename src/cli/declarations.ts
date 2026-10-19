@@ -1,3 +1,4 @@
+import { handleAsk } from './commands/ask.js';
 import { handleDone } from './commands/done.js';
 import { handleStart } from './commands/start.js';
 import { handleUpdate } from './commands/update.js';
@@ -196,6 +197,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'Ask question', command: 'crew ask "Should we use PostgreSQL or SQLite for tests?"' },
     ],
+    action: handleAsk,
   },
   {
     name: 'remember',

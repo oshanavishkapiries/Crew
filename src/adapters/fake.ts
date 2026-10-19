@@ -1,16 +1,28 @@
 import type { AgentAdapter, AgentEvent, PermissionProfile } from './types.js';
 
 export interface FakeScriptStep {
-  type: 'update' | 'done' | 'ask' | 'edit_file' | 'custom_command' | 'rate_limit';
+  type:
+    | 'update'
+    | 'done'
+    | 'ask'
+    | 'edit_file'
+    | 'custom_command'
+    | 'rate_limit'
+    | 'hang'
+    | 'sleep'
+    | 'exit';
   message?: string;
   result?: string;
   filePath?: string;
   content?: string;
   command?: string;
+  durationMs?: number;
+  exitCode?: number;
 }
 
 export class FakeAdapter implements AgentAdapter {
   id: 'fake' = 'fake';
+  public refuseResume = false;
   private scriptedSteps: FakeScriptStep[] = [];
 
   constructor(scriptedSteps: FakeScriptStep[] = []) {
@@ -34,7 +46,7 @@ export class FakeAdapter implements AgentAdapter {
     agentToken?: string;
   }): { command: string; args: string[]; env: Record<string, string> } {
     const stepsJson = JSON.stringify(this.scriptedSteps);
-    // Node one-liner that executes the script steps and emits structured JSON lines to stdout
+    // Node script that executes the script steps and emits structured JSON lines to stdout
     const script = `
       import { execFileSync } from 'node:child_process';
       import * as fs from 'node:fs';
@@ -67,6 +79,21 @@ export class FakeAdapter implements AgentAdapter {
         } else if (step.type === 'done') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'done', result: step.result }, timestamp: new Date().toISOString() }));
           crew('done', '--result', step.result || 'done');
+        } else if (step.type === 'ask') {
+          console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'ask', question: step.message }, timestamp: new Date().toISOString() }));
+          crew('ask', '--', step.message || 'need input');
+        } else if (step.type === 'sleep') {
+          const ms = step.durationMs || 1000;
+          console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'sleep', durationMs: ms }, timestamp: new Date().toISOString() }));
+          await new Promise(r => setTimeout(r, ms));
+        } else if (step.type === 'exit') {
+          console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'exit', exitCode: step.exitCode ?? 1 }, timestamp: new Date().toISOString() }));
+          process.exit(step.exitCode ?? 1);
+        } else if (step.type === 'hang') {
+          const grandchild = execFileSync('sh', ['-c', 'sleep 3600 </dev/null >/dev/null 2>&1 & echo $!'], { encoding: 'utf-8' }).trim();
+          console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'hang', grandchildPid: grandchild }, timestamp: new Date().toISOString() }));
+          setInterval(() => {}, 60000);
+          await new Promise(() => {});
         }
       }
 
@@ -124,6 +151,9 @@ export class FakeAdapter implements AgentAdapter {
     serverUrl?: string;
     agentToken?: string;
   }): { command: string; args: string[]; env: Record<string, string> } {
+    if (this.refuseResume) {
+      throw new Error('FakeAdapter: refused to resume session');
+    }
     return this.buildSpawn({
       prompt: opts.prompt,
       workDir: opts.workDir,
