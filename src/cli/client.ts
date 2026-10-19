@@ -26,10 +26,25 @@ export function getServerInfo(): ServerInfo {
   if (!fs.existsSync(infoPath)) {
     fail(`No running Crew server found at ${infoPath}. Start one with 'crew start'.`);
   }
+  let info: ServerInfo;
   try {
-    return JSON.parse(fs.readFileSync(infoPath, 'utf-8'));
+    info = JSON.parse(fs.readFileSync(infoPath, 'utf-8')) as ServerInfo;
   } catch (err) {
     fail(`Failed to read ${infoPath}: ${(err as Error).message}`);
+  }
+  // A crashed server (SIGKILL, power loss) can't delete its server.json: don't trust a dead pid
+  if (info.pid !== undefined && !isProcessAlive(info.pid)) {
+    fail(`${infoPath} is stale: the Crew server (pid ${info.pid}) is no longer running. Start one with 'crew start'.`);
+  }
+  return info;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
 

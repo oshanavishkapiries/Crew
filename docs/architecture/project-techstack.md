@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D26). Milestone 1 is scaffolded; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D27). Milestones 1 and 2 are implemented; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 
@@ -45,7 +45,7 @@ Tool versions checked on 2026-10-18: Claude Code 2.1.300 (minimum supported 2.1.
 
 | Area | Choice | Version | Notes |
 | --- | --- | --- | --- |
-| Test runner | Vitest | 5.0.5 | All tests. `npm test` typechecks first, and a global setup builds `dist/` so the harness always runs the current `crew` binary |
+| Test runner | Vitest | 5.0.5 | All tests. `npm test` typechecks first, and a global setup builds `dist/` so the harness always runs the current `crew` binary. Test files run serially with a 30 s timeout (D27) |
 | TypeScript | TypeScript | 7.0.2 | `npm run typecheck` (`tsc -p test/tsconfig.json`) covers `src/`, `test/`, `scripts/` and the root configs. `tsup` doesn't check types, so this is the only type gate |
 | Main test seam | In-process pipeline harness | — | Real server, temp git repo, fake adapter |
 | Adapter tests | Contract tests | — | Recorded `stream-json` / `--json` fixtures |

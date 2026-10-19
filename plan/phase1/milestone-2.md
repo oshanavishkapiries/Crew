@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 2 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** implemented, pending manual smoke run (bullet 10). All tracer bullets 0–9 implemented and verified with 62 passing automated tests across 15 suites. Smoke script `scripts/smoke-milestone-2.ts` prepared.
+**Status:** implemented, pending manual smoke run (bullet 10) and the user's review. After the first review, `crew cancel` was fixed to kill a live run, and human commands now refuse a stale `server.json` whose pid is dead. All tracer bullets 0–9 implemented and verified with 64 passing automated tests across 16 suites. Smoke script `scripts/smoke-milestone-2.ts` prepared.
 
 ## 1. Goal
 
@@ -62,7 +62,7 @@ Schema changes in this milestone:
 - On `ready → doing`: `git worktree add -b crew/<task-id>-<slug> <crewHome>/worktrees/<workspace-id>/<task-id> <defaultBranch>`, then store `branch` and `worktreePath` on the task, in the same transaction as the transition (via `TransitionContext.alongside`, or create the worktree first and roll it back if the transition fails).
 - Slug: lowercase title, non-alphanumerics to `-`, max 40 characters.
 - If the worktree already exists (a re-dispatch after a retry or stop-all), reuse it.
-- On `cancelled`: remove the worktree. Keep the branch so the work isn't lost (`git worktree remove --force`, no `git branch -D`).
+- On `cancelled`: kill the task's live run first (exitReason `cancelled`, no retry used), then remove the worktree. The dispatcher skips the task while the cancel is in progress, so the dying run isn't re-dispatched as an orphan. Keep the branch so the work isn't lost (`git worktree remove --force`, no `git branch -D`).
 - `crew worktree gc`: remove worktrees whose task is terminal or missing, then `git worktree prune`. Print what it removed.
 - The git wrapper is a thin `execa('git', …)` helper, with no shell (same rule as the fake adapter fix).
 
@@ -232,7 +232,6 @@ Proposed here and approved by the user on 2026-10-19. The PRD Decision Log holds
 
 Items decided during implementation of Milestone 2:
 
-1. **Vitest serial file execution:** Set `fileParallelism: false` and `testTimeout: 30000` in `vitest.config.ts`. The pipeline harness creates real HTTP servers, databases, and subprocesses for each test file. Serial file execution prevents CPU and process contention across tests.
+1. **Vitest serial file execution (approved, logged as D27):** Set `fileParallelism: false` and `testTimeout: 30000` in `vitest.config.ts`. The pipeline harness creates real HTTP servers, databases, and subprocesses for each test file. Serial file execution prevents CPU and process contention across tests.
 2. **Claude Code budget limit support:** Added `maxBudgetUsd?: number` option to `ClaudeCodeAdapter` constructor options, which passes `--max-budget-usd <amount>` to `claude` CLI in `buildSpawn` and `buildResume` (used in smoke script with `0.50` to safeguard spending).
-3. **Forced branch deletion on worktree cleanup:** `WorktreeManager.cleanup()` uses `git branch -D` so that unmerged worktree branches for cancelled or completed tasks are reliably deleted during cleanup.
 

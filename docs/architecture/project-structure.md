@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestone 1 (Core: CLI, server, database, scheduler, events, fake adapter, test harness) is implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D26).
+The folder layout of the Crew repository. Milestones 1 (core) and 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) are implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D27).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -17,7 +17,7 @@ crew/
 ├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
 ├─ drizzle.config.ts      # drizzle-kit config for generating migrations
 ├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
-├─ scripts/               # Dev scripts, e.g. generate-docs.ts for docs/commands.md
+├─ scripts/               # Dev scripts: generate-docs.ts (docs/commands.md), smoke-milestone-2.ts (`npm run smoke`, real Claude Code, manual)
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -38,7 +38,7 @@ crew/
 │  ├─ server/
 │  │  ├─ api/             # REST + SSE endpoints, Host-header and token checks (D13)
 │  │  ├─ db/              # Drizzle schema and migrations (SQLite in ~/.crew, D12)
-│  │  ├─ scheduler/       # Task state machine, dependencies, dispatch, budget and loop limits
+│  │  ├─ scheduler/       # Task state machine and dependencies (index.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
 │  │  ├─ worktree/        # Create, clean up and gc task worktrees
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10)
@@ -52,7 +52,7 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness: real server, temp git repo, fake adapter
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit samples (D5, D7)
 ```
@@ -64,7 +64,11 @@ Crew writes its state to the user's machine, not to the repo it manages (D12):
 ```text
 ~/.crew/
 ├─ crew.db                # One SQLite database for all workspaces
-├─ logs/                  # Run logs (agent event streams)
+├─ server.json            # URL, per-start secret and pid of the running server, mode 0600; deleted on shutdown (D25)
+├─ stopped                # Marker file: dispatch stays stopped until `crew resume` (D23)
+├─ rate-limits.json       # Persisted rate-limit pauses and backoff step (D7)
+├─ bin/                   # `crew` shim put on the agent's PATH
+├─ logs/                  # Run logs (agent event streams, <run-id>.jsonl)
 └─ worktrees/
    └─ <workspace>/<task-id>/   # One git worktree per task, branch crew/<task-id>-<slug>
 ```

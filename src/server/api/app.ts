@@ -341,9 +341,16 @@ export function createApp(ctx: AppContext): Hono {
     const taskId = c.req.param('id');
     const task = loadTask(taskId);
 
-    const updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
-      reason: 'Cancelled by human',
-    });
+    // Stop the agent first so it isn't left running in a worktree that is about to be removed
+    let updatedTask;
+    try {
+      await ctx.runner?.killTaskRun(task.id, 'cancelled');
+      updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
+        reason: 'Cancelled by human',
+      });
+    } finally {
+      ctx.runner?.endCancel(task.id);
+    }
 
     return c.json({ success: true, status: updatedTask.status });
   });

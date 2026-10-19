@@ -4,7 +4,7 @@ Source: `docs/Crew Design Doc.md`. Phase 1 is the whole first public release (bu
 
 ## Decision Log
 
-Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, and D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19. Each is referenced in the text below by its ID.
+Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19, and D27, proposed by the implementing agent and approved by the user. Each is referenced in the text below by its ID.
 
 - **user**: the user decided it directly.
 - **Claude-decided**: Claude recommended it, and the user accepted all remaining recommendations in advance. These are agreed but open to veto: review them first.
@@ -37,6 +37,7 @@ Decisions from the grilling session on 2026-10-18, plus later ones: D20 from mil
 | D24 | Limit defaults: max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20. | user |
 | D25 | `crew start` writes `~/.crew/server.json` (mode 0600) with the server URL, the per-start secret and the pid, and deletes it on shutdown. Human CLI commands read the secret from it. The secret is never printed. | user |
 | D26 | The optional Claude Code Stop hook moves from milestone 2 to milestone 3, because it depends on verification results. | user |
+| D27 | Test files run one at a time (`fileParallelism: false`) with a 30 second test timeout. Each harness test starts a real server, database, git repo and child processes, and running files in parallel starves them and makes timeouts flaky. The cost is a longer suite (about 45 seconds today). | user |
 
 ## Problem Statement
 

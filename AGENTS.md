@@ -5,7 +5,7 @@ Rules for every AI agent (Claude Code, Codex or any other) working on the Crew r
 ## Read first
 
 - `plan/phase1/START_HERE.md`: onboarding. Context, current state and how to start implementing.
-- `plan/phase1/prd.md`: what we're building and why. Its Decision Log (D1–D26) overrides `docs/Crew Design Doc.md` wherever they disagree.
+- `plan/phase1/prd.md`: what we're building and why. Its Decision Log (D1–D27) overrides `docs/Crew Design Doc.md` wherever they disagree.
 - `docs/architecture/project-structure.md`: where code goes.
 - `docs/architecture/project-techstack.md`: what we build with.
 

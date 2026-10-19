@@ -16,7 +16,7 @@
   9. **Bullet 8 (Claude Code adapter):** `ClaudeCodeAdapter` implementing `AgentAdapter` (`buildSpawn`, `buildResume`, `parseOutput`, `isRateLimit`, `detect`), permission profiles (`default`, `full`), safety denied tools, and recorded real and synthetic fixtures in `test/fixtures/claude-code/`.
   10. **Bullet 9 (Human CLI):** Discovery via `~/.crew/server.json` (0600 mode, D25), `crew status`, `crew tasks`, `crew diff`, `crew logs` (with `-f, --follow`), `crew cancel`, `crew worktree gc`, and `crew answer`.
   11. **Bullet 10 (Smoke script):** Standalone integration smoke script `scripts/smoke-milestone-2.ts` (`npm run smoke`) ready for manual verification by the user.
-- `rm -rf dist && npm test` passes 100%: 62 tests passing across 15 test suites.
+- `rm -rf dist && npm test` passes 100%: 64 tests passing across 16 test suites.
 
 ## Open items & Decisions Proposed
 

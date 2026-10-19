@@ -344,7 +344,8 @@ export async function createPipelineHarness(
   const cleanup = async () => {
     dispatcher.stop();
     await runner.killAll();
-    await server.close();
+    // Tests may have closed the server already (e.g. the server.json lifecycle test)
+    await server.close().catch(() => {});
     db.close();
 
     if (originalCrewHome !== undefined) {

@@ -164,6 +164,7 @@ export class Runner extends EventEmitter {
   private crewHome: string;
 
   private liveRuns: Map<string, ActiveRun> = new Map();
+  private cancelling: Set<string> = new Set();
   private agentTokens: Map<string, string> = new Map();
   private backoffStepByTool: Map<string, number> = new Map();
   private rateLimitTimers: Map<string, any> = new Map();
@@ -739,6 +740,30 @@ export class Runner extends EventEmitter {
     if (run.pid) {
       await killProcessGroup(run.pid, 'SIGTERM', this.killGracePeriodMs, this.clock);
     }
+  }
+
+  /**
+   * Kill the live run of a task (if any) and wait until its exit has been recorded.
+   * Used by cancel, so the agent is gone before its worktree is removed.
+   */
+  async killTaskRun(taskId: string, exitReason: ExitReason = 'cancelled'): Promise<boolean> {
+    // Until the caller finishes the task transition, the task still looks like an orphaned
+    // 'doing' task, so tell the dispatcher not to start it again.
+    this.cancelling.add(taskId);
+    const run = this.getLiveRunByTaskId(taskId);
+    if (!run) return false;
+    await this.killRun(run.id, exitReason);
+    await run.promise.catch(() => {});
+    return true;
+  }
+
+  /** True while a cancel is killing this task's run and has not finished yet. */
+  isCancelling(taskId: string): boolean {
+    return this.cancelling.has(taskId);
+  }
+
+  endCancel(taskId: string): void {
+    this.cancelling.delete(taskId);
   }
 
   async killAll(exitReason: ExitReason = 'stopped'): Promise<number> {

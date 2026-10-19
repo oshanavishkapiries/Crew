@@ -171,7 +171,7 @@ export class Dispatcher {
 
     for (const task of doingTasks) {
       if (availableSlots <= 0) break;
-      if (liveTaskIds.has(task.id)) continue;
+      if (liveTaskIds.has(task.id) || this.runner.isCancelling(task.id)) continue;
 
       const agent = this.resolveAgentForTask(task, liveAgentIds);
       if (!agent) continue;
