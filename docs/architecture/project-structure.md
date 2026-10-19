@@ -10,7 +10,8 @@ The folder layout of the Crew repository. No application code exists yet, so thi
 crew/
 ├─ AGENTS.md              # Rules for AI agents working on this repo (CLAUDE.md points here)
 ├─ CLAUDE.md              # Claude Code entry point; imports AGENTS.md
-├─ README.md
+├─ README.md            # Banner, short intro and doc index
+├─ START_HERE.md        # Onboarding for AI agents: context and how to start implementing
 ├─ package.json           # "bin": { "crew": "dist/cli.js" }, run with `npx crew`
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
