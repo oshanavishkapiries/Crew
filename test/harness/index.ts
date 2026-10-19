@@ -14,7 +14,7 @@ import { startServer, type RunningServer } from '../../src/server/index.js';
 import { Scheduler, Dispatcher } from '../../src/server/scheduler/index.js';
 import { WorktreeManager } from '../../src/server/worktree/index.js';
 import { Runner, type Clock } from '../../src/server/runner/index.js';
-import type { Verifier } from '../../src/server/verify/index.js';
+import type { Verifier, VerifyCommand } from '../../src/server/verify/index.js';
 
 export interface HarnessOptions {
   maxRetries?: number;
@@ -70,6 +70,7 @@ export interface PipelineHarness {
   getTask: (taskId: string) => typeof schema.tasks.$inferSelect | undefined;
   getMessages: (taskId: string) => (typeof schema.messages.$inferSelect)[];
   getVerificationResults: (taskId?: string) => (typeof schema.verificationResults.$inferSelect)[];
+  setVerifyCommands: (commands: VerifyCommand[]) => void;
   cleanup: () => Promise<void>;
 }
 
@@ -386,6 +387,16 @@ export async function createPipelineHarness(
     });
   };
 
+  const setVerifyCommands = (commands: VerifyCommand[]) => {
+    db.db
+      .update(schema.workspaces)
+      .set({
+        config: { verifyCommands: commands },
+      })
+      .where(eq(schema.workspaces.id, workspaceId))
+      .run();
+  };
+
   const cleanup = async () => {
     dispatcher.stop();
     server.verifier.stop();
@@ -436,6 +447,7 @@ export async function createPipelineHarness(
     getTask,
     getMessages,
     getVerificationResults,
+    setVerifyCommands,
     cleanup,
   };
 }

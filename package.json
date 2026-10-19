@@ -37,11 +37,13 @@
     "commander": "15.0.0",
     "drizzle-orm": "0.45.4",
     "execa": "10.2.0",
-    "hono": "4.13.13"
+    "hono": "4.13.13",
+    "picomatch": "4.0.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "9.6.0",
     "@types/node": "26.6.5",
+    "@types/picomatch": "4.0.3",
     "drizzle-kit": "0.31.11",
     "tsup": "9.0.0",
     "tsx": "4.23.15",
