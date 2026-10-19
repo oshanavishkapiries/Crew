@@ -404,7 +404,126 @@ export class Verifier {
       return;
     }
 
-    // Active reviewer execution will be added in bullet 4
+    // Select idle reviewer agent, preferring different cliType than author (D8)
+    const author = task.assigneeAgentId
+      ? this.db.db.select().from(schema.agents).where(eq(schema.agents.id, task.assigneeAgentId)).get()
+      : null;
+
+    const idleReviewers = reviewerAgents.filter((r) => r.agent.status === 'idle');
+    let selected = author
+      ? idleReviewers.find((r) => r.agent.cliType !== author.cliType)
+      : null;
+    if (!selected) {
+      selected = idleReviewers[0] || reviewerAgents[0];
+    }
+    const reviewer = selected.agent;
+
+    // Set tasks.reviewerAgentId
+    this.db.db
+      .update(schema.tasks)
+      .set({ reviewerAgentId: reviewer.id })
+      .where(eq(schema.tasks.id, task.id))
+      .run();
+
+    // Build Reviewer prompt (role prompt, title, description, criteria, git diff, earlier verification results)
+    const reviewerRole = this.db.db
+      .select()
+      .from(schema.roles)
+      .where(eq(schema.roles.id, reviewer.roleId))
+      .get();
+
+    let gitDiff = '';
+    try {
+      const baseBranch = workspace?.defaultBranch || 'main';
+      const mergeBaseRes = await execa('git', ['merge-base', baseBranch, 'HEAD'], {
+        cwd: worktreePath,
+        reject: false,
+      });
+      const mergeBase = mergeBaseRes.stdout.trim() || baseBranch;
+      const diffRes = await execa('git', ['diff', `${mergeBase}...HEAD`], {
+        cwd: worktreePath,
+        reject: false,
+      });
+      gitDiff = diffRes.stdout || '';
+    } catch {}
+
+    const vrs = this.db.db
+      .select()
+      .from(schema.verificationResults)
+      .where(eq(schema.verificationResults.runId, lastRun.id))
+      .all();
+    const earlierResultsText = vrs.map((r) => `- ${r.step}: ${r.passed ? 'passed' : 'failed'}`).join('\n');
+
+    const reviewerPrompt = [
+      reviewerRole?.defaultPrompt || 'You are a code reviewer. Review the changes against the acceptance criteria.',
+      reviewer.personality ? `Persona: ${reviewer.personality}` : '',
+      `Task: ${task.title}`,
+      task.description ? `Description: ${task.description}` : '',
+      task.acceptanceCriteria ? `Acceptance Criteria: ${task.acceptanceCriteria}` : '',
+      gitDiff ? `Git diff against ${workspace?.defaultBranch || 'main'}:\n\`\`\`diff\n${gitDiff}\n\`\`\`` : '',
+      earlierResultsText ? `Earlier verification results:\n${earlierResultsText}` : '',
+      'Review the changes against the acceptance criteria. When done, call crew review approve or crew review changes --feedback "<what to change>".',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    // Reviewer run loop: up to 2 runs in total (D35)
+    const MAX_REVIEW_RUNS = 2;
+    let verdictRecorded = false;
+
+    for (let attempt = 1; attempt <= MAX_REVIEW_RUNS; attempt++) {
+      if (this.isStopped()) break;
+
+      const currentTask = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
+      if (!currentTask || currentTask.status !== 'review' || this.isStopped()) {
+        verdictRecorded = currentTask ? currentTask.status !== 'review' : false;
+        break;
+      }
+
+      this.db.db
+        .update(schema.agents)
+        .set({ status: 'busy' })
+        .where(eq(schema.agents.id, reviewer.id))
+        .run();
+
+      const runResult = await this.runner.runTask(task.id, {
+        agentId: reviewer.id,
+        prompt: reviewerPrompt,
+        kind: 'review',
+      });
+
+      const postRunTask = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
+      if (!postRunTask || postRunTask.status !== 'review') {
+        verdictRecorded = true;
+        break;
+      }
+
+      // If rate limited, pause and don't count towards the 2-run allowance (D7, D35)
+      if (runResult.exitReason === 'rate-limited') {
+        attempt--;
+        continue;
+      }
+    }
+
+    // A Reviewer that ends without a verdict (D35): crash, timeout or silence after 2 runs -> escalate task
+    const finalTask = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
+    if (!verdictRecorded && finalTask && finalTask.status === 'review' && !this.isStopped()) {
+      await this.scheduler.transitionTask(task.id, 'escalated', {
+        reason: 'Reviewer ended without verdict after 2 attempts',
+        alongside: () => {
+          this.db.db
+            .update(schema.tasks)
+            .set({ reviewerAgentId: null })
+            .where(eq(schema.tasks.id, task.id))
+            .run();
+          this.db.db
+            .update(schema.agents)
+            .set({ status: 'idle' })
+            .where(eq(schema.agents.id, reviewer.id))
+            .run();
+        },
+      });
+    }
   }
 
   private async executeVerifyCommand(

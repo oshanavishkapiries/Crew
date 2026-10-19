@@ -1,5 +1,5 @@
 export interface PermissionProfile {
-  mode?: 'standard' | 'full';
+  mode?: 'standard' | 'full' | 'read-only';
   allowCommands?: string[];
   denyCommands?: string[];
   allowBash?: boolean;

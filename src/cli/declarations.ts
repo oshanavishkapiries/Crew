@@ -5,6 +5,7 @@ import { handleDiff } from './commands/diff.js';
 import { handleDone } from './commands/done.js';
 import { handleLogs } from './commands/logs.js';
 import { handleResume } from './commands/resume.js';
+import { handleReview } from './commands/review.js';
 import { handleStart } from './commands/start.js';
 import { handleStatus } from './commands/status.js';
 import { handleStopAll } from './commands/stop-all.js';
@@ -250,6 +251,23 @@ export const COMMANDS: CommandDefinition[] = [
       { description: 'Submit task completion', command: 'crew done --result "Implemented user authentication"' },
     ],
     action: handleDone,
+  },
+  {
+    name: 'review',
+    category: 'agent',
+    summary: 'Submit a review verdict for the current task',
+    description: 'Submits a review verdict (approve or changes) for the task currently under review.',
+    args: [
+      { name: 'action', description: 'Verdict action: approve or changes', required: true },
+    ],
+    options: [
+      { flags: '-f, --feedback <feedback>', description: 'Feedback or details of requested changes' },
+    ],
+    examples: [
+      { description: 'Approve reviewed changes', command: 'crew review approve' },
+      { description: 'Request changes with feedback', command: 'crew review changes --feedback "Add unit tests for error cases"' },
+    ],
+    action: handleReview,
   },
 
   // Orchestrator commands

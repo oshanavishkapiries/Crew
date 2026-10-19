@@ -339,11 +339,18 @@ export class Runner extends EventEmitter {
     childEnv.CREW_SESSION_ID = sessionId;
     childEnv.CREW_CLI_PATH = path.join(findPackageRoot(), 'dist', 'cli.js');
 
-    const permissionProfile: PermissionProfile = (role?.permissionProfile as PermissionProfile) || {
-      mode: 'standard',
-      allowCommands: [],
-      denyCommands: [],
-    };
+    const permissionProfile: PermissionProfile =
+      options.kind === 'review'
+        ? {
+            mode: 'read-only',
+            allowCommands: [],
+            denyCommands: [],
+          }
+        : (role?.permissionProfile as PermissionProfile) || {
+            mode: 'standard',
+            allowCommands: [],
+            denyCommands: [],
+          };
 
     // Build spawn or resume command
     let spawnConfig: { command: string; args: string[]; env: Record<string, string> };
@@ -538,7 +545,13 @@ export class Runner extends EventEmitter {
           .get();
 
         if (!activeRun.exitReason) {
-          if (updatedTask?.status === 'verifying') {
+          if (options.kind === 'review') {
+            if (updatedTask?.status !== 'review') {
+              exitReason = 'done';
+            } else {
+              exitReason = 'exited';
+            }
+          } else if (updatedTask?.status === 'verifying') {
             exitReason = 'done';
           } else if (updatedTask?.status === 'blocked') {
             exitReason = 'asked';
@@ -560,8 +573,9 @@ export class Runner extends EventEmitter {
           .where(eq(schema.runs.id, runId))
           .run();
 
-        // Handle retry if failed while doing
+        // Handle retry if failed while doing (work runs only)
         if (
+          options.kind !== 'review' &&
           (exitReason === 'timeout' || exitReason === 'no-output' || exitReason === 'exited') &&
           updatedTask?.status === 'doing'
         ) {

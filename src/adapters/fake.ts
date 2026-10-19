@@ -5,6 +5,7 @@ export interface FakeScriptStep {
     | 'update'
     | 'done'
     | 'ask'
+    | 'review'
     | 'edit_file'
     | 'symlink'
     | 'custom_command'
@@ -14,6 +15,8 @@ export interface FakeScriptStep {
     | 'exit';
   message?: string;
   result?: string;
+  action?: 'approve' | 'changes';
+  feedback?: string;
   filePath?: string;
   targetPath?: string;
   content?: string;
@@ -109,6 +112,13 @@ export class FakeAdapter implements AgentAdapter {
         } else if (step.type === 'done') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'done', result: step.result }, timestamp: new Date().toISOString() }));
           crew('done', '--result', step.result || 'done');
+        } else if (step.type === 'review') {
+          console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'review', action: step.action, feedback: step.feedback }, timestamp: new Date().toISOString() }));
+          if (step.action === 'approve') {
+            crew('review', 'approve');
+          } else if (step.action === 'changes') {
+            crew('review', 'changes', '--feedback', step.feedback || 'Changes requested');
+          }
         } else if (step.type === 'ask') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'ask', question: step.message }, timestamp: new Date().toISOString() }));
           crew('ask', '--', step.message || 'need input');

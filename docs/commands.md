@@ -349,6 +349,34 @@ Submit task completion:
 crew done --result "Implemented user authentication"
 ```
 
+---
+
+### `crew review`
+
+Submits a review verdict (approve or changes) for the task currently under review.
+
+**Arguments:**
+
+- `action` (required): Verdict action: approve or changes
+
+**Options:**
+
+- `-f, --feedback <feedback>`: Feedback or details of requested changes
+
+**Examples:**
+
+Approve reviewed changes:
+
+```bash
+crew review approve
+```
+
+Request changes with feedback:
+
+```bash
+crew review changes --feedback "Add unit tests for error cases"
+```
+
 
 ## Orchestrator Commands
 

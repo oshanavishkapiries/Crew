@@ -24,6 +24,7 @@ export interface HarnessOptions {
   maxParallelAgents?: number;
   startDispatcher?: boolean;
   startVerifier?: boolean;
+  adapters?: Record<string, any>;
 }
 
 export interface PipelineHarness {
@@ -62,7 +63,9 @@ export interface PipelineHarness {
     env?: Record<string, string>,
   ) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
   /** Seed another agent in the workspace and return its token */
-  addAgent: (id: string, customRoleId?: string) => string;
+  addAgent: (id: string, customRoleId?: string, cliType?: string) => string;
+  /** Add a role to the workspace */
+  addRole: (id: string, name: string, permissionProfile?: any, defaultPrompt?: string) => string;
   waitForTaskStatus: (taskId: string, targetStatus: string, timeoutMs?: number) => Promise<typeof schema.tasks.$inferSelect>;
   waitForTasksStatus: (taskIds: string[], targetStatus: string, timeoutMs?: number) => Promise<void>;
   waitForLiveRuns: (expected?: number, timeoutMs?: number) => Promise<void>;
@@ -108,7 +111,7 @@ export async function createPipelineHarness(
     db,
     eventBus,
     scheduler,
-    adapters: { fake: fakeAdapter },
+    adapters: { fake: fakeAdapter, codex: fakeAdapter, ...options.adapters },
     clock: options.clock,
     maxRuntimeMs: options.maxRuntimeMs,
     noOutputTimeoutMs: options.noOutputTimeoutMs,
@@ -252,7 +255,7 @@ export async function createPipelineHarness(
     return { exitCode: result.exitCode ?? null, stdout: result.stdout, stderr: result.stderr };
   };
 
-  const addAgent = (id: string, customRoleId?: string) => {
+  const addAgent = (id: string, customRoleId?: string, cliType = 'fake') => {
     const token = 'crew_agent_test_' + crypto.randomBytes(16).toString('hex');
     db.db
       .insert(schema.agents)
@@ -261,7 +264,7 @@ export async function createPipelineHarness(
         workspaceId,
         roleId: customRoleId || roleId,
         name: `Fake Agent ${id}`,
-        cliType: 'fake',
+        cliType,
         status: 'idle',
         tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
         createdAt: new Date(),
@@ -269,6 +272,21 @@ export async function createPipelineHarness(
       .run();
     runner.registerAgentToken(id, token);
     return token;
+  };
+
+  const addRole = (id: string, name: string, permissionProfile?: any, defaultPrompt?: string) => {
+    db.db
+      .insert(schema.roles)
+      .values({
+        id,
+        name,
+        defaultPrompt: defaultPrompt || `You are a ${name} agent.`,
+        permissionProfile: permissionProfile || { mode: name === 'reviewer' ? 'read-only' : 'standard' },
+        isBuiltin: false,
+        createdAt: new Date(),
+      })
+      .run();
+    return id;
   };
 
   const getTask = (taskId: string) => {
@@ -440,6 +458,7 @@ export async function createPipelineHarness(
     runTaskWithAgent,
     runCrew,
     addAgent,
+    addRole,
     waitForTaskStatus,
     waitForTasksStatus,
     waitForLiveRuns,

@@ -55,6 +55,32 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     disallowedTools: string[];
     permissionMode: string;
   } {
+    if (permissions.mode === 'read-only') {
+      const allowed = [
+        'Read',
+        'Glob',
+        'Grep',
+        'Bash(git diff *)',
+        'Bash(git diff)',
+        'Bash(git log *)',
+        'Bash(git log)',
+        'Bash(git show *)',
+        'Bash(git show)',
+        'Bash(crew review *)',
+        'Bash(crew review)',
+      ];
+      const disallowed = [
+        'Edit',
+        'Write',
+        ...FIXED_DENIED_TOOLS,
+      ];
+      return {
+        allowedTools: Array.from(new Set(allowed)),
+        disallowedTools: Array.from(new Set(disallowed)),
+        permissionMode: 'dontAsk',
+      };
+    }
+
     const isFull = permissions.mode === 'full';
     const permissionMode = isFull ? 'acceptEdits' : 'dontAsk';
 

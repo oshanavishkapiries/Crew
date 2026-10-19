@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { eq, inArray, desc, asc } from 'drizzle-orm';
+import { eq, inArray, desc, asc, and } from 'drizzle-orm';
 import { execa } from 'execa';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -101,6 +101,17 @@ export function createApp(ctx: AppContext): Hono {
     const task = loadTask(taskId);
     if (task.assigneeAgentId !== caller.agent.id) {
       throw forbidden(`task ${taskId} is not assigned to this agent`);
+    }
+    return { agent: caller.agent, task };
+  };
+
+  // D13, D34: only the designated reviewer agent may call the review endpoint
+  const requireReviewerAgent = (c: Context, taskId: string): { agent: Agent; task: Task } => {
+    const caller = identify(c);
+    if (caller?.kind !== 'agent') throw unauthorized();
+    const task = loadTask(taskId);
+    if (!task.reviewerAgentId || task.reviewerAgentId !== caller.agent.id) {
+      throw forbidden(`agent is not the designated reviewer for task ${taskId}`);
     }
     return { agent: caller.agent, task };
   };
@@ -243,6 +254,152 @@ export function createApp(ctx: AppContext): Hono {
     });
 
     return c.json({ success: true, status: updatedTask.status });
+  });
+
+  // PRD line 362: POST /api/tasks/:id/review (D34, D35)
+  app.post('/api/tasks/:id/review', async (c) => {
+    const { agent, task } = requireReviewerAgent(c, c.req.param('id'));
+    const body = await c.req.json().catch(() => ({}));
+    const action = body.action;
+
+    if (action !== 'approve' && action !== 'changes') {
+      return c.json({ error: 'Action must be approve or changes' }, 400);
+    }
+
+    if (task.status !== 'review') {
+      return c.json({ error: `Task is not in review (current status: ${task.status})` }, 409);
+    }
+
+    const reviewRun = ctx.db.db
+      .select()
+      .from(schema.runs)
+      .where(and(eq(schema.runs.taskId, task.id), eq(schema.runs.kind, 'review')))
+      .orderBy(desc(schema.runs.startedAt))
+      .get();
+    const lastRun = ctx.db.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.taskId, task.id))
+      .orderBy(desc(schema.runs.startedAt))
+      .get();
+
+    let runId = reviewRun?.id || lastRun?.id || ctx.runner?.getLiveRunByTaskId(task.id)?.id;
+    if (!runId) {
+      runId = 'run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      ctx.db.db
+        .insert(schema.runs)
+        .values({
+          id: runId,
+          taskId: task.id,
+          agentId: agent.id,
+          adapter: agent.cliType,
+          startedAt: new Date(),
+          endedAt: new Date(),
+          kind: 'review',
+          exitReason: 'done',
+        })
+        .run();
+    }
+
+    const liveRun = ctx.runner?.getLiveRunByTaskId(task.id);
+    if (liveRun) {
+      liveRun.exitReason = 'done';
+    }
+
+    if (action === 'approve') {
+      const vrId = 'vr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      ctx.db.db
+        .insert(schema.verificationResults)
+        .values({
+          id: vrId,
+          runId,
+          step: 'review',
+          passed: true,
+          output: body.feedback || 'Approved',
+          createdAt: new Date(),
+        })
+        .run();
+
+      ctx.eventBus.publishBoardEvent(task.boardId, {
+        type: 'verification_step',
+        data: {
+          taskId: task.id,
+          step: 'review',
+          passed: true,
+        },
+      });
+
+      const updatedTask = await ctx.scheduler.transitionTask(task.id, 'merge-queue', {
+        reason: body.feedback || 'Review approved',
+        alongside: () => {
+          ctx.db.db
+            .update(schema.tasks)
+            .set({ reviewerAgentId: null })
+            .where(eq(schema.tasks.id, task.id))
+            .run();
+          ctx.db.db
+            .update(schema.agents)
+            .set({ status: 'idle' })
+            .where(eq(schema.agents.id, agent.id))
+            .run();
+        },
+      });
+
+      return c.json({ success: true, status: updatedTask.status });
+    } else {
+      // action === 'changes'
+      const feedback = body.feedback || 'Changes requested';
+      const vrId = 'vr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+      ctx.db.db
+        .insert(schema.verificationResults)
+        .values({
+          id: vrId,
+          runId,
+          step: 'review',
+          passed: false,
+          output: feedback,
+          createdAt: new Date(),
+        })
+        .run();
+
+      ctx.eventBus.publishBoardEvent(task.boardId, {
+        type: 'verification_step',
+        data: {
+          taskId: task.id,
+          step: 'review',
+          passed: false,
+        },
+      });
+
+      const updatedTask = await ctx.scheduler.transitionTask(task.id, 'doing', {
+        reason: feedback,
+        alongside: () => {
+          ctx.db.db
+            .insert(schema.messages)
+            .values({
+              id: newMessageId(),
+              taskId: task.id,
+              fromAgentId: agent.id,
+              type: 'feedback',
+              body: feedback,
+              createdAt: new Date(),
+            })
+            .run();
+          ctx.db.db
+            .update(schema.tasks)
+            .set({ reviewerAgentId: null })
+            .where(eq(schema.tasks.id, task.id))
+            .run();
+          ctx.db.db
+            .update(schema.agents)
+            .set({ status: 'idle' })
+            .where(eq(schema.agents.id, agent.id))
+            .run();
+        },
+      });
+
+      return c.json({ success: true, status: updatedTask.status });
+    }
   });
 
   // PRD line 359: POST /api/tasks/:id/question
