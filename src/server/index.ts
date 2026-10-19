@@ -73,6 +73,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     scheduler,
     worktreeManager,
     runner,
+    dispatcher,
     perStartSecret,
   });
 

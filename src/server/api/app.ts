@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
@@ -11,6 +11,7 @@ import {
   type Scheduler,
   type Task,
   TaskNotFoundError,
+  type Dispatcher,
 } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
 import type { Runner } from '../runner/index.js';
@@ -29,6 +30,7 @@ export interface AppContext {
   perStartSecret: string;
   worktreeManager?: WorktreeManager;
   runner?: Runner;
+  dispatcher?: Dispatcher;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -339,6 +341,53 @@ export function createApp(ctx: AppContext): Hono {
     }
     const removed = await ctx.worktreeManager.gc();
     return c.json({ success: true, removed });
+  });
+
+  // PRD line 376: POST /api/control/stop-all (human secret)
+  app.post('/api/control/stop-all', async (c) => {
+    requireHuman(c);
+
+    // 1. Pause dispatcher
+    ctx.dispatcher?.setStopped(true);
+
+    // 2. Kill all live runs with exitReason: 'stopped'
+    const stoppedRuns = ctx.runner ? await ctx.runner.killAll('stopped') : 0;
+
+    // 3. Mark active/busy/idle agents as stopped
+    ctx.db.db
+      .update(schema.agents)
+      .set({ status: 'stopped' })
+      .where(inArray(schema.agents.status, ['idle', 'busy']))
+      .run();
+
+    return c.json({
+      success: true,
+      stoppedRuns,
+      message: `Stopped ${stoppedRuns} live runs and paused dispatch`,
+    });
+  });
+
+  // PRD line 377: POST /api/control/resume (human secret)
+  app.post('/api/control/resume', async (c) => {
+    requireHuman(c);
+
+    // 1. Unmark agents that were stopped back to idle
+    ctx.db.db
+      .update(schema.agents)
+      .set({ status: 'idle' })
+      .where(eq(schema.agents.status, 'stopped'))
+      .run();
+
+    // 2. Unpause dispatcher
+    ctx.dispatcher?.setStopped(false);
+
+    // 3. Trigger immediate dispatch pass
+    ctx.dispatcher?.scheduleDispatch();
+
+    return c.json({
+      success: true,
+      message: 'Dispatch resumed and stopped agents restored to idle',
+    });
   });
 
   return app;

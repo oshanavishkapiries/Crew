@@ -74,6 +74,20 @@ crew stop-all
 
 ---
 
+### `crew resume`
+
+Resumes paused task dispatching and restores stopped agents to idle.
+
+**Examples:**
+
+Resume dispatching after stop-all:
+
+```bash
+crew resume
+```
+
+---
+
 ### `crew tasks`
 
 Lists tasks in the workspace along with their status, assigned agent, and retries.

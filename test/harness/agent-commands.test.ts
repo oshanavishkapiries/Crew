@@ -87,7 +87,7 @@ describe('Agent commands through the real CLI (D13)', () => {
   });
 
   it('exits non-zero for commands that are not implemented yet', async () => {
-    const result = await harness.runCrew(['stop-all']);
+    const result = await harness.runCrew(['remember', 'some learning']);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('not implemented');

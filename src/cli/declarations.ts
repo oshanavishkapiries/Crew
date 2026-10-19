@@ -1,7 +1,9 @@
 import { handleAnswer } from './commands/answer.js';
 import { handleAsk } from './commands/ask.js';
 import { handleDone } from './commands/done.js';
+import { handleResume } from './commands/resume.js';
 import { handleStart } from './commands/start.js';
+import { handleStopAll } from './commands/stop-all.js';
 import { handleUpdate } from './commands/update.js';
 import type { CommandDefinition } from './types.js';
 
@@ -48,6 +50,17 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'Stop all running processes and dispatching', command: 'crew stop-all' },
     ],
+    action: handleStopAll,
+  },
+  {
+    name: 'resume',
+    category: 'human',
+    summary: 'Resume task dispatch after stop-all',
+    description: 'Resumes paused task dispatching and restores stopped agents to idle.',
+    examples: [
+      { description: 'Resume dispatching after stop-all', command: 'crew resume' },
+    ],
+    action: handleResume,
   },
   {
     name: 'tasks',
