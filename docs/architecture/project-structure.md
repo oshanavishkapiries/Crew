@@ -70,6 +70,7 @@ Crew writes its state to the user's machine, not to the repo it manages (D12):
 ├─ rate-limits.json       # Persisted rate-limit pauses and backoff step (D7)
 ├─ claude-settings.json   # Stop hook settings passed to Claude Code via --settings (D26, D36)
 ├─ hook-stops/            # Per-run block counters for crew hook stop (D36)
+├─ snapshots/             # Main-checkout `git status` at run start, one file per run, until the diff gate decides (D31)
 ├─ bin/                   # `crew` shim put on the agent's PATH
 ├─ logs/                  # Run logs (agent event streams, <run-id>.jsonl)
 └─ worktrees/

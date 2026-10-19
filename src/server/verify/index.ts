@@ -234,6 +234,9 @@ export class Verifier {
 
     if (this.isStopped()) return;
 
+    // The snapshot is only needed until the diff gate has decided
+    this.runner.clearMainCheckoutSnapshot(lastRun.id);
+
     // Record verification result
     const vrId = 'vr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     this.db.db
@@ -476,13 +479,14 @@ export class Verifier {
       ? this.db.db.select().from(schema.agents).where(eq(schema.agents.id, task.assigneeAgentId)).get()
       : null;
 
-    const idleReviewers = reviewerAgents.filter((r) => r.agent.status === 'idle');
-    let selected = author
-      ? idleReviewers.find((r) => r.agent.cliType !== author.cliType)
-      : null;
-    if (!selected) {
-      selected = idleReviewers[0] || reviewerAgents[0];
-    }
+    // Rank candidates: usable now beats paused, idle beats busy, a different tool beats the author's.
+    // Stopped agents (stop-all) are never chosen.
+    const candidates = reviewerAgents.filter((r) => r.agent.status !== 'stopped');
+    const rank = (r: (typeof reviewerAgents)[number]): number =>
+      (r.agent.status === 'rate-limited' ? 4 : 0) +
+      (r.agent.status === 'idle' ? 0 : 2) +
+      (author && r.agent.cliType === author.cliType ? 1 : 0);
+    const selected = [...candidates].sort((a, b) => rank(a) - rank(b))[0] ?? reviewerAgents[0];
     const reviewer = selected.agent;
 
     // Set tasks.reviewerAgentId
@@ -547,6 +551,14 @@ export class Verifier {
         break;
       }
 
+      // Never start a Reviewer while its tool is rate-limit paused (D7): wait for the pause to clear
+      await this.waitForToolAvailable(reviewer.cliType, task.id);
+      const afterWait = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
+      if (this.isStopped() || !afterWait || afterWait.status !== 'review') {
+        verdictRecorded = afterWait ? afterWait.status !== 'review' : false;
+        break;
+      }
+
       this.db.db
         .update(schema.agents)
         .set({ status: 'busy' })
@@ -591,6 +603,32 @@ export class Verifier {
         },
       });
     }
+  }
+
+  /**
+   * Resolves when the tool is not rate-limit paused. Also resolves when verification is stopped
+   * or the task leaves `review` (cancel), so a waiting pipeline never hangs.
+   */
+  private waitForToolAvailable(cliType: string, taskId: string): Promise<void> {
+    if (!this.runner.getRateLimitStatus(cliType).isPaused) return Promise.resolve();
+
+    return new Promise<void>((resolve) => {
+      const done = () => {
+        clearInterval(poll);
+        this.runner.off('rate_limit_cleared', onCleared);
+        resolve();
+      };
+      const onCleared = (info: { cliType: string }) => {
+        if (info.cliType === cliType) done();
+      };
+      const poll = setInterval(() => {
+        const t = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+        if (this.isStopped() || !t || t.status !== 'review' || !this.runner.getRateLimitStatus(cliType).isPaused) {
+          done();
+        }
+      }, 1000);
+      this.runner.on('rate_limit_cleared', onCleared);
+    });
   }
 
   private async executeVerifyCommand(

@@ -354,6 +354,18 @@ describe('Verification interruptions and recovery (milestone 3 bullet 5, D7, D23
     // Check that tool is paused
     expect(harness.runner.getRateLimitStatus('codex').isPaused).toBe(true);
 
+    // While paused, the Verifier must not start the Reviewer again (D7). Wait longer than its
+    // one second poll, then check that only the rate-limited run exists.
+    await new Promise((r) => setTimeout(r, 1500));
+    const reviewRunsWhilePaused = harness.db.db
+      .select()
+      .from(schema.runs)
+      .where(eq(schema.runs.taskId, taskId))
+      .all()
+      .filter((r) => r.kind === 'review');
+    expect(reviewRunsWhilePaused).toHaveLength(1);
+    expect(harness.runner.getLiveRuns()).toHaveLength(0);
+
     // Clear rate limit manually (simulating backoff timer expiring)
     await harness.runner.resumeRateLimitedTool('codex');
 

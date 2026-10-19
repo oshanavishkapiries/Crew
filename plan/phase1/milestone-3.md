@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 3 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** complete. Tracer bullets 0–7 implemented and verified with comprehensive harness tests; smoke script for bullet 8 ready for user execution. P1–P9 (D29–D37) implemented.
+**Status:** implemented, pending the user's review and the manual smoke run (`npm run smoke:m3`, bullet 8). Tracer bullets 0–7 are done with harness tests. After the first review: a Reviewer now waits while its tool is rate-limit paused (D7), the main-checkout snapshot lives on disk, and Reviewer selection skips stopped and paused agents. P1–P9 (D29–D37) are implemented.
 
 ## 1. Goal
 
@@ -80,7 +80,7 @@ All checks run in the task's worktree, against the merge-base with the workspace
 2. **Empty diff fails.** "Done" with no changes is a failure, with the message "no changes against <base>".
 3. **Out-of-worktree check (D31).** Permissions are enforced by the tool, and this is the server-side backstop (PRD, Permissions):
    - a changed path that is a symlink pointing outside the worktree fails;
-   - at run start the Runner records a snapshot of `git status --porcelain` for the main checkout, and the gate compares it at `crew done`. New or changed entries fail the gate and name the paths.
+   - at run start the Runner records a snapshot of `git status --porcelain` for the main checkout in `<crewHome>/snapshots/<run-id>.txt`, and the gate compares it at `crew done`. It is on disk so a server restart doesn't skip the check, and it is deleted once the diff gate has decided, or when the run ends without `crew done`. New or changed entries fail the gate and name the paths.
 
    The snapshot can false-positive if the user edits the main checkout while an agent runs. The failure message says so, and the open question in §8 asks whether that's acceptable.
 4. A failed diff gate ends the pipeline: running commands on a broken diff only adds noise.
@@ -99,7 +99,7 @@ All checks run in the task's worktree, against the merge-base with the workspace
 
 **When it runs:** after the diff and command gates pass, the task moves `verifying → review` and the Reviewer starts.
 
-**Who reviews:** an idle agent whose role is `reviewer` in the same workspace, preferring one whose `cliType` differs from the author's (D8). If only the author's tool is available, the same tool reviews. If the workspace has no reviewer agent, the gate is **skipped (D34)**: the step is recorded as passed with the output "skipped: no reviewer agent", and the task goes `review → merge-queue`. That keeps the pipeline working for teams without a reviewer, and the skip is visible.
+**Who reviews:** an agent whose role is `reviewer` in the same workspace. Stopped agents are never chosen. Otherwise the best of: usable now over rate-limit paused, idle over busy, then a `cliType` different from the author's (D8). If the chosen agent's tool is paused, the review waits until the pause clears instead of starting a run. If only the author's tool is available, the same tool reviews. If the workspace has no reviewer agent, the gate is **skipped (D34)**: the step is recorded as passed with the output "skipped: no reviewer agent", and the task goes `review → merge-queue`. That keeps the pipeline working for teams without a reviewer, and the skip is visible.
 
 **What it gets:** a fresh process in the task's worktree, with a prompt of the Reviewer role text, the task title and acceptance criteria, the diff against the base, and the earlier verification results. The permission profile is new:
 

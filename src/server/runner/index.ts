@@ -182,7 +182,6 @@ export class Runner extends EventEmitter {
   private eventBus: EventBus;
   private scheduler: Scheduler;
   private adapters: Map<string, AgentAdapter> = new Map();
-  private mainCheckoutSnapshots = new Map<string, string>();
   private clock: Clock;
   private maxRuntimeMs: number;
   private noOutputTimeoutMs: number;
@@ -279,8 +278,24 @@ export class Runner extends EventEmitter {
     return this.liveRuns.get(runId);
   }
 
+  /**
+   * The main checkout's `git status` at run start (D31). Kept on disk so a server restart
+   * between `crew done` and the diff gate doesn't silently skip the out-of-worktree check.
+   */
+  private snapshotPath(runId: string): string {
+    return path.join(this.crewHome, 'snapshots', `${runId}.txt`);
+  }
+
   getMainCheckoutSnapshot(runId: string): string | undefined {
-    return this.mainCheckoutSnapshots.get(runId);
+    try {
+      return fs.readFileSync(this.snapshotPath(runId), 'utf8');
+    } catch {
+      return undefined;
+    }
+  }
+
+  clearMainCheckoutSnapshot(runId: string): void {
+    fs.rmSync(this.snapshotPath(runId), { force: true });
   }
 
   async startRun(options: StartRunOptions): Promise<ActiveRun> {
@@ -436,7 +451,10 @@ export class Runner extends EventEmitter {
         mainCheckoutSnapshot = statusRes.stdout || '';
       } catch {}
     }
-    this.mainCheckoutSnapshots.set(runId, mainCheckoutSnapshot);
+    try {
+      fs.mkdirSync(path.dirname(this.snapshotPath(runId)), { recursive: true });
+      fs.writeFileSync(this.snapshotPath(runId), mainCheckoutSnapshot, 'utf8');
+    } catch {}
 
     // Insert Run in DB
     const startedAt = new Date();
@@ -615,6 +633,11 @@ export class Runner extends EventEmitter {
           })
           .where(eq(schema.runs.id, runId))
           .run();
+
+        // Only a finished work run goes on to the diff gate, which needs its snapshot
+        if (options.kind === 'review' || exitReason !== 'done') {
+          this.clearMainCheckoutSnapshot(runId);
+        }
 
         // Handle retry if failed while doing (work runs only)
         if (
