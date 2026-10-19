@@ -357,10 +357,20 @@ export async function createPipelineHarness(
   };
 
   const waitForVerificationStep = async (taskId: string, step: string, timeoutMs = 15000): Promise<any> => {
+    const existing = getVerificationResults(taskId).find((vr) => vr.step === step);
+    if (existing) {
+      return { taskId, step: existing.step, passed: existing.passed };
+    }
+
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         unsub();
-        reject(new Error(`Timed out waiting for verification step ${step} on task ${taskId}`));
+        const fallback = getVerificationResults(taskId).find((vr) => vr.step === step);
+        if (fallback) {
+          resolve({ taskId, step: fallback.step, passed: fallback.passed });
+        } else {
+          reject(new Error(`Timed out waiting for verification step ${step} on task ${taskId}`));
+        }
       }, timeoutMs);
 
       const unsub = eventBus.subscribeBoardEvents(boardId, (event) => {
