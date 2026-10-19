@@ -42,6 +42,7 @@ export class Verifier {
   private stopped = false;
   private queue: string[] = [];
   private activeTasks = new Set<string>();
+  private activeCommands = new Map<string, { pid?: number; abort: () => Promise<void> }>();
   private unsubscribeBoard?: () => void;
 
   constructor(options: VerifierOptions) {
@@ -57,18 +58,20 @@ export class Verifier {
   start(): void {
     if (this.started) return;
     this.started = true;
+    this.stopped = false;
 
     // Subscribe to task_status_changed events
     this.unsubscribeBoard = this.eventBus.subscribeBoardEvents('*', (event) => {
       if (event.type === 'task_status_changed') {
         const data = event.data as { taskId?: string; to?: string };
-        if (data?.taskId && data?.to === 'verifying') {
+        if (data?.taskId && (data?.to === 'verifying' || data?.to === 'review')) {
           this.enqueue(data.taskId);
         }
       }
     });
 
-    // Check for any tasks currently in verifying (recovery on restart, §4.6)
+    // Recovery on restart (§4.6):
+    // 1. Tasks currently in verifying
     const verifyingTasks = this.db.db
       .select()
       .from(schema.tasks)
@@ -77,6 +80,19 @@ export class Verifier {
 
     for (const t of verifyingTasks) {
       this.enqueue(t.id);
+    }
+
+    // 2. Tasks currently in review with no live Reviewer run
+    const reviewTasks = this.db.db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.status, 'review'))
+      .all();
+
+    for (const t of reviewTasks) {
+      if (!this.runner.getLiveRunByTaskId(t.id)) {
+        this.enqueue(t.id);
+      }
     }
   }
 
@@ -90,6 +106,48 @@ export class Verifier {
       this.unsubscribeBoard = undefined;
     }
     this.queue = [];
+  }
+
+  async cancelTask(taskId: string): Promise<void> {
+    const cmd = this.activeCommands.get(taskId);
+    if (cmd) {
+      await cmd.abort();
+      this.activeCommands.delete(taskId);
+    }
+    this.queue = this.queue.filter((id) => id !== taskId);
+    this.activeTasks.delete(taskId);
+  }
+
+  async stopAll(): Promise<void> {
+    this.stopped = true;
+    for (const [taskId, cmd] of this.activeCommands.entries()) {
+      await cmd.abort();
+    }
+    this.activeCommands.clear();
+    this.queue = [];
+    this.activeTasks.clear();
+  }
+
+  resume(): void {
+    this.stopped = false;
+    const verifyingTasks = this.db.db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.status, 'verifying'))
+      .all();
+    for (const t of verifyingTasks) {
+      this.enqueue(t.id);
+    }
+    const reviewTasks = this.db.db
+      .select()
+      .from(schema.tasks)
+      .where(eq(schema.tasks.status, 'review'))
+      .all();
+    for (const t of reviewTasks) {
+      if (!this.runner.getLiveRunByTaskId(t.id)) {
+        this.enqueue(t.id);
+      }
+    }
   }
 
   isStopped(): boolean {
@@ -133,7 +191,7 @@ export class Verifier {
     if (this.isStopped()) return;
 
     const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
-    if (!task || task.status !== 'verifying') {
+    if (!task || (task.status !== 'verifying' && task.status !== 'review')) {
       return;
     }
 
@@ -162,8 +220,17 @@ export class Verifier {
       return;
     }
 
-    // --- GATE 1: DIFF GATE ---
-    const diffGateResult = await this.runDiffGate(task, lastRun.id, defaultBranch, workspace?.repoPath);
+    const worktreePath = task.worktreePath || workspace?.repoPath || process.cwd();
+
+    if (task.status === 'verifying') {
+      // Results of a pipeline that never finished are replaced, not duplicated (§4.6)
+      this.db.db
+        .delete(schema.verificationResults)
+        .where(eq(schema.verificationResults.runId, lastRun.id))
+        .run();
+
+      // --- GATE 1: DIFF GATE ---
+      const diffGateResult = await this.runDiffGate(task, lastRun.id, defaultBranch, workspace?.repoPath);
 
     if (this.isStopped()) return;
 
@@ -223,7 +290,6 @@ export class Verifier {
     }
 
     // --- GATE 2: COMMAND GATES (D10, D29, D32, D37) ---
-    const worktreePath = task.worktreePath;
     if (!worktreePath || !fs.existsSync(worktreePath)) {
       return;
     }
@@ -259,7 +325,7 @@ export class Verifier {
     for (const cmd of applicableCommands) {
       if (this.isStopped()) return;
 
-      const cmdResult = await this.executeVerifyCommand(cmd, worktreePath);
+      const cmdResult = await this.executeVerifyCommand(cmd, worktreePath, task.id);
       commandResults.push(cmdResult);
 
       if (this.isStopped()) return;
@@ -343,6 +409,7 @@ export class Verifier {
     await this.scheduler.transitionTask(task.id, 'review', {
       reason: 'Diff and command gates passed',
     });
+    }
 
     if (this.isStopped()) return;
 
@@ -529,6 +596,7 @@ export class Verifier {
   private async executeVerifyCommand(
     cmd: VerifyCommand,
     worktreePath: string,
+    taskId?: string,
   ): Promise<{ name: string; passed: boolean; output: string }> {
     const commandCwd = cmd.cwd ? path.resolve(worktreePath, cmd.cwd) : worktreePath;
     if (!fs.existsSync(commandCwd)) {
@@ -559,6 +627,17 @@ export class Verifier {
         detached: true,
         reject: false,
       });
+
+      if (taskId) {
+        this.activeCommands.set(taskId, {
+          pid: subprocess.pid,
+          abort: async () => {
+            if (subprocess.pid) {
+              await killProcessGroup(subprocess.pid, 'SIGTERM', 1000);
+            }
+          },
+        });
+      }
 
       const timeoutPromise = new Promise<{ timedOut: boolean }>((resolve) => {
         timer = setTimeout(async () => {
@@ -607,6 +686,10 @@ export class Verifier {
         passed: false,
         output: `Command execution error: ${err.message}`,
       };
+    } finally {
+      if (taskId) {
+        this.activeCommands.delete(taskId);
+      }
     }
   }
 

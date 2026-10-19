@@ -513,6 +513,7 @@ export function createApp(ctx: AppContext): Hono {
     // Stop the agent first so it isn't left running in a worktree that is about to be removed
     let updatedTask;
     try {
+      await ctx.verifier?.cancelTask(task.id);
       await ctx.runner?.killTaskRun(task.id, 'cancelled');
       updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
         reason: 'Cancelled by human',
@@ -541,10 +542,13 @@ export function createApp(ctx: AppContext): Hono {
     // 1. Pause dispatcher
     ctx.dispatcher?.setStopped(true);
 
-    // 2. Kill all live runs with exitReason: 'stopped'
+    // 2. Stop verifier pipelines and active verify commands
+    await ctx.verifier?.stopAll();
+
+    // 3. Kill all live runs with exitReason: 'stopped'
     const stoppedRuns = ctx.runner ? await ctx.runner.killAll('stopped') : 0;
 
-    // 3. Mark active/busy/idle agents as stopped
+    // 4. Mark active/busy/idle agents as stopped
     ctx.db.db
       .update(schema.agents)
       .set({ status: 'stopped' })
@@ -572,7 +576,10 @@ export function createApp(ctx: AppContext): Hono {
     // 2. Unpause dispatcher
     ctx.dispatcher?.setStopped(false);
 
-    // 3. Trigger immediate dispatch pass
+    // 3. Resume verifier pipelines
+    ctx.verifier?.resume();
+
+    // 4. Trigger immediate dispatch pass
     ctx.dispatcher?.scheduleDispatch();
 
     return c.json({
