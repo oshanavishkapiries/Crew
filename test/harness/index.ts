@@ -95,6 +95,30 @@ export async function createPipelineHarness(
     worktreeManager,
   });
 
+  const fakeAdapter = new FakeAdapter();
+  const cliPath = path.resolve(import.meta.dirname, '../../dist/cli.js');
+
+  const runner = new Runner({
+    db,
+    eventBus,
+    scheduler,
+    adapters: { fake: fakeAdapter },
+    clock: options.clock,
+    maxRuntimeMs: options.maxRuntimeMs,
+    noOutputTimeoutMs: options.noOutputTimeoutMs,
+    serverUrl: 'http://127.0.0.1:0',
+    crewHome: crewHomeDir,
+  });
+
+  const dispatcher = new Dispatcher({
+    db,
+    scheduler,
+    runner,
+    eventBus,
+    maxParallelAgents: options.maxParallelAgents ?? 3,
+    crewHome: crewHomeDir,
+  });
+
   // 4. Start real server on ephemeral port
   const server = await startServer({
     port: 0,
@@ -103,6 +127,9 @@ export async function createPipelineHarness(
     eventBus,
     scheduler,
     worktreeManager,
+    runner,
+    dispatcher,
+    startDispatcher: options.startDispatcher,
   });
 
   const now = new Date();
@@ -160,34 +187,7 @@ export async function createPipelineHarness(
     })
     .run();
 
-  const fakeAdapter = new FakeAdapter();
-  const cliPath = path.resolve(import.meta.dirname, '../../dist/cli.js');
-
-  const runner = new Runner({
-    db,
-    eventBus,
-    scheduler,
-    adapters: { fake: fakeAdapter },
-    clock: options.clock,
-    maxRuntimeMs: options.maxRuntimeMs,
-    noOutputTimeoutMs: options.noOutputTimeoutMs,
-    serverUrl: server.url,
-    crewHome: crewHomeDir,
-  });
   runner.registerAgentToken(agentId, agentToken);
-
-  const dispatcher = new Dispatcher({
-    db,
-    scheduler,
-    runner,
-    eventBus,
-    maxParallelAgents: options.maxParallelAgents ?? 3,
-    crewHome: crewHomeDir,
-  });
-
-  if (options.startDispatcher) {
-    dispatcher.start();
-  }
 
   const createTask = async (params: {
     id: string;
@@ -232,7 +232,12 @@ export async function createPipelineHarness(
   const runCrew = async (args: string[], env: Record<string, string> = {}) => {
     const result = await execa(process.execPath, [cliPath, ...args], {
       cwd: repoDir,
-      env: { CREW_SERVER_URL: server.url, ...env },
+      env: {
+        CREW_SERVER_URL: server.url,
+        CREW_HOME: crewHomeDir,
+        CREW_SECRET: server.perStartSecret,
+        ...env,
+      },
       extendEnv: false,
       reject: false,
     });

@@ -13,6 +13,7 @@ import {
   TaskNotFoundError,
 } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
+import type { Runner } from '../runner/index.js';
 import {
   AGENT_TOKEN_HEADER,
   hashToken,
@@ -27,6 +28,7 @@ export interface AppContext {
   scheduler: Scheduler;
   perStartSecret: string;
   worktreeManager?: WorktreeManager;
+  runner?: Runner;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -273,6 +275,47 @@ export function createApp(ctx: AppContext): Hono {
     }
 
     return c.json({ success: true, task });
+  });
+
+  // PRD line 370: POST /api/tasks/:id/answer (human secret)
+  app.post('/api/tasks/:id/answer', async (c) => {
+    requireHuman(c);
+    const taskId = c.req.param('id');
+    const task = loadTask(taskId);
+    const body = await c.req.json().catch(() => ({}));
+    const answer = body.answer;
+
+    if (!answer) {
+      return c.json({ error: 'Answer body is required' }, 400);
+    }
+
+    if (task.status !== 'blocked') {
+      return c.json({ error: `Task ${taskId} is not blocked (status: ${task.status})` }, 409);
+    }
+
+    const updatedTask = await ctx.scheduler.transitionTask(task.id, 'doing', {
+      reason: answer,
+      alongside: () =>
+        ctx.db.db
+          .insert(schema.messages)
+          .values({
+            id: newMessageId(),
+            taskId: task.id,
+            fromAgentId: null,
+            type: 'answer',
+            body: answer,
+            createdAt: new Date(),
+          })
+          .run(),
+    });
+
+    if (ctx.runner) {
+      ctx.runner.resumeTask(task.id, answer).catch((err) => {
+        console.error(`Failed to resume task ${task.id}:`, err);
+      });
+    }
+
+    return c.json({ success: true, status: updatedTask.status });
   });
 
   // PRD line 375: POST /api/tasks/:id/cancel (human secret)

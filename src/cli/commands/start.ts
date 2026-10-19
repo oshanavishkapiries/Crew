@@ -9,7 +9,6 @@ export async function handleStart(options: { port?: string | number; host?: stri
 
   console.log(`Crew server listening at ${running.url}`);
   console.log(`Task Board available at ${running.url}`);
-  console.log(`Session secret: ${running.perStartSecret}`);
 
   // Keep process running until SIGINT/SIGTERM
   const shutdown = async () => {

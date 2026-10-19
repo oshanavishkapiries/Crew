@@ -24,6 +24,7 @@ export class FakeAdapter implements AgentAdapter {
   id: 'fake' = 'fake';
   public refuseResume = false;
   private scriptedSteps: FakeScriptStep[] = [];
+  private resumeSteps?: FakeScriptStep[];
 
   constructor(scriptedSteps: FakeScriptStep[] = []) {
     this.scriptedSteps = scriptedSteps;
@@ -31,6 +32,10 @@ export class FakeAdapter implements AgentAdapter {
 
   setScript(steps: FakeScriptStep[]): void {
     this.scriptedSteps = steps;
+  }
+
+  setResumeScript(steps: FakeScriptStep[]): void {
+    this.resumeSteps = steps;
   }
 
   async detect(): Promise<{ installed: boolean; version?: string; headless: boolean }> {
@@ -154,13 +159,21 @@ export class FakeAdapter implements AgentAdapter {
     if (this.refuseResume) {
       throw new Error('FakeAdapter: refused to resume session');
     }
-    return this.buildSpawn({
-      prompt: opts.prompt,
-      workDir: opts.workDir,
-      permissions: opts.permissions,
-      taskId: opts.taskId,
-      serverUrl: opts.serverUrl,
-      agentToken: opts.agentToken,
-    });
+    const previousSteps = this.scriptedSteps;
+    if (this.resumeSteps) {
+      this.scriptedSteps = this.resumeSteps;
+    }
+    try {
+      return this.buildSpawn({
+        prompt: opts.prompt,
+        workDir: opts.workDir,
+        permissions: opts.permissions,
+        taskId: opts.taskId,
+        serverUrl: opts.serverUrl,
+        agentToken: opts.agentToken,
+      });
+    } finally {
+      this.scriptedSteps = previousSteps;
+    }
   }
 }

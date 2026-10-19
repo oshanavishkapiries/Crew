@@ -1,3 +1,4 @@
+import { handleAnswer } from './commands/answer.js';
 import { handleAsk } from './commands/ask.js';
 import { handleDone } from './commands/done.js';
 import { handleStart } from './commands/start.js';
@@ -121,6 +122,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       { description: 'Answer question for task-1', command: 'crew answer task-1 "Use ESM modules"' },
     ],
+    action: handleAnswer,
   },
   {
     name: 'memory',

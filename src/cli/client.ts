@@ -1,8 +1,62 @@
-import { AGENT_TOKEN_HEADER } from '../server/api/security.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { getCrewHome } from '../server/config.js';
+import { AGENT_TOKEN_HEADER, SECRET_HEADER } from '../server/api/security.js';
 
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+export interface ServerInfo {
+  url: string;
+  secret: string;
+  pid?: number;
+}
+
+export function getServerInfo(): ServerInfo {
+  if (process.env.CREW_SERVER_URL && process.env.CREW_SECRET) {
+    return {
+      url: process.env.CREW_SERVER_URL,
+      secret: process.env.CREW_SECRET,
+      pid: process.pid,
+    };
+  }
+  const infoPath = path.join(getCrewHome(), 'server.json');
+  if (!fs.existsSync(infoPath)) {
+    fail(`No running Crew server found at ${infoPath}. Start one with 'crew start'.`);
+  }
+  try {
+    return JSON.parse(fs.readFileSync(infoPath, 'utf-8'));
+  } catch (err) {
+    fail(`Failed to read ${infoPath}: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * POST to one of the server's human endpoints, authenticated via X-Crew-Secret (D13, D25).
+ */
+export async function postHumanAction<T>(endpoint: string, body?: unknown): Promise<T> {
+  const { url, secret } = getServerInfo();
+  let res: Response;
+  try {
+    res = await fetch(`${url}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        [SECRET_HEADER]: secret,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    fail(`Failed to connect to Crew server at ${url}: ${(err as Error).message}`);
+  }
+
+  if (!res.ok) {
+    fail(`Request failed: ${res.status} ${await res.text()}`);
+  }
+
+  return (await res.json()) as T;
 }
 
 /**

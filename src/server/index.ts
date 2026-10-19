@@ -1,7 +1,10 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { createApp } from './api/app.js';
 import { generatePerStartSecret } from './api/security.js';
+import { getCrewHome } from './config.js';
 import { createCrewDatabase, getDb, type CrewDatabase } from './db/index.js';
 import { getEventBus, type EventBus } from './events/index.js';
 import { Scheduler, Dispatcher } from './scheduler/index.js';
@@ -45,11 +48,31 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const scheduler = options.scheduler || new Scheduler(db, eventBus, { worktreeManager });
   const perStartSecret = generatePerStartSecret();
 
+  const runner =
+    options.runner ||
+    new Runner({
+      db,
+      eventBus,
+      scheduler,
+      serverUrl: `http://${host}:${port}`,
+    });
+
+  const dispatcher =
+    options.dispatcher ||
+    new Dispatcher({
+      db,
+      scheduler,
+      runner,
+      eventBus,
+      maxParallelAgents: options.maxParallelAgents ?? 3,
+    });
+
   const app = createApp({
     db,
     eventBus,
     scheduler,
     worktreeManager,
+    runner,
     perStartSecret,
   });
 
@@ -65,25 +88,22 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           const addr = (server as any).address?.();
           const actualPort = addr?.port ?? info.port;
           const url = `http://${host}:${actualPort}`;
+          runner.setServerUrl(url);
 
-          const runner =
-            options.runner ||
-            new Runner({
-              db,
-              eventBus,
-              scheduler,
-              serverUrl: url,
-            });
-
-          const dispatcher =
-            options.dispatcher ||
-            new Dispatcher({
-              db,
-              scheduler,
-              runner,
-              eventBus,
-              maxParallelAgents: options.maxParallelAgents ?? 3,
-            });
+          const crewHome = getCrewHome();
+          const serverJsonPath = path.join(crewHome, 'server.json');
+          try {
+            if (!fs.existsSync(crewHome)) {
+              fs.mkdirSync(crewHome, { recursive: true });
+            }
+            fs.writeFileSync(
+              serverJsonPath,
+              JSON.stringify({ url, secret: perStartSecret, pid: process.pid }, null, 2),
+              { mode: 0o600 },
+            );
+          } catch {
+            // ignore
+          }
 
           if (options.startDispatcher) {
             dispatcher.start();
@@ -103,6 +123,11 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             dispatcher,
             close: () =>
               new Promise<void>((res, rej) => {
+                try {
+                  if (fs.existsSync(serverJsonPath)) {
+                    fs.unlinkSync(serverJsonPath);
+                  }
+                } catch {}
                 dispatcher.stop();
                 server.close((err) => {
                   if (err) rej(err);
