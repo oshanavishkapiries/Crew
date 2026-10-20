@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 4 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** in progress: bullets 0–5 (through conflict sub-tasks) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullets 6–8 remain. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** in progress: bullets 0–6 (through interruptions) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullets 7–8 remain. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 
@@ -116,7 +116,7 @@ A fresh `git worktree` has the tracked files but not `node_modules` or build out
 Migration `0003` adds `merge_queue_items.commit_sha` and `merge_queue_items.output`. On server start:
 
 - Items in `rebasing`, `verifying` or `merging` go back to `queued` and the integration worktree is reset. If an item already has a `commit_sha` that is reachable from the default branch, the merge happened before the crash: it is completed (task `merged`, cleanup) instead of repeated.
-- Stop-all (D23) pauses the queue and kills running re-verify commands, like dispatch. `crew resume` restarts it, using no retries.
+- Stop-all (D23) pauses the queue and kills active Git, re-verify and integration setup process groups, awaiting their exits before cleaning the integration worktree. `crew resume` restarts it, using no retries.
 - Cancelling a queued task removes its item. Cancelling the task being merged aborts the rebase and kills its commands first, as in milestone 2.
 
 ### 4.9 Human CLI
@@ -180,3 +180,6 @@ The following implement the recommendations in §8; they are recorded here for u
 - **Empty conflict resolution:** retain the normal empty-diff gate. A real `rebase --skip` leaves no task changes and is rejected; with retries exhausted the child and its parent escalate. This follows §8's recommendation and avoids introducing an unapproved terminal outcome. The conflict harness covers it.
 
 - **Terminal merge failures:** non-conflict Git failures, empty squash commits and three lost ref races escalate through the existing feedback helper without charging a retry, atomically with the failed queue item. This fixes an otherwise unreachable human recovery path. A fast-forward refused because the checkout became dirty pauses instead.
+
+- **Interrupted integration cleanup:** abort a rebase, reset hard and clean untracked files before another attempt. If cleaning removes setup output, invalidate its private success marker and rerun setup to restore that environment; ignored install files survive `clean -fd`. This extends once-per-worktree reuse only when Crew cleanup destroyed output. Recovery also escalates legacy failed items left in `merge-queue`, with their stored reason and no retry charge.
+- **Cancellation after ref movement:** if the candidate is already an ancestor of the default branch when cancellation finishes stopping the worker, record the landed merge and clean up instead of reporting cancellation of work that is already on main.

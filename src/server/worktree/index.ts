@@ -43,21 +43,21 @@ export class WorktreeManager {
 
   async cancelSetup(taskId: string): Promise<void> {
     const operation = this.operations.get(taskId);
-    if (!operation) return;
-    operation.cancelled = true;
+    if (operation) operation.cancelled = true;
     await this.commands.cancel(taskId);
-    await operation.done.catch(() => {});
+    await operation?.done.catch(() => {});
   }
 
   async stopAllSetup(): Promise<void> {
     this.stopped = true;
+    await this.commands.stopAll();
     await Promise.all([...this.operations.keys()].map((id) => this.cancelSetup(id)));
   }
 
   resumeSetup(): void { this.stopped = false; }
 
   /** Run setup once per worktree; the merge worker can use this for detached worktrees. */
-  async setupWorktree(worktreePath: string, config: unknown, key: string): Promise<void> {
+  async setupWorktree(worktreePath: string, config: unknown, key: string, isCancelled: () => boolean = () => false): Promise<void> {
     if (typeof config === 'string') config = JSON.parse(config);
     const command = (config as { worktreeSetup?: string } | null)?.worktreeSetup;
     if (!command) return;
@@ -65,9 +65,9 @@ export class WorktreeManager {
     const result = await git(['rev-parse', '--absolute-git-dir'], worktreePath);
     const marker = path.join(result.stdout.trim(), 'crew-setup-complete');
     if (fs.existsSync(marker)) return;
-    if (this.stopped || this.operations.get(key)?.cancelled) throw new WorktreeSetupInterruptedError();
+    if (this.stopped || this.operations.get(key)?.cancelled || isCancelled()) throw new WorktreeSetupInterruptedError();
     const setup = await this.commands.execute({ name: 'worktreeSetup', command }, worktreePath, key);
-    if (this.stopped || this.operations.get(key)?.cancelled) throw new WorktreeSetupInterruptedError();
+    if (this.stopped || this.operations.get(key)?.cancelled || isCancelled()) throw new WorktreeSetupInterruptedError();
     if (!setup.passed) throw new Error(setup.output);
     fs.writeFileSync(marker, 'complete\n');
   }

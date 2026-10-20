@@ -1,3 +1,13 @@
+# Milestone 4 bullet 6 handoff
+
+Status: bullets 0–6 and the terminal-failure fix are implemented; human CLI (7) and smoke script (8) remain. Restart recovers queued/rebasing/verifying/merging items, completes persisted commits already reachable from the default branch, and resumes conflict-parent reconciliation/merged cleanup. Legacy failed items escalate with feedback instead of staying stuck. Integration reuse aborts rebase, resets hard and cleans untracked output; removing setup output invalidates its marker so setup can restore it.
+
+Stop-all/cancel own and await the merge's Git, verify and integration setup processes, then clean integration. Cancellation removes the queue item alongside the Scheduler transition and keeps the branch. Cancelling a conflict parent cascades through its active child; cancelling a child escalates the parent. A ref movement that won cancellation is recorded as merged (proposal in §9). PID tests cover rebase, verification and setup children; restart tests create a real half-finished rebase and landed-but-unrecorded refs, including later user commits. Tests also cover queued cancel, running conflict parent/child cancel, legacy failures and conflict reconciliation after downtime. Manual smoke remains pending.
+
+Verification: `rm -r dist && npm test` passed typecheck and 151 tests across 34 files (176.73s). `npm run generate:docs` succeeded. The force-delete command remains blocked by the shell guard.
+
+---
+
 # Milestone 4 terminal merge failure fix handoff
 
 Status: bullets 0–5 plus the reviewed terminal-failure fix are implemented; bullets 6–8 remain. Terminal non-conflict Git errors, empty squash commits and exhausted ref races now use the existing feedback helper to escalate atomically with a failed item, without charging a retry. A checkout dirtied after the final check pauses when Git refuses the fast-forward. Regression tests cover these four cases. The human retry round trip will be tested in bullet 7 when that command exists. The squash author email is explicitly a proposal in milestone-4 §9, with the user's email as an alternative. Manual smoke remains pending.

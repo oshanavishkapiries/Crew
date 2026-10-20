@@ -1,8 +1,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 import { sql, and, desc, eq } from 'drizzle-orm';
-import { execa } from 'execa';
+import { execa, type ResultPromise } from 'execa';
 import picomatch from 'picomatch';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
@@ -10,8 +11,11 @@ import type { EventBus } from '../events/index.js';
 import type { Scheduler, Task } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
 import { getCrewHome } from '../config.js';
+import { killProcessGroup } from '../runner/index.js';
 import { CommandRunner, type VerifyCommand } from '../verify/command-runner.js';
 
+class MergeInterrupted extends Error {}
+interface Job { taskId: string; interrupted: boolean; processes: Set<ResultPromise>; }
 type Item = typeof schema.mergeQueueItems.$inferSelect;
 type Workspace = typeof schema.workspaces.$inferSelect;
 export interface MergeHooks {
@@ -35,6 +39,10 @@ export class MergeQueue {
   private timer?: NodeJS.Timeout;
   private active = new Map<string, Promise<void>>();
   private commands = new CommandRunner();
+  private jobs = new Map<string, Job>();
+  private context = new AsyncLocalStorage<Job>();
+  private cancelling = new Set<string>();
+  private recovery?: Promise<void>;
   readonly warnings = new Map<string, string>();
   readonly hooks: MergeHooks = {};
 
@@ -61,6 +69,10 @@ export class MergeQueue {
         this.tick();
       }
     });
+    this.recovery = Promise.resolve().then(() => this.recover()).catch(error => console.error('Merge recovery failed:', error)).finally(() => {
+      this.recovery = undefined;
+      this.tick();
+    });
     this.timer = setInterval(() => this.tick(), 5000);
     this.timer.unref();
     this.tick();
@@ -71,28 +83,63 @@ export class MergeQueue {
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     if (this.timer) clearInterval(this.timer);
-    await this.commands.stopAll();
+    await this.interruptAll();
+    await this.recovery;
     await Promise.all(this.active.values());
   }
 
   async stopAll(): Promise<void> {
     this.paused = true;
-    await this.commands.stopAll();
+    await this.interruptAll();
+    await this.recovery;
     await Promise.all(this.active.values());
   }
 
   resume(): void { this.paused = false; this.tick(); }
+
+  async cancelTask(taskId: string): Promise<void> {
+    this.cancelling.add(taskId);
+    await this.recovery;
+    const job = [...this.jobs.values()].find(j => j.taskId === taskId);
+    if (job) {
+      job.interrupted = true;
+      await this.interrupt(job);
+      const workspace = this.options.worktreeManager.getWorkspaceForBoard(
+        this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get()!.boardId);
+      await this.active.get(workspace.id);
+    }
+  }
+
+  endCancel(taskId: string): void { this.cancelling.delete(taskId); }
+
+  private async interrupt(job: Job): Promise<void> {
+    await Promise.all([
+      this.commands.cancel(job.taskId),
+      this.options.worktreeManager.cancelSetup(`merge:${job.taskId}`),
+      ...[...job.processes].map(async p => {
+        if (p.pid) await killProcessGroup(p.pid, 'SIGTERM', 1000);
+        await p.catch(() => {});
+      }),
+    ]);
+  }
+
+  private async interruptAll(): Promise<void> {
+    const jobs = [...this.jobs.values()];
+    for (const job of jobs) job.interrupted = true;
+    await Promise.all(jobs.map(job => this.interrupt(job)));
+    await this.commands.stopAll();
+  }
   private isStopped(): boolean {
     return !this.started || this.paused || fs.existsSync(path.join(this.home, 'stopped'));
   }
 
   tick(): void {
-    if (this.isStopped()) return;
+    if (this.isStopped() || this.recovery) return;
     const { db } = this.options;
     const waiting = db.db.select().from(schema.tasks).where(eq(schema.tasks.status, 'merge-queue')).all();
     for (const task of waiting) {
       const existing = db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, task.id)).all();
-      if (existing.length) continue;
+      if (existing.length || this.cancelling.has(task.id)) continue;
       const position = Math.max(0, ...db.db.select().from(schema.mergeQueueItems).all().map(i => i.position)) + 1;
       const item = { id: randomUUID(), taskId: task.id, position, status: 'queued', createdAt: new Date() };
       db.db.insert(schema.mergeQueueItems).values(item).run();
@@ -115,23 +162,109 @@ export class MergeQueue {
         .innerJoin(schema.boards, eq(schema.boards.id, schema.tasks.boardId))
         .where(and(eq(schema.boards.workspaceId, workspace.id), eq(schema.mergeQueueItems.status, 'queued'), eq(schema.tasks.status, 'merge-queue')))
         .all().sort((a, b) => a.item.position - b.item.position)[0];
-      if (!next) return;
+      if (!next || this.cancelling.has(next.task.id)) return;
+      const job: Job = { taskId: next.task.id, interrupted: false, processes: new Set() };
+      this.jobs.set(workspace.id, job);
       try {
-        if (!await this.merge(next.item, next.task, workspace)) return;
+        if (!await this.context.run(job, () => this.merge(next.item, next.task, workspace))) return;
       } catch (error) {
-        if (this.live(next.task)) await this.feedback(next.item, next.task, String(error).slice(-65536), false);
+        if (!job.interrupted && this.live(next.task)) await this.feedback(next.item, next.task, String(error).slice(-65536), false);
+      } finally {
+        if (job.interrupted) {
+          await this.cleanIntegration(workspace);
+          const current = db.db.select().from(schema.tasks).where(eq(schema.tasks.id, next.task.id)).get();
+          const item = db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, next.item.id)).get();
+          // The ref update may have won the cancellation race. Record landed work.
+          if (current?.status === 'merged' && item) {
+            await this.cleanupMerged(current, workspace);
+            this.emit(current, item);
+          } else if (current?.status === 'merge-queue' && item && await this.landed(item, workspace)) {
+            await this.complete(item, current, workspace, item.commitSha!);
+          } else if (current?.status === 'merge-queue' && item && item.status !== 'conflict') {
+            this.change(item, current, { status: 'queued', commitSha: null, output: 'Merge interrupted; waiting to resume' });
+          }
+        }
+        this.jobs.delete(workspace.id);
       }
+      if (job.interrupted) return;
     }
   }
 
   private async git(cwd: string, ...args: string[]): Promise<string> {
-    return (await execa('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-      cwd, env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' },
-    })).stdout;
+    const job = this.context.getStore();
+    if (job?.interrupted || (job && this.isStopped())) throw new MergeInterrupted();
+    const process = execa('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
+      cwd, env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' }, detached: true,
+    });
+    job?.processes.add(process);
+    try { return (await process).stdout; }
+    finally { job?.processes.delete(process); }
+  }
+
+  // Recovery/cleanup commands run after the active process has been reaped.
+  private async cleanIntegration(workspace: Workspace): Promise<void> {
+    const integration = path.join(this.home, 'integration', workspace.id);
+    if (!fs.existsSync(integration)) return;
+    await this.git(integration, 'rebase', '--abort').catch(() => {});
+    await this.git(integration, 'reset', '--hard');
+    const removed = await this.git(integration, 'clean', '-fd');
+    if (removed) {
+      const dir = await this.git(integration, 'rev-parse', '--absolute-git-dir');
+      fs.rmSync(path.join(dir, 'crew-setup-complete'), { force: true });
+    }
+  }
+
+  private async landed(item: Item, workspace: Workspace): Promise<boolean> {
+    if (!item.commitSha) return false;
+    try { await this.git(workspace.repoPath, 'merge-base', '--is-ancestor', item.commitSha, `refs/heads/${workspace.defaultBranch}`); return true; }
+    catch { return false; }
+  }
+
+  private async recover(): Promise<void> {
+    const { db, worktreeManager } = this.options;
+    for (const item of db.db.select().from(schema.mergeQueueItems).all()) {
+      const task = db.db.select().from(schema.tasks).where(eq(schema.tasks.id, item.taskId)).get();
+      if (!task) continue;
+      const workspace = worktreeManager.getWorkspaceForBoard(task.boardId);
+      if (task.status === 'cancelled') { db.db.delete(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).run(); continue; }
+      if (task.status === 'merged') { await this.cleanupMerged(task, workspace); continue; }
+      if (task.status !== 'merge-queue') continue;
+      if (await this.landed(item, workspace)) { await this.complete(item, task, workspace, item.commitSha!); continue; }
+      if (item.status === 'failed') {
+        await this.feedback(item, task, item.output || 'Previous merge attempt failed; human retry required', false);
+        continue;
+      }
+      if (item.status === 'conflict') {
+        const child = item.conflictTaskId && db.db.select().from(schema.tasks).where(eq(schema.tasks.id, item.conflictTaskId)).get();
+        if (child) await this.reconcileParent(child.id, child.status);
+        continue;
+      }
+      if (['queued', 'rebasing', 'verifying', 'merging'].includes(item.status)) {
+        await this.cleanIntegration(workspace);
+        this.change(item, task, { status: 'queued', commitSha: null, output: 'Recovered merge attempt' });
+      }
+    }
+  }
+
+  private async cleanupMerged(task: Task, workspace: Workspace): Promise<void> {
+    await this.options.worktreeManager.removeWorktree(task);
+    if (task.branch && await this.git(workspace.repoPath, 'branch', '--list', task.branch)) {
+      await this.git(workspace.repoPath, 'branch', '-D', task.branch);
+    }
+  }
+
+  private async complete(item: Item, task: Task, workspace: Workspace, commitSha: string): Promise<void> {
+    await this.options.scheduler.transitionTask(task.id, 'merged', {
+      reason: `Merged ${commitSha}`,
+      alongside: () => this.options.db.db.update(schema.mergeQueueItems)
+        .set({ status: 'merged', commitSha, output: `Merged ${commitSha}` }).where(eq(schema.mergeQueueItems.id, item.id)).run(),
+    });
+    await this.cleanupMerged(task, workspace);
+    this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
   }
 
   private live(task: Task): boolean {
-    return !this.isStopped() && this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status === 'merge-queue';
+    return !this.isStopped() && !this.cancelling.has(task.id) && !this.context.getStore()?.interrupted && this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status === 'merge-queue';
   }
 
   private async checkoutBlocked(workspace: Workspace): Promise<boolean> {
@@ -159,6 +292,7 @@ export class MergeQueue {
       this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
       return false;
     }
+    if (!this.live(task)) return false;
     if (!task.branch) throw new Error('Merge task has no branch');
     const repo = workspace.repoPath;
     const ref = `refs/heads/${workspace.defaultBranch}`;
@@ -168,8 +302,9 @@ export class MergeQueue {
       fs.mkdirSync(path.dirname(integration), { recursive: true });
       await this.git(repo, 'worktree', 'add', '--detach', integration, old);
     }
+    await this.cleanIntegration(workspace);
     try {
-      await this.options.worktreeManager.setupWorktree(integration, workspace.config, `merge:${task.id}`);
+      await this.options.worktreeManager.setupWorktree(integration, workspace.config, `merge:${task.id}`, () => !this.live(task));
     } catch (error) {
       if (!this.live(task)) return false;
       await this.feedback(item, task, `Integration worktree setup failed: ${String(error)}`, false);
@@ -183,6 +318,7 @@ export class MergeQueue {
     try {
       await this.git(integration, '-c', `user.name=${userName || 'Crew'}`, '-c', `user.email=${userEmail || 'crew@localhost'}`, 'rebase', old);
     } catch (error) {
+      if (!this.live(task)) throw new MergeInterrupted();
       const files = (await this.git(integration, 'diff', '--name-only', '--diff-filter=U', '-z')).split('\0').filter(Boolean);
       await this.git(integration, 'rebase', '--abort');
       if (files.length) {
@@ -246,11 +382,13 @@ export class MergeQueue {
           return 'retry';
         }
         await this.hooks.beforeCheckoutMerge?.(task);
+        if (!this.live(task)) return false;
         await this.git(repo, 'merge', '--ff-only', commitSha);
       } else {
         await this.git(repo, 'update-ref', ref, commitSha, old);
       }
     } catch (error) {
+      if (!this.live(task)) throw new MergeInterrupted();
       if (await this.checkoutBlocked(workspace)) {
         this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
         return false;
@@ -259,14 +397,8 @@ export class MergeQueue {
       this.change(item, task, { status: 'queued', commitSha: null, output: 'Default branch moved; rebasing again' });
       return 'retry';
     }
-    await this.options.scheduler.transitionTask(task.id, 'merged', {
-      reason: `Merged ${commitSha}`,
-      alongside: () => this.options.db.db.update(schema.mergeQueueItems)
-        .set({ status: 'merged', commitSha, output: `Merged ${commitSha}` }).where(eq(schema.mergeQueueItems.id, item.id)).run(),
-    });
-    await this.options.worktreeManager.removeWorktree(task);
-    await this.git(repo, 'branch', '-D', task.branch);
-    this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
+    if (!this.live(task)) return false;
+    await this.complete(item, task, workspace, commitSha);
     return true;
   }
 

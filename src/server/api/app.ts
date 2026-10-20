@@ -523,18 +523,27 @@ export function createApp(ctx: AppContext): Hono {
     const taskId = c.req.param('id');
     const task = loadTask(taskId);
 
-    // Stop the agent first so it isn't left running in a worktree that is about to be removed
-    let updatedTask;
-    try {
-      await ctx.worktreeManager?.cancelSetup(task.id);
-      await ctx.verifier?.cancelTask(task.id);
-      await ctx.runner?.killTaskRun(task.id, 'cancelled');
-      updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
-        reason: 'Cancelled by human',
-      });
-    } finally {
-      ctx.runner?.endCancel(task.id);
-    }
+    const cancel = async (id: string): Promise<typeof schema.tasks.$inferSelect> => {
+      const child = ctx.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, id)).get()?.conflictTaskId;
+      try {
+        await ctx.mergeQueue?.cancelTask(id);
+        // A ref update that won the race is a completed merge, not lost work.
+        if (loadTask(id).status === 'merged') return loadTask(id);
+        await ctx.worktreeManager?.cancelSetup(id);
+        await ctx.verifier?.cancelTask(id);
+        await ctx.runner?.killTaskRun(id, 'cancelled');
+        const updated = await ctx.scheduler.transitionTask(id, 'cancelled', {
+          reason: 'Cancelled by human',
+          alongside: () => ctx.db.db.delete(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, id)).run(),
+        });
+        if (child && !['merged', 'cancelled'].includes(loadTask(child).status)) await cancel(child);
+        return updated;
+      } finally {
+        ctx.runner?.endCancel(id);
+        ctx.mergeQueue?.endCancel(id);
+      }
+    };
+    const updatedTask = await cancel(task.id);
 
     return c.json({ success: true, status: updatedTask.status });
   });
@@ -556,11 +565,12 @@ export function createApp(ctx: AppContext): Hono {
     // 1. Pause dispatcher
     ctx.dispatcher?.setStopped(true);
 
-    await ctx.worktreeManager?.stopAllSetup();
-
-    // 2. Stop verifier pipelines and active verify commands
-    await ctx.verifier?.stopAll();
-    await ctx.mergeQueue?.stopAll();
+    // Mark the merge worker interrupted before setup cancellation can finish its job.
+    await Promise.all([
+      ctx.mergeQueue?.stopAll(),
+      ctx.worktreeManager?.stopAllSetup(),
+      ctx.verifier?.stopAll(),
+    ]);
 
     // 3. Kill all live runs with exitReason: 'stopped'
     const stoppedRuns = ctx.runner ? await ctx.runner.killAll('stopped') : 0;

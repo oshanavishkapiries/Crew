@@ -23,7 +23,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Migrations / ORM | `drizzle-orm`, `drizzle-kit` | 0.45.4 / 0.31.11 | Schema and migrations |
 | Processes | `execa` | 10.2.0 | Spawning agents (structured JSON events, D5), verify commands and worktree setup (D45; shared command runner, 10 minute default timeout) |
 | Path matching | `picomatch` | 4.0.7 | Path filter glob matching for command gates (D37) |
-| Git | git CLI wrapper | — | Worktrees, rebase, squash and compare-and-swap ref updates. Crew worktree/verification/merge housekeeping disables hooks; no libgit bindings |
+| Git | git CLI wrapper | — | Worktrees, rebase, squash and compare-and-swap ref updates. Crew worktree/verification/merge housekeeping disables hooks; merge Git subprocesses use detached process groups that stop-all/cancel kill and await; no libgit bindings |
 | Build / Dev runner | `tsup`, `tsx` | 9.0.0 / 4.23.15 | Bundling to `dist/cli.js` and running dev scripts |
 | UI | Vite + React | — | Board UI, built at package time and served by the crew server |
 | Live updates | Server-Sent Events | — | No WebSockets |

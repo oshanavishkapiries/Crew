@@ -101,3 +101,29 @@ it('rejects an empty diff after the agent drops all conflicted changes', async (
   await h.waitForTaskStatus('b', 'escalated');
   expect(h.getVerificationResults(item.conflictTaskId!).find(r => r.step === 'diff')).toMatchObject({ passed: false, output: 'no changes against main' });
 });
+
+it.each(['parent', 'child'] as const)('cancels a conflict %s while its child is running, kills the child and preserves the shared branch', async target => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await pair();
+  const item = await conflict();
+  const childId = item.conflictTaskId!;
+  h.fakeAdapter.setScript([{ type: 'sleep', durationMs: 60000 }]);
+  h.dispatcher.start();
+  await h.waitForLiveRuns(1);
+  const child = h.getTask(childId)!;
+  const pid = h.runner.getLiveRuns()[0].pid!;
+  expect((await h.runCrew(['cancel', target === 'parent' ? 'b' : childId])).exitCode).toBe(0);
+  if (target === 'child') await h.waitForTaskStatus('b', 'escalated');
+  expect(() => process.kill(pid, 0)).toThrow();
+  expect(h.getTask('b')?.status).toBe(target === 'parent' ? 'cancelled' : 'escalated');
+  expect(h.getTask(childId)?.status).toBe('cancelled');
+  expect(h.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, childId)).get()).toBeUndefined();
+  const parentItem = h.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, 'b')).get();
+  if (target === 'parent') expect(parentItem).toBeUndefined();
+  else expect(parentItem?.status).toBe('failed');
+  expect(await git('branch', '--list', child.branch!)).toContain(child.branch);
+  expect(await git('worktree', 'list', '--porcelain')).not.toContain(child.worktreePath!);
+  expect(h.getTask('dependent')?.status).toBe('todo');
+  await h.dispatcher.dispatchOnce();
+  expect(h.runner.getLiveRuns()).toHaveLength(0);
+});
