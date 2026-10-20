@@ -1,9 +1,10 @@
+import { buildPrompt, type ReviewContext } from '../memory/prompt.js';
 import { commandPrefixes, type ProjectConfig } from '../project-config.js';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { sql, eq, desc, asc, and } from 'drizzle-orm';
+import { sql, eq, desc, and } from 'drizzle-orm';
 import { execa, type ResultPromise } from 'execa';
 import type { AgentAdapter, AgentEvent, PermissionProfile } from '../../adapters/types.js';
 import { ClaudeCodeAdapter } from '../../adapters/claude-code.js';
@@ -143,6 +144,8 @@ export interface StartRunOptions {
   agentId?: string;
   adapter?: AgentAdapter;
   prompt?: string;
+  fallback?: boolean;
+  reviewContext?: ReviewContext;
   resumedFromRunId?: string;
   sessionId?: string;
   isResume?: boolean;
@@ -326,42 +329,10 @@ export class Runner extends EventEmitter {
     const configuredRole = projectConfig.roles?.[role?.name || ''];
     const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
 
-    // Check for feedback messages on this task (user stories 49, 78, 79, 91, D33)
-    const feedbackMessages = this.db.db
-      .select()
-      .from(schema.messages)
-      .where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'feedback')))
-      .orderBy(asc(schema.messages.createdAt))
-      .all();
-
-    let feedbackSection = '';
-    if (feedbackMessages.length > 0) {
-      const latest = feedbackMessages[feedbackMessages.length - 1];
-      const earlier = feedbackMessages.slice(0, -1);
-      const parts = [`Latest verification feedback:\n${latest.body}`];
-      if (earlier.length > 0) {
-        const earlierList = earlier.map((f, i) => `- Attempt ${i + 1}: ${f.body}`).join('\n');
-        parts.push(`Earlier failure attempts:\n${earlierList}`);
-      }
-      parts.push(
-        'Please address the feedback above, fix the problems, commit your changes, and call crew done again.'
-      );
-      feedbackSection = parts.join('\n\n');
-    }
-
-    // Default prompt if not provided
-    const prompt =
-      options.prompt ||
-      [
-        configuredRole?.defaultPrompt || role?.defaultPrompt || '',
-        agent.personality ? `Persona: ${agent.personality}` : '',
-        `Task: ${task.title}`,
-        task.description ? `Description: ${task.description}` : '',
-        task.acceptanceCriteria ? `Acceptance Criteria: ${task.acceptanceCriteria}` : '',
-        feedbackSection,
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+    const prompt = await buildPrompt(this.db, {
+      task, agent, kind: options.kind, instructions: options.prompt,
+      fallback: options.fallback, reviewContext: options.reviewContext,
+    });
 
     // Prepend crew shim to PATH
     const shimBinDir = ensureCrewShim(this.crewHome);
@@ -666,11 +637,10 @@ export class Runner extends EventEmitter {
         // Handle fallback if resume failed
         if (exitReason === 'resume-failed' && updatedTask?.status === 'doing') {
           try {
-            const fallbackPrompt = await this.buildFallbackPrompt(task);
             this.startRun({
               taskId: task.id,
               agentId,
-              prompt: fallbackPrompt,
+              fallback: true,
             }).catch(() => {});
           } catch {
             // ignore
@@ -737,63 +707,6 @@ export class Runner extends EventEmitter {
     this.serverUrl = url;
   }
 
-  async buildFallbackPrompt(task: typeof schema.tasks.$inferSelect): Promise<string> {
-    const agent = task.assigneeAgentId
-      ? this.db.db.select().from(schema.agents).where(eq(schema.agents.id, task.assigneeAgentId)).get()
-      : undefined;
-    const role = agent
-      ? this.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get()
-      : undefined;
-
-    const parts: string[] = [];
-    if (role?.defaultPrompt) parts.push(role.defaultPrompt);
-    if (agent?.personality) parts.push(`Persona: ${agent.personality}`);
-    parts.push(`Task: ${task.title}`);
-    if (task.description) parts.push(`Description: ${task.description}`);
-    if (task.acceptanceCriteria) parts.push(`Acceptance Criteria: ${task.acceptanceCriteria}`);
-
-    // Q&A so far
-    const messages = this.db.db
-      .select()
-      .from(schema.messages)
-      .where(eq(schema.messages.taskId, task.id))
-      .orderBy(asc(schema.messages.createdAt))
-      .all();
-
-    const qaMessages = messages.filter((m) => m.type === 'question' || m.type === 'answer');
-    if (qaMessages.length > 0) {
-      parts.push('Questions and Answers:');
-      for (const msg of qaMessages) {
-        if (msg.type === 'question') {
-          parts.push(`Question: ${msg.body}`);
-        } else if (msg.type === 'answer') {
-          parts.push(`Answer: ${msg.body}`);
-        }
-      }
-    }
-
-    // Worktree git diff --stat
-    const workDir = task.worktreePath || process.cwd();
-    try {
-      await execa('git', ['add', '-N', '.'], { cwd: workDir, reject: false });
-      const diffResult = await execa('git', ['diff', '--stat', 'HEAD'], { cwd: workDir, reject: false });
-      const statusResult = await execa('git', ['status', '--short'], { cwd: workDir, reject: false });
-      const summaries: string[] = [];
-      if (diffResult.stdout?.trim()) {
-        summaries.push(diffResult.stdout.trim());
-      } else if (statusResult.stdout?.trim()) {
-        summaries.push(statusResult.stdout.trim());
-      }
-      if (summaries.length > 0) {
-        parts.push(`Worktree git diff --stat summary:\n${summaries.join('\n')}`);
-      }
-    } catch {
-      // ignore
-    }
-
-    return parts.join('\n\n');
-  }
-
   async resumeTask(taskId: string, answer?: string): Promise<ActiveRun> {
     const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
     if (!task) throw new Error(`Task not found: ${taskId}`);
@@ -850,11 +763,10 @@ export class Runner extends EventEmitter {
       })
       .run();
 
-    const fallbackPrompt = await this.buildFallbackPrompt(task);
     return await this.startRun({
       taskId: task.id,
       agentId,
-      prompt: fallbackPrompt,
+      fallback: true,
     });
   }
 

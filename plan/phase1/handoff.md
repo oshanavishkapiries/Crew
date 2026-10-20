@@ -1,3 +1,15 @@
+# Milestone 5 bullet 3 handoff
+
+Status: bullets 0–3 implemented and verified (217 tests across 39 files). Stop here as requested; next session starts at bullet 4. Bullets 4–9 are not started and milestone 5 is not done. No milestone 5 smoke or real Claude permission fixture has been written/run this session.
+
+`memory/prompt.ts` is the single prompt builder. Runner default, additional instructions, session resume and both fresh-process fallback paths use it; Verifier supplies raw diff/results instead of assembling a Reviewer prompt. The builder applies workspace role overrides, persona/system prompt, scoped memory and task context with a character/4 budget. Lower relevance and then older entries are dropped; persona, task/criteria, current feedback and run instructions remain even if they exceed the budget. Git discovery is read-only with hooks disabled. See §9 for the exact ranking/protected-budget policy. A seeded phase task proves prompt assembly only; phase lifecycle and gates remain unimplemented.
+
+Seven new injection tests assert the text emitted by the fake adapter, not just stored prompt rows. All seven failed before implementation. They cover relevance/recency trimming, protected overflow, role/task/workspace privacy, real verification Reviewer context, configured fresh-process fallback memory/Q&A/Git/feedback, phase-task instructions, and parent/completed-blocker/history context. Focused ask/resume/review/injection run: 14 passed; final injection rerun: 7 passed. Final `rm -r dist && npm test`: typecheck/build and 217 tests across 39 files passed (268.77s). One own-diff read per bullet, commands docs regenerated, no new dependencies/migrations in bullets 2–3, no additional mutation checks. D28 and the PRD Decision Log untouched; nothing pushed.
+
+Next: bullet 4 phase engine and real Claude Code output-file permission fixture; then 5–8 workflow/interruption/polish and 9 smoke script only. Integrate promotion auth currently uses a Scheduler-seeded live phase context. Phase failure/retry, gate races and full workflow have not been tested because those slices are not implemented.
+
+---
+
 # Milestone 5 bullet 2 handoff
 
 Status: bullets 0–2 implemented and verified; bullets 3–9 remain. Milestone 5 is not done. Memory CRUD, role-scoped agent learning, scoped reads and explicit atomic promotion are implemented through the API and real CLI. Entries record human/agent sources; promotion traces the original entry and stamps both rows. Only a live integrate Orchestrator can promote as an agent; the phase context is seeded in the harness until bullet 4. See §9 for API/CLI details and provenance policy. No migration, dependencies, PRD Decision Log or D28 changes.

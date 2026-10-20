@@ -1,4 +1,3 @@
-import type { ProjectConfig } from '../project-config.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -501,13 +500,6 @@ export class Verifier {
       .where(eq(schema.tasks.id, task.id))
       .run();
 
-    // Build Reviewer prompt (role prompt, title, description, criteria, git diff, earlier verification results)
-    const reviewerRole = this.db.db
-      .select()
-      .from(schema.roles)
-      .where(eq(schema.roles.id, reviewer.roleId))
-      .get();
-
     let gitDiff = '';
     try {
       const baseBranch = workspace?.defaultBranch || 'main';
@@ -529,19 +521,6 @@ export class Verifier {
       .where(eq(schema.verificationResults.runId, lastRun.id))
       .all();
     const earlierResultsText = vrs.map((r) => `- ${r.step}: ${r.passed ? 'passed' : 'failed'}`).join('\n');
-
-    const reviewerPrompt = [
-      (workspace?.config as ProjectConfig | undefined)?.roles?.[reviewerRole?.name || 'reviewer']?.defaultPrompt || reviewerRole?.defaultPrompt || 'You are a code reviewer. Review the changes against the acceptance criteria.',
-      reviewer.personality ? `Persona: ${reviewer.personality}` : '',
-      `Task: ${task.title}`,
-      task.description ? `Description: ${task.description}` : '',
-      task.acceptanceCriteria ? `Acceptance Criteria: ${task.acceptanceCriteria}` : '',
-      gitDiff ? `Git diff against ${workspace?.defaultBranch || 'main'}:\n\`\`\`diff\n${gitDiff}\n\`\`\`` : '',
-      earlierResultsText ? `Earlier verification results:\n${earlierResultsText}` : '',
-      'Review the changes against the acceptance criteria. When done, call crew review approve or crew review changes --feedback "<what to change>".',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
 
     // Reviewer run loop: up to 2 runs in total (D35)
     const MAX_REVIEW_RUNS = 2;
@@ -572,7 +551,7 @@ export class Verifier {
 
       const runResult = await this.runner.runTask(task.id, {
         agentId: reviewer.id,
-        prompt: reviewerPrompt,
+        reviewContext: { diff: gitDiff, baseBranch: workspace?.defaultBranch || 'main', results: earlierResultsText },
         kind: 'review',
       });
 

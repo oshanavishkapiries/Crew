@@ -2,11 +2,11 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–2 implemented and verified (210 tests across 38 files). Bullets 3–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–3 implemented and verified (217 tests across 39 files). Bullets 4–9 and the manual smoke remain. Milestone 5 is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
-Memory storage and scoped CRUD/promotion live in `src/server/memory/index.ts`; `src/cli/commands/memory.ts` implements human curation and agent learning. `test/harness/memory.test.ts` exercises the API through the real CLI and role boundaries.
+Memory storage and scoped CRUD/promotion live in `src/server/memory/index.ts`; `memory/prompt.ts` is the shared budgeted builder for work, review, phase-task and fallback/resume prompts; `src/cli/commands/memory.ts` implements human curation and agent learning. `test/harness/memory.test.ts` exercises the API through the real CLI and role boundaries; `memory-injection.test.ts` asserts actual fake-adapter prompt text, budget trimming and privacy.
 
 ## Tree
 
