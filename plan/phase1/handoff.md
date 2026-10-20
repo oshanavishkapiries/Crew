@@ -2,7 +2,7 @@
 
 Status: milestone 4 is done. Bullets 0–8 are implemented on `feat/milestone-4-merge` and merged into `main`. `npm run smoke:m4` passed on 2026-10-20 with real Claude Code authors, a real Reviewer and a real conflict sub-task (alpha merged, beta conflicted, the sub-task resolved it, `main` has both commits, the queue is empty). The §9 proposals are logged as D47–D55. D28 is still open. `rm -r dist && npm test` passes 175 tests across 35 files. Nothing is pushed.
 
-Next: milestone 5 (memory and workflow, then the private preview). It needs `crew init`, `crew.config.ts` loading, an HTTP endpoint to create tasks, and test commands for the standard role profile. Follow-ups noted in D54: simplify the checkout transaction and make its ignored-file check cheaper. The smoke role uses `mode: full`, so the conflict-only git permissions are covered only by the adapter contract test.
+Next: milestone 5 (memory and workflow, then the private preview); the plan in `milestone-5.md` is approved (D56–D65) and starts at bullet 0. It needs `crew init`, `crew.config.ts` loading, an HTTP endpoint to create tasks, and test commands for the standard role profile. Follow-ups noted in D54: simplify the checkout transaction and make its ignored-file check cheaper. The smoke role uses `mode: full`, so the conflict-only git permissions are covered only by the adapter contract test.
 
 Earlier handoff notes follow, newest first.
 

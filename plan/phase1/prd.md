@@ -4,7 +4,7 @@ Source: `docs/Crew Design Doc.md`. Phase 1 is the whole first public release (bu
 
 ## Decision Log
 
-Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19, D27, proposed by the implementing agent and approved by the user, D29–D37, which Claude proposed in `milestone-3.md` and the user approved on 2026-10-19, and D38–D46, which Claude proposed in `milestone-4.md` and the user approved on 2026-10-20, and D47–D55, proposed by the implementing agent in `milestone-4.md` §9 and approved by the user on 2026-10-20. (D28, an optional budget cap on the Claude Code adapter, is still waiting for a decision.) Each is referenced in the text below by its ID.
+Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19, D27, proposed by the implementing agent and approved by the user, D29–D37, which Claude proposed in `milestone-3.md` and the user approved on 2026-10-19, and D38–D46, which Claude proposed in `milestone-4.md` and the user approved on 2026-10-20, and D47–D55, proposed by the implementing agent in `milestone-4.md` §9 and approved by the user on 2026-10-20, and D56–D65, which Claude proposed in `milestone-5.md` and the user approved on 2026-10-20. (D28, an optional budget cap on the Claude Code adapter, is still waiting for a decision.) Each is referenced in the text below by its ID.
 
 - **user**: the user decided it directly.
 - **Claude-decided**: Claude recommended it, and the user accepted all remaining recommendations in advance. These are agreed but open to veto: review them first.
@@ -65,6 +65,16 @@ Decisions from the grilling session on 2026-10-18, plus later ones: D20 from mil
 | D53 | When a human retries an escalated conflict parent, the deepest inactive conflict sub-task's worktree moves to the parent with `git worktree move`, keeping uncommitted files, because git allows one checkout of a branch. | user |
 | D54 | Replaces the plain `git merge --ff-only` in D39 for a clean default checkout. Crew prepares a `git update-ref --stdin` transaction that locks HEAD, checks HEAD still names the default branch, fast-forwards files with `git read-tree -m -u` through a private index, publishes the index while HEAD is locked, then commits the ref. A journal lets a restart finish an interrupted publish. A foreign index or HEAD lock, or an ignored file that an incoming file would overwrite, pauses the queue and never overwrites user bytes. Verified with Git 2.53.0; Crew refuses to write if git does not lock HEAD. Follow-up: simplify this and make the ignored-file check cheaper. | user |
 | D55 | Stop-all and cancel kill rebase, verify and setup processes, but once the protected checkout publication of D54 has started it finishes its index and ref transaction first, so a stop never leaves a half-updated checkout. If its ref landed, the task is recorded as merged (D52). | user |
+| D56 | `crew.config.ts` is loaded when `crew start` runs and copied into `workspaces.config`; the file wins on every start, and a broken file stops start with a message that names the line. The loader is `jiti`, pinned. | user |
+| D57 | `crew init` creates the workspace, a board, the built-in roles, a default Claude Code team (one orchestrator, two developers, one reviewer) and a commented `crew.config.ts`. Running it twice changes nothing. | user |
+| D58 | The config has `permissions.allowCommands`, a list of command prefixes (for example `npm test`) added to the allow-list of roles that edit code. It can never allow `git push`. This closes the gap that the `standard` profile could not run tests. | user |
+| D59 | `POST /api/tasks`, `crew ticket create` and `crew assign` are open to the Orchestrator and to humans only; any other agent token gets 403. At most 20 tickets can be created per phase. | user |
+| D60 | Each Orchestrator phase run is a task with `tasks.kind = 'phase'` (migration `0004`). It goes through the normal dispatcher and runner, in a throwaway worktree with the orchestrator profile, and ends with `crew phase done --output <file>`, which stores a draft PhaseOutput and moves the task `doing → merged`. Only phase tasks may take that transition; they have no diff gate, review or merge. | user |
+| D61 | Gates after grill, spec, tickets and integrate are on by default and can be switched off per phase in the config. `crew approve [--edit <file>]` approves a draft and starts a fresh phase run for the next phase; `crew approve --reject --note "..."` runs the same phase again with the note in its prompt. | user |
+| D62 | Memory injection estimates tokens as characters divided by 4, uses a default budget of 8k, and drops entries by relevance to the task first, then by age. The persona, the task itself and current feedback are never dropped. One prompt builder serves work, review, phase and fallback prompts. | user |
+| D63 | `crew remember` writes role memory with source `agent:<id>`. Promotion to project memory is explicit (`crew memory promote`, or by the Orchestrator during integrate) and records `promotedAt`. | user |
+| D64 | A phase run that fails, hangs or crashes escalates like a work task, and `crew retry` recovers it. The board stays in that phase, and a draft gate output survives a restart. | user |
+| D65 | The dispatch phase has no Orchestrator process: Crew assigns each ticket to an idle agent of its role and the phase ends when every ticket is terminal. Worker questions go to the human through `crew answer`. | user |
 
 ## Problem Statement
 
@@ -361,6 +371,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 - `merge-queue → merged` after rebase, re-verify and merge succeed. On conflict, a "rebase + resolve" sub-task is created for the same role and linked from the MergeQueueItem; when it is merged, the original task is `merged` too (D41, user).
 - `merge-queue → doing` when re-verification of the rebased code fails, with feedback attached and `retries` incremented (D42, user).
 - `escalated → doing` only by a human, through `crew retry` (D44, user).
+- `doing → merged` for a phase task (`tasks.kind = 'phase'`) on `crew phase done`, with no verification or merge; no work task may take it (D60, user).
 - `doing → blocked` on `crew ask`: the agent's process ends. `blocked → doing` on answer: the runner resumes the same session, or falls back to a fresh process with task context, the Q&A and a summary of the current diff (D4, user).
 - A rate-limited run pauses its task without changing `retries` (D7, Claude-decided).
 - A run that times out, goes silent or exits without `crew done` or `crew ask` counts as one retry, and the task is re-dispatched (D22, user). Runs ended by stop-all, a rate limit or a failed resume don't count.
@@ -376,7 +387,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | Board | id, workspaceId, currentPhase |
 | Role | id, name, defaultPrompt, permissionProfile, isBuiltin |
 | Agent | id, workspaceId, roleId, name, personality, systemPrompt, cliType, mode (spawn / pull), status, lastHeartbeatAt, tokenHash (D13, Claude-decided) |
-| Task | id, boardId, title, description, acceptanceCriteria, status, assigneeAgentId, reviewerAgentId (D34, user), roleId, createdBy, parentTaskId, depth, retries, branch, worktreePath |
+| Task | id, boardId, title, description, acceptanceCriteria, status, assigneeAgentId, reviewerAgentId (D34, user), kind (work / phase, D60, user), roleId, createdBy, parentTaskId, depth, retries, branch, worktreePath |
 | TaskDependency | taskId, blockedByTaskId |
 | Run | id, taskId, agentId, adapter, pid, sessionId (D6, Claude-decided), resumedFromRunId (D4, user), startedAt, endedAt, exitCode, exitReason (D21, user), kind (work / review, D34, user), logPath |
 | VerificationResult | id, runId, step (diff, review, or the name of a verify command), passed, output |
@@ -392,14 +403,14 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | `POST /api/agents/join` | Agent identity, persona, workDir and memory from a token |
 | `GET /api/agents/:id/next-task?wait=90` | Long-poll (Pull mode) |
 | `POST /api/agents/:id/heartbeat` | Pull mode heartbeat |
-| `POST /api/tasks` | Creates a task / ticket (with dependencies and criteria) |
+| `POST /api/tasks` | Creates a task / ticket (with dependencies and criteria); Orchestrator or human only (D59, user) |
 | `POST /api/tasks/:id/report` | Progress |
 | `POST /api/tasks/:id/question` | Publishes a question |
 | `POST /api/tasks/:id/answer` | Answer from the Board; agent resumes |
 | `POST /api/tasks/:id/done` | Starts the verification pipeline |
 | `POST /api/tasks/:id/review` | The Reviewer's verdict: approve, or changes with feedback. Only the task's current reviewer may call it (D34, user) |
 | `POST /api/memory` / `PATCH /api/memory/:id` | Save / promote / edit memory |
-| `GET /api/boards/:id/phase` / `POST /api/boards/:id/phase/approve` | Workflow phases |
+| `GET /api/boards/:id/phase` / `POST /api/boards/:id/phase/approve` | Workflow phases; approve takes an optional edit or a rejection note (D61, user) |
 | `GET /api/runs/:id/stream` | Live agent event stream (D5, Claude-decided) |
 | `GET /api/tasks/:id/diff` | Live git diff |
 | `GET /api/tasks` | Lists tasks and states (Board and `crew tasks`) (D16, Claude-decided) |
@@ -416,7 +427,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 ### Configuration
 
-- `crew.config.ts` holds verify commands, roles, limits (max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy. Until `crew.config.ts` loading lands in milestone 5, `mergeStrategy` (D40, user) and an optional `worktreeSetup` shell command (D45, user) are read from the workspace's stored config, like the verify commands.
+- `crew.config.ts` holds verify commands, roles, limits (max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy. `crew.config.ts` is loaded by `crew start` and copied into the workspace's stored config (D56, user); it also holds `permissions.allowCommands` (D58, user) and the workflow's gate toggles (D61, user). Until that lands in milestone 5, `mergeStrategy` (D40, user) and an optional `worktreeSetup` shell command (D45, user) are read from the workspace's stored config, like the verify commands.
 - Verify commands are a named list. Each entry has a command, an optional working directory, a timeout (default 10 minutes), and optional path globs (matched with `picomatch`, D37). Until `crew.config.ts` loading lands in milestone 5, they are read from the workspace's stored config (D29, user). They run through a shell, because they are written by the user in their own config; an entry with globs runs only when the task's changed files match them. During merge-queue re-verification, every entry matching the rebased diff runs again (D10, Claude-decided).
 - Defaults: max parallel verification pipelines 2 (D37, user), max parallel agents 3, max retries 3, max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20 (D24, user), squash merge, long-poll wait 90 seconds, memory injection budget about 8k tokens (D15, Claude-decided), rate-limit backoff from 1 minute doubling up to 30 minutes (D7, Claude-decided).
 
@@ -461,13 +472,14 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 - Injection stays within a configurable budget, about 8k tokens by default: project summary, then role memory, then task context.
 - The Orchestrator rewrites the project summary when the spec is approved and during integrate.
-- Anything over the budget is trimmed by relevance to the task first, then by recency.
+- Anything over the budget is trimmed by relevance to the task first, then by recency. Tokens are estimated as characters divided by 4; persona, task and feedback are never dropped (D62, user). Role memory comes from `crew remember` and reaches project memory only by explicit promotion (D63, user).
 
 ### Human gates and Orchestrator lifecycle
 
-- At a human gate the Orchestrator process ends. The phase output is stored as a draft PhaseOutput.
+- Each phase run is a task of kind `phase` (D60, user). Gates are on by default and configurable (D61, user). At a human gate the Orchestrator process ends. The phase output is stored as a draft PhaseOutput.
 - On approval (after optional edits on the Board), the output goes into project memory and a fresh Orchestrator process is spawned for the next phase.
 - Approvals and edits can be done on the Board or with the human CLI commands (D2, user).
+- The dispatch phase has no Orchestrator process (D65, user), and a failed phase run is recovered with `crew retry` (D64, user).
 - In the grill phase, the Orchestrator asks one question per `crew ask`, and each answer resumes it per the `crew ask` flow (D9, Claude-decided).
 
 ### Release and preview (D1, user)
