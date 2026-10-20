@@ -1,4 +1,4 @@
-# Handoff: Crew Phase 1 — Milestones 1, 2, and 3 done, Milestone 4 next
+# Handoff: Crew Phase 1 — Milestones 1 to 3 done, Milestone 4 planned
 
 ## Where things stand
 
@@ -45,6 +45,5 @@ The script will:
 
 ## Next steps
 
-- User runs `npm run smoke:m3` and inspects results.
-- Merge `feat/milestone-3-verification` to `main`.
-- Plan and implement Milestone 4: Merge Queue and Rebase (`merge-queue → merged`).
+- Milestones 1 to 3 are done and on `main`; both milestone 3 smoke runs are recorded above.
+- Milestone 4 (Merge): `plan/phase1/milestone-4.md` is approved and logged as D38–D46. Start at tracer bullet 0 (worktree setup). D28 (the optional budget cap on the Claude Code adapter) is still open.

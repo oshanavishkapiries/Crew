@@ -4,7 +4,7 @@ Source: `docs/Crew Design Doc.md`. Phase 1 is the whole first public release (bu
 
 ## Decision Log
 
-Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19, D27, proposed by the implementing agent and approved by the user, and D29–D37, which Claude proposed in `milestone-3.md` and the user approved on 2026-10-19. (D28, an optional budget cap on the Claude Code adapter, is still waiting for a decision.) Each is referenced in the text below by its ID.
+Decisions from the grilling session on 2026-10-18, plus later ones: D20 from milestone 1, D21–D26, which Claude proposed in `milestone-2.md` and the user approved on 2026-10-19, D27, proposed by the implementing agent and approved by the user, D29–D37, which Claude proposed in `milestone-3.md` and the user approved on 2026-10-19, and D38–D46, which Claude proposed in `milestone-4.md` and the user approved on 2026-10-20. (D28, an optional budget cap on the Claude Code adapter, is still waiting for a decision.) Each is referenced in the text below by its ID.
 
 - **user**: the user decided it directly.
 - **Claude-decided**: Claude recommended it, and the user accepted all remaining recommendations in advance. These are agreed but open to veto: review them first.
@@ -47,6 +47,15 @@ Decisions from the grilling session on 2026-10-18, plus later ones: D20 from mil
 | D35 | A Reviewer that ends without a verdict is re-run, up to 2 runs in total, then the task is escalated. The author is not charged a retry. | user |
 | D36 | The Claude Code Stop hook is a Crew-written `--settings` file (no repo files). It blocks stopping only while the task is `doing`, at most 2 times per run, and is off by default. | user |
 | D37 | Up to 2 verification pipelines run in parallel, and path globs are matched with `picomatch` (pinned). | user |
+| D38 | Merges happen in a detached integration worktree, one queue item at a time per workspace: rebase onto the default branch, re-verify, then squash and move the ref. Crew's own git commands run with hooks off. | user |
+| D39 | The default branch moves in one of three ways: update the ref when the user's checkout is on another branch or detached, fast-forward inside the user's checkout when it is on the default branch with no changes at all, and pause the queue with a warning (never fail, never touch files) when it is on the default branch with any change. The check is re-run every 5 seconds and right before the ref moves. | user |
+| D40 | Merge strategies are `squash` (default) and `rebase`. Plain merge commits are not supported in Phase 1. | user |
+| D41 | A conflict creates a "rebase + resolve" sub-task for the same role. It continues the same branch in a new worktree, goes through the whole pipeline and merge queue, and when it is merged the original task becomes `merged` too. If it would exceed the depth limit, or is escalated or cancelled, the original task is escalated. | user |
+| D42 | A re-verify failure on the rebased code returns the task to `doing` (`merge-queue → doing`) with feedback and uses a retry. Exhausted retries escalate from `merge-queue`. | user |
+| D43 | After a merge, the task's worktree is removed and its branch is deleted with `git branch -D`. A cancelled task keeps its branch. | user |
+| D44 | `crew retry <task>` lets a human restart an `escalated` task: `escalated → doing`, retries reset to 0, optional note stored as feedback. Only a human can leave `escalated`. | user |
+| D45 | An optional `worktreeSetup` command (for example `npm ci`) runs once in every new task or integration worktree. A failing setup escalates the task. | user |
+| D46 | Merge queue items store the merge commit (`commitSha`) and an `output`. On restart, in-flight items go back to `queued`, and a merge that already reached the default branch is completed instead of repeated. | user |
 
 ## Problem Statement
 
@@ -275,7 +284,7 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 
 ### Modules
 
-- **CLI:** human commands (`start`, `init`, `stop-all`, `resume` (D23, user), `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided), plus `results <task>` for verification results; final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `review approve|changes` (Reviewer only, D34), `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user). They find the running server and its per-start secret through `~/.crew/server.json` (D25, user).
+- **CLI:** human commands (`start`, `init`, `stop-all`, `resume` (D23, user), `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided), plus `results <task>` for verification results, `queue` for the merge queue and `retry <task>` to restart an escalated task (D44); final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `review approve|changes` (Reviewer only, D34), `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user). They find the running server and its per-start secret through `~/.crew/server.json` (D25, user).
 - **Commands reference:** every command's name, arguments, flags and help text are declared once. Both `--help` and the commands reference document are generated from those declarations, and handwritten examples sit around the generated parts (D3, user).
 - **API:** REST + SSE endpoints (contract below). Validates input, enforces role permissions (Orchestrator-only commands), and drives the other modules.
 - **DB:** schema and migrations for the full data model below.
@@ -283,7 +292,7 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 - **Runner:** spawns adapter commands as child processes (D5, Claude-decided), parses their structured events through the adapter, streams them to the event bus and a log file, records each Run's session ID (D6, Claude-decided), resumes or respawns blocked tasks after an answer (D4, user), enforces max runtime and no-output timeouts, kills processes, records Runs with an exit reason (D21, user).
 - **Worktree manager:** creates `crew/<task-id>-<slug>` branches and worktrees under the Crew home directory per workspace (D12, Claude-decided), cleans them up on merged/cancelled, and runs gc for abandoned ones.
 - **Verify:** runs the gate pipeline (diff → commands → review) and stores a VerificationResult per step. Up to 2 pipelines run at once (D37, user). Failures are stored as feedback messages and included in the next run's prompt (D33, user). Plan: `milestone-3.md`.
-- **Merge:** merge queue processed one item at a time: rebase onto latest default branch, re-run verify commands, merge with the configured strategy (squash by default), create conflict sub-tasks on rebase conflict. Merges run in an internal integration worktree and only ever target the local default branch; Crew never pushes. After a merge, the default branch ref is updated only if the user's own checkout isn't on that branch, or is on it and clean (then fast-forwarded). Otherwise the queue pauses and a warning is shown on the Board and in `crew status` (D11, Claude-decided).
+- **Merge:** merge queue processed one item at a time per workspace: rebase onto latest default branch, re-run verify commands, merge with the configured strategy (`squash` by default, or `rebase`, D40), create conflict sub-tasks on rebase conflict (D41). Merges run in a detached integration worktree and only ever target the local default branch; Crew never pushes (D38). After a merge, the default branch ref is updated only if the user's own checkout isn't on that branch, or is on it and has no changes at all (then fast-forwarded). Otherwise the queue pauses and a warning is shown on the Board and in `crew status` (D11, Claude-decided, D39, user). After a merge, the worktree is removed and the branch deleted (D43). Plan: `milestone-4.md`.
 - **Memory:** three layers, injection within a context budget, promotion from role to project, CRUD for the Board.
 - **Workflows:** Orchestrator phases (grill, spec, tickets, dispatch, integrate) defined on the server as data plus instructions, customisable per Board (add/remove phases, toggle gates).
 - **Roles:** built-in roles (orchestrator, architect, backend, frontend, qa, reviewer) with default prompts and permission profiles; custom roles supported.
@@ -340,11 +349,13 @@ todo → ready → doing → verifying → review → merge-queue → merged
 - `verifying → review` when diff and command gates pass; the review gate is a Reviewer agent run, or is skipped and recorded as skipped when the workspace has no reviewer agent (D34, user).
 - `review → doing` on "changes requested", with feedback attached and `retries` incremented (D8, Claude-decided).
 - `review → merge-queue` on approval.
-- `merge-queue → merged` after rebase, re-verify and merge succeed. On conflict, a "rebase + resolve" sub-task is created for the same role and linked from the MergeQueueItem.
+- `merge-queue → merged` after rebase, re-verify and merge succeed. On conflict, a "rebase + resolve" sub-task is created for the same role and linked from the MergeQueueItem; when it is merged, the original task is `merged` too (D41, user).
+- `merge-queue → doing` when re-verification of the rebased code fails, with feedback attached and `retries` incremented (D42, user).
+- `escalated → doing` only by a human, through `crew retry` (D44, user).
 - `doing → blocked` on `crew ask`: the agent's process ends. `blocked → doing` on answer: the runner resumes the same session, or falls back to a fresh process with task context, the Q&A and a summary of the current diff (D4, user).
 - A rate-limited run pauses its task without changing `retries` (D7, Claude-decided).
 - A run that times out, goes silent or exits without `crew done` or `crew ask` counts as one retry, and the task is re-dispatched (D22, user). Runs ended by stop-all, a rate limit or a failed resume don't count.
-- Any retrying state → `escalated` when `retries` exceeds the max (default 3).
+- Any retrying state, including `merge-queue`, → `escalated` when `retries` exceeds the max (default 3), or when a worktree setup command fails (D45, user).
 - `cancelled` from any non-terminal state, by the human.
 - The scheduler is the only writer of task status; every other module requests transitions through it, and invalid transitions are rejected.
 
@@ -363,7 +374,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | Message | id, taskId, fromAgentId, type (comment / question / answer / result / feedback), body |
 | Memory | id, workspaceId, layer (project / role / task), roleId, taskId, title, body, source, promotedAt |
 | PhaseOutput | id, boardId, phase, body, status (draft / approved), approvedAt |
-| MergeQueueItem | id, taskId, position, status, conflictTaskId |
+| MergeQueueItem | id, taskId, position, status (queued / rebasing / verifying / merging / merged / conflict / failed), conflictTaskId, commitSha, output (D46, user) |
 
 ### API contract
 
@@ -386,6 +397,8 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | `POST /api/tasks/:id/cancel` | Cancels a task (Board and terminal) (D2, user) |
 | `POST /api/control/stop-all` | Kill switch; dispatch stays stopped (D23, user) |
 | `POST /api/control/resume` | Restarts dispatch after stop-all (D23, user) |
+| `GET /api/merge-queue` | Queue order, the item in progress, pause warning (`crew queue`, D2) |
+| `POST /api/tasks/:id/retry` | Restarts an escalated task (human secret, D44, user) |
 | `GET /api/board/:id/events` | SSE, live UI updates |
 
 - The long-poll wait is always shorter than a typical agent Bash timeout (90 seconds default) and returns an explicit "no task, call again" response.
@@ -394,7 +407,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 ### Configuration
 
-- `crew.config.ts` holds verify commands, roles, limits (max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy.
+- `crew.config.ts` holds verify commands, roles, limits (max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy. Until `crew.config.ts` loading lands in milestone 5, `mergeStrategy` (D40, user) and an optional `worktreeSetup` shell command (D45, user) are read from the workspace's stored config, like the verify commands.
 - Verify commands are a named list. Each entry has a command, an optional working directory, a timeout (default 10 minutes), and optional path globs (matched with `picomatch`, D37). Until `crew.config.ts` loading lands in milestone 5, they are read from the workspace's stored config (D29, user). They run through a shell, because they are written by the user in their own config; an entry with globs runs only when the task's changed files match them. During merge-queue re-verification, every entry matching the rebased diff runs again (D10, Claude-decided).
 - Defaults: max parallel verification pipelines 2 (D37, user), max parallel agents 3, max retries 3, max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20 (D24, user), squash merge, long-poll wait 90 seconds, memory injection budget about 8k tokens (D15, Claude-decided), rate-limit backoff from 1 minute doubling up to 30 minutes (D7, Claude-decided).
 
@@ -464,7 +477,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 - One primary seam for almost all behaviour: start the real crew server in-process against a temp repo, register agents that use the **fake adapter**, and let the fake adapter run scripted sequences of real `crew` CLI commands and file edits inside its worktree.
 - Assertions are made on task states and transitions, DB rows (Runs, VerificationResults, Messages, Memory, MergeQueueItems), SSE events, and the final git state (branches, worktrees, commits on main).
-- This seam covers: the full state machine, dependencies and dispatch, worktree lifecycle, every verification gate, retries and escalation, merge queue, rebase and conflict sub-tasks, memory injection and promotion, phase workflow and human gates, Pull mode long-poll and heartbeat/stale handling, budget and loop limits, timeouts and kills, rate-limit pause and backoff, permissions checks, and stop-all. It also covers: resuming a blocked task's session and the fresh-process fallback (D4, user); every human CLI command, driven through the real CLI (D2, user); path-filtered verify commands (D10, Claude-decided); the merge queue pausing when the user's checkout is dirty and fast-forwarding it when clean (D11, Claude-decided); rejection of bad Host headers, bad tokens and missing per-start secrets (D13, Claude-decided); rate-limited runs not using up retries (D7, Claude-decided); "changes requested" counting toward retries (D8, Claude-decided); the diff, command and review gates, feedback in the next run's prompt, a skipped review and a Reviewer without a verdict (D29–D35, user); the Stop hook's blocking rules (D36, user); timed-out, silent or exited runs counting as one retry, with the right exit reason (D21, D22, user); and dispatch staying stopped after stop-all, across a restart, until `crew resume` (D23, user).
+- This seam covers: the full state machine, dependencies and dispatch, worktree lifecycle, every verification gate, retries and escalation, merge queue, rebase and conflict sub-tasks, memory injection and promotion, phase workflow and human gates, Pull mode long-poll and heartbeat/stale handling, budget and loop limits, timeouts and kills, rate-limit pause and backoff, permissions checks, and stop-all. It also covers: resuming a blocked task's session and the fresh-process fallback (D4, user); every human CLI command, driven through the real CLI (D2, user); path-filtered verify commands (D10, Claude-decided); the merge queue pausing when the user's checkout is dirty and fast-forwarding it when clean (D11, Claude-decided, D39, user); re-verification on the rebased code, both merge strategies, conflict sub-tasks and their depth limit, cleanup after a merge, merge recovery after a restart, `crew retry` and worktree setup (D38, D40–D46, user); rejection of bad Host headers, bad tokens and missing per-start secrets (D13, Claude-decided); rate-limited runs not using up retries (D7, Claude-decided); "changes requested" counting toward retries (D8, Claude-decided); the diff, command and review gates, feedback in the next run's prompt, a skipped review and a Reviewer without a verdict (D29–D35, user); the Stop hook's blocking rules (D36, user); timed-out, silent or exited runs counting as one retry, with the right exit reason (D21, D22, user); and dispatch staying stopped after stop-all, across a restart, until `crew resume` (D23, user).
 - The fake adapter emits the same structured events as the real adapters (including session IDs and rate-limit events) and supports resume (D5, Claude-decided).
 - Every failure path named in the release criterion (verification failure, conflict, rate limit, hung process) has at least one harness test.
 
@@ -515,7 +528,7 @@ The release is one version, but built in this order, each milestone the foundati
 1. **Core:** server, SQLite, full data model, task state machine, fake adapter.
 2. **Runner and core safety:** adapter interface, Claude Code adapter, structured-event runner with session resume, timeouts, worktree manager (D5, Claude-decided) (D4, user). Also permissions, stop-all, budget and loop limits, and Claude Code rate-limit handling, so that no real agent ever runs without them (D19, user). Plan: `milestone-2.md`.
 3. **Verification:** gates pipeline, retries, escalation, and the Claude Code Stop hook (D26, user). Plan: `milestone-3.md`.
-4. **Merge:** dependencies, merge queue, rebase, conflict tasks.
+4. **Merge:** merge queue, rebase, conflict tasks (dependencies themselves already exist from milestone 1). Plan: `milestone-4.md`.
 5. **Memory and workflow:** memory layers, injection, `crew phase`, human gates.
    → **Private preview** for trusted testers once milestone 5 is done (D1, user).
 6. **Board UI:** live agent logs, diffs, approvals, questions inbox, memory view.
