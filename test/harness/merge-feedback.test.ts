@@ -81,3 +81,36 @@ it('escalates integration setup failure without charging an agent retry', async 
   expect(h.getTask('checkout')?.retries).toBe(0);
   expect(h.getMessages('checkout').find(m => m.type === 'feedback')?.body).toContain('integration-setup-broken');
 });
+
+
+it.each(['missing branch', 'empty squash'])('escalates a terminal %s atomically with feedback and no retry charge', async failure => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const before = (await execa('git', ['rev-parse', 'main'], { cwd: h.repoDir })).stdout;
+  if (failure === 'missing branch') {
+    // Break the source branch without mocking git: the detached switch must fail.
+    await h.worktreeManager.removeWorktree(h.getTask('checkout')!);
+    await execa('git', ['branch', '-D', h.getTask('checkout')!.branch!], { cwd: h.repoDir });
+  } else {
+    fs.writeFileSync(path.join(h.repoDir, 'checkout.txt'), 'checkout\n');
+    await execa('git', ['add', 'checkout.txt'], { cwd: h.repoDir });
+    await execa('git', ['commit', '-m', 'User already implemented the change'], { cwd: h.repoDir });
+  }
+  let atomic = false;
+  const unsub = h.eventBus.subscribeBoardEvents(h.boardId, e => {
+    if (e.type === 'task_status_changed' && (e.data as any).to === 'escalated') {
+      atomic = h.db.db.select().from(schema.mergeQueueItems).get()?.status === 'failed' &&
+        h.getMessages('checkout').some(m => m.type === 'feedback' && !!m.body);
+    }
+  });
+  const failed = waitForMerge(h, 'checkout', i => i.status === 'failed');
+  h.server.mergeQueue.start();
+  const item = await failed;
+  unsub();
+  expect(h.getTask('checkout')?.status).toBe('escalated');
+  expect(h.getTask('checkout')?.retries).toBe(0);
+  expect(atomic).toBe(true);
+  expect(item.output).toMatch(failure === 'missing branch' ? /switch|reference/i : /nothing to commit/i);
+  expect(h.getMessages('checkout').filter(m => m.type === 'feedback')).toHaveLength(1);
+  if (failure === 'missing branch') expect((await execa('git', ['rev-parse', 'main'], { cwd: h.repoDir })).stdout).toBe(before);
+});

@@ -15,6 +15,7 @@ import { CommandRunner, type VerifyCommand } from '../verify/command-runner.js';
 type Item = typeof schema.mergeQueueItems.$inferSelect;
 type Workspace = typeof schema.workspaces.$inferSelect;
 export interface MergeHooks {
+  beforeCheckoutMerge?: (task: Task) => Promise<void>;
   beforeRefUpdate?: (task: Task, commitSha: string) => Promise<void>;
 }
 export interface MergeQueueOptions {
@@ -118,7 +119,7 @@ export class MergeQueue {
       try {
         if (!await this.merge(next.item, next.task, workspace)) return;
       } catch (error) {
-        this.change(next.item, next.task, { status: 'failed', output: String(error).slice(-65536) });
+        if (this.live(next.task)) await this.feedback(next.item, next.task, String(error).slice(-65536), false);
       }
     }
   }
@@ -149,7 +150,7 @@ export class MergeQueue {
       const result = await this.mergeAttempt(item, task, workspace);
       if (result !== 'retry') return result;
     }
-    this.change(item, task, { status: 'failed', output: 'Default branch moved during merge three times; retry required' });
+    await this.feedback(item, task, 'Default branch moved during merge three times; retry required', false);
     return true;
   }
 
@@ -244,11 +245,16 @@ export class MergeQueue {
           this.change(item, task, { status: 'queued', commitSha: null, output: 'Default branch moved; rebasing again' });
           return 'retry';
         }
+        await this.hooks.beforeCheckoutMerge?.(task);
         await this.git(repo, 'merge', '--ff-only', commitSha);
       } else {
         await this.git(repo, 'update-ref', ref, commitSha, old);
       }
     } catch (error) {
+      if (await this.checkoutBlocked(workspace)) {
+        this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
+        return false;
+      }
       if (await this.git(repo, 'rev-parse', ref) === old) throw error;
       this.change(item, task, { status: 'queued', commitSha: null, output: 'Default branch moved; rebasing again' });
       return 'retry';

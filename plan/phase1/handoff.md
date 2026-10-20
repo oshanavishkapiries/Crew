@@ -1,3 +1,11 @@
+# Milestone 4 terminal merge failure fix handoff
+
+Status: bullets 0–5 plus the reviewed terminal-failure fix are implemented; bullets 6–8 remain. Terminal non-conflict Git errors, empty squash commits and exhausted ref races now use the existing feedback helper to escalate atomically with a failed item, without charging a retry. A checkout dirtied after the final check pauses when Git refuses the fast-forward. Regression tests cover these four cases. The human retry round trip will be tested in bullet 7 when that command exists. The squash author email is explicitly a proposal in milestone-4 §9, with the user's email as an alternative. Manual smoke remains pending.
+
+Verification: `rm -r dist && npm test` passed typecheck and all 132 tests across 32 files (152.75s). The shell guard rejected `rm -rf dist`. `npm run generate:docs` succeeded with no reference changes.
+
+---
+
 # Milestone 4 bullet 5 handoff
 
 Bullets 0–5 are implemented on `feat/milestone-4-merge`; bullet 4 is `67f96f5`. Rebase conflicts abort cleanly, remove the original worktree while retaining the branch, and create a same-role/depth+1 sub-task on that branch. The branch and queue link commit before the child is published. A merged child closes its parent and promotes dependents; depth limits or child escalation/cancellation escalate the parent. Only linked conflict work runs receive extra git permissions and `GIT_EDITOR=true`; push remains denied. Empty resolutions remain subject to the normal diff gate.

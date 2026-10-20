@@ -113,5 +113,28 @@ it('fails the item after three ref races without overwriting any user commit', a
   await failed;
   expect(attempts).toBe(3);
   expect(await git('rev-parse', 'main')).toBe(last);
+  expect(h.getTask('checkout')?.status).toBe('escalated');
+});
+
+
+it('pauses when checkout becomes dirty between the final check and ff-only merge', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const old = await git('rev-parse', 'main');
+  const file = path.join(h.repoDir, 'checkout.txt');
+  const bytes = Buffer.from([0, 255, 10, 13, 42]);
+  h.server.mergeQueue.hooks.beforeCheckoutMerge = async () => { fs.writeFileSync(file, bytes); };
+  const paused = waitForMerge(h, 'checkout', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  h.server.mergeQueue.start();
+  await paused;
   expect(h.getTask('checkout')?.status).toBe('merge-queue');
+  expect(h.getTask('checkout')?.retries).toBe(0);
+  expect(h.server.mergeQueue.warnings.get(h.workspaceId)).toContain('main');
+  expect(await git('rev-parse', 'main')).toBe(old);
+  expect(fs.readFileSync(file)).toEqual(bytes);
+  h.server.mergeQueue.hooks.beforeCheckoutMerge = undefined;
+  fs.unlinkSync(file);
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  h.server.mergeQueue.tick();
+  await done;
 });
