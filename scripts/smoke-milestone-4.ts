@@ -68,7 +68,7 @@ async function runSmoke(): Promise<void> {
   }
 
   try {
-    console.log('Milestone 4 manual smoke: real Claude Code authors and reviewer; $0.50 cap per run, expected 6 small runs, 8 minute timeout.');
+    console.log('Milestone 4 manual smoke: real Claude Code authors and reviewer; $0.50 cap per run, expected 6 small runs (up to 9 if a Reviewer needs its one retry), 8 minute timeout.');
     await execa('npm', ['run', 'build'], { cwd: root, timeout: 60000, cancelSignal: signal });
     const detection = await execa('claude', ['--version'], { timeout: 10000, cancelSignal: signal });
     console.log('Claude Code: ' + detection.stdout);
@@ -128,7 +128,8 @@ async function runSmoke(): Promise<void> {
     let runCount = 0;
     runner.on('run_started', run => {
       console.log(`[run] ${run.taskId}: ${run.agentId}`);
-      if (++runCount > 6) controller.abort(new Error('More than 6 agent runs; refusing an expensive retry loop'));
+      // 3 authors + 3 reviews expected; each review may be retried once (max 2 review runs per round), so 9 is the legitimate ceiling.
+      if (++runCount > 9) controller.abort(new Error('More than 9 agent runs; refusing an expensive retry loop'));
     });
     const cleaned = new Set<string>();
     unsubscribe = eventBus.subscribeBoardEvents(boardId, event => {
