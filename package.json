@@ -18,7 +18,8 @@
     "test": "npm run typecheck && vitest run",
     "generate:docs": "tsx scripts/generate-docs.ts",
     "smoke": "tsx scripts/smoke-milestone-2.ts",
-    "smoke:m3": "tsx scripts/smoke-milestone-3.ts"
+    "smoke:m3": "tsx scripts/smoke-milestone-3.ts",
+    "smoke:m4": "tsx scripts/smoke-milestone-4.ts"
   },
   "engines": {
     "node": ">=22.0.0"

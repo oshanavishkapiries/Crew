@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullets 0–7 (through human CLI) and terminal-failure escalation are implemented; the smoke script and manual smoke remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullets 0–7 (through human CLI) and terminal-failure escalation are implemented; the smoke script is written/typechecked and its manual run remains pending. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -17,7 +17,7 @@ crew/
 ├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
 ├─ drizzle.config.ts      # drizzle-kit config for generating migrations
 ├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
-├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts (`npm run smoke:m3`, manual)
+├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts and smoke-milestone-4.ts (`npm run smoke:m3` / `smoke:m4`, manual)
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -30,7 +30,7 @@ crew/
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
-│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullets 0–7 implemented)
+│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullets 0–7 implemented; smoke script written, manual run pending)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign

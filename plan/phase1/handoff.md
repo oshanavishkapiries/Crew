@@ -1,3 +1,15 @@
+# Milestone 4 implementation handoff — manual smoke pending
+
+Status: bullets 0–7 are implemented and tested; bullet 8 is written/typechecked only. Milestone 4 is not marked done. Branch `feat/milestone-4-merge` remains local on base `f9acd405503ffabe34a355f16f8dd6b61eaf1291`; main is unchanged and nothing was pushed. The requested stuck-failure fix is `b02395e`, bullet 6 is `6b32a24`, bullet 7 is `a045c04`, and checkout/nested-retry review fixes are `8b3970b`.
+
+Run `npm run smoke:m4` manually. `scripts/smoke-milestone-4.ts` builds the CLI, uses a throwaway `/tmp` repository on clean main and a separate Crew home, creates both tasks through the Scheduler, and holds the first ref move until both real authors and reviews finish so the same-line changes must conflict. A real lowercase `reviewer` role reviews each task. Setup writes an ignored `.setup-done`; verification checks setup and feature contents. Assertions require both originals merged, a linked conflict child with a real completed work run, real review-run verdict rows for all three tasks, exact author/merge verification output, both final changes, clean main, expected two commits/trailers and branch/worktree cleanup. It prints final `git log --oneline` and `crew queue`, retains artifacts, caps each run at $0.50 using the existing option, and has an eight-minute deadline with cleanup grace. It has NOT been run; real cost and real-agent success are unverified.
+
+Review the proposals in milestone-4 §9 before logging any new PRD decisions: author identity/email, setup reuse/restoration, empty conflict gate, terminal escalation, landed cancellation, conflict-worktree handoff (including nested descendants), and protected checkout transactions/stop exception. No PRD or dependency changes were made. Restart tests reconstruct workers over persisted DB/git state; no OS power-loss test or macOS/Git-other-version validation was performed. Git 2.53.0 was used, with a runtime HEAD-lock capability check.
+
+Verification: `rm -r dist && npm test` passed typecheck and all 175 tests across 35 files (206.75s). `npm run generate:docs` succeeded. The shell guard rejects `rm -rf dist`; the safe recursive removal was used. No smoke execution is included in that suite.
+
+---
+
 # Milestone 4 final review fixes handoff
 
 Status: bullets 0–7 are implemented; the local bullet 8 script is prepared but not yet committed or run. Fresh review found ignored-file overwrites, a final branch-switch window, and nested conflict-parent retry missing the actual worktree owner. Regression tests reproduce all three. The fixes pause ignored collisions with bytes preserved, follow inactive conflict descendants, and use a prepared HEAD/ref transaction plus private index for the checkout fast-forward. Foreign HEAD/index locks pause. An inode ownership journal recovers both sides of index/ref publication. Stop/cancel finishes an already-started checkout publication, while rebase/verify/setup are killed; this exception and the command change from the approved `merge --ff-only` are explicit proposals in §9. Git 2.53.0 was used; HEAD locking is checked before writing. The smoke script remains unrun.

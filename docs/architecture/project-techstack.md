@@ -52,3 +52,5 @@ Tool versions checked on 2026-10-18: Claude Code 2.1.300 (minimum supported 2.1.
 | Adapter tests | Contract tests | — | Recorded `stream-json` / `--json` fixtures |
 | CI | Linux and macOS | — | D14 |
 | Telemetry | None | — | D18 |
+
+The manual milestone 4 smoke (`npm run smoke:m4`) uses real Claude Code authors and a lowercase `reviewer` role in a throwaway `/tmp` repo and separate Crew home. It reuses the existing $0.50 per-run adapter option, expects six small runs, aborts unexpected extra runs, and has an eight-minute deadline plus shutdown grace. It is typechecked with the suite but is never executed by `npm test`; the manual run remains pending.

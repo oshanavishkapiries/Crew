@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 4 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** in progress: bullets 0–7 (through human CLI) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullet 8 script remains. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** in progress: bullets 0–7 (through human CLI) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullet 8 smoke script is written and typechecked, but has not been run. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 
