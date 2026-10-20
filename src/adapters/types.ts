@@ -1,7 +1,7 @@
 export interface PermissionProfile {
   /** Set by Runner only for a linked merge conflict sub-task. */
   conflictResolution?: boolean;
-  mode?: 'standard' | 'full' | 'read-only';
+  mode?: 'standard' | 'full' | 'read-only' | 'orchestrator';
   allowCommands?: string[];
   denyCommands?: string[];
   allowBash?: boolean;

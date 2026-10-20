@@ -24,6 +24,24 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
   });
 
   describe('buildSpawn', () => {
+    it('allows exact commands and their arguments while config cannot override fixed push denials', () => {
+      const config = adapter.buildSpawn({ prompt: 'Run tests', workDir: '/tmp/worktree', permissions: { mode: 'standard', allowCommands: ['npm test', 'git push'] } });
+      const allowed = config.args[config.args.indexOf('--allowedTools') + 1];
+      expect(allowed).toContain('Bash(npm test)'); expect(allowed).toContain('Bash(npm test *)');
+      const denied = config.args[config.args.indexOf('--disallowedTools') + 1];
+      expect(denied).toContain('Bash(git push)'); expect(denied).toContain('Bash(git push *)');
+      expect(config.args[config.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+    });
+
+    it('keeps the initial orchestrator profile read-only with Crew commands and no project test allowance', () => {
+      const config = adapter.buildSpawn({ prompt: 'Plan', workDir: '/tmp/worktree', permissions: { mode: 'orchestrator', allowCommands: ['npm test', 'git push'] } });
+      const allowed = config.args[config.args.indexOf('--allowedTools') + 1];
+      expect(allowed).toContain('Bash(crew *)'); expect(allowed).toContain('Read');
+      expect(allowed).not.toContain('Bash(npm'); expect(allowed).not.toContain('Edit'); expect(allowed).not.toContain('Write');
+      expect(config.args[config.args.indexOf('--disallowedTools') + 1]).toContain('Edit');
+      expect(config.args[config.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
+    });
+
     it('adds conflict-only rebase permissions while retaining the push denial', () => {
       const build = (conflictResolution: boolean) => adapter.buildSpawn({
         prompt: 'Resolve', workDir: '/worktree', permissions: { mode: 'standard', conflictResolution },

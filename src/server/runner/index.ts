@@ -1,3 +1,4 @@
+import { commandPrefixes, type ProjectConfig } from '../project-config.js';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -321,6 +322,8 @@ export class Runner extends EventEmitter {
     const workspace = board
       ? this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()
       : undefined;
+    const projectConfig = (workspace?.config || {}) as ProjectConfig;
+    const configuredRole = projectConfig.roles?.[role?.name || ''];
     const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
 
     // Check for feedback messages on this task (user stories 49, 78, 79, 91, D33)
@@ -350,7 +353,7 @@ export class Runner extends EventEmitter {
     const prompt =
       options.prompt ||
       [
-        role?.defaultPrompt || '',
+        configuredRole?.defaultPrompt || role?.defaultPrompt || '',
         agent.personality ? `Persona: ${agent.personality}` : '',
         `Task: ${task.title}`,
         task.description ? `Description: ${task.description}` : '',
@@ -389,11 +392,11 @@ export class Runner extends EventEmitter {
             allowCommands: [],
             denyCommands: [],
           }
-        : (role?.permissionProfile as PermissionProfile) || {
-            mode: 'standard',
-            allowCommands: [],
-            denyCommands: [],
-          };
+        : { ...((configuredRole?.permissionProfile || role?.permissionProfile) as PermissionProfile || { mode: 'standard' }) };
+
+    if (options.kind !== 'review' && !['read-only', 'orchestrator'].includes(permissionProfile.mode || 'standard')) {
+      permissionProfile.allowCommands = commandPrefixes([...(permissionProfile.allowCommands || []), ...(projectConfig.permissions?.allowCommands || [])]);
+    }
 
     // Role configuration cannot grant this extra profile to ordinary tasks.
     permissionProfile.conflictResolution = options.kind !== 'review' && !!this.db.db.select().from(schema.mergeQueueItems)
@@ -402,7 +405,7 @@ export class Runner extends EventEmitter {
     // Check if Stop hook is enabled (D36: off by default, enabled per workspace or role)
     const isStopHookEnabled = Boolean(
       (workspace?.config as any)?.stopHook ||
-      (role?.permissionProfile as any)?.stopHook
+      (permissionProfile as PermissionProfile & { stopHook?: boolean }).stopHook
     );
 
     let settingsPath: string | undefined;
@@ -530,13 +533,13 @@ export class Runner extends EventEmitter {
       }
       activeRun.noOutputTimer = this.clock.setTimeout(() => {
         this.handleTimeout(activeRun, 'no-output');
-      }, this.noOutputTimeoutMs);
+      }, projectConfig.noOutputTimeoutMs ?? this.noOutputTimeoutMs);
     };
 
     // Max runtime timer
     activeRun.maxRuntimeTimer = this.clock.setTimeout(() => {
       this.handleTimeout(activeRun, 'timeout');
-    }, this.maxRuntimeMs);
+    }, projectConfig.maxRuntimeMs ?? this.maxRuntimeMs);
 
     resetNoOutputTimer();
 

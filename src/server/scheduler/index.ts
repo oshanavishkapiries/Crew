@@ -411,7 +411,10 @@ export class Scheduler {
       (currentStatus === 'verifying' || currentStatus === 'review' || context.incrementRetries)
     ) {
       newRetries += 1;
-      if (newRetries > this.maxRetries) {
+      const board = this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get();
+      const workspace = board && this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get();
+      const maxRetries = typeof workspace?.config?.maxRetries === 'number' ? workspace.config.maxRetries : this.maxRetries;
+      if (newRetries > maxRetries) {
         finalStatus = 'escalated';
       }
     }

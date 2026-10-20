@@ -1,3 +1,4 @@
+import type { ProjectConfig } from '../project-config.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -31,6 +32,7 @@ export class Verifier {
   private worktreeManager?: WorktreeManager;
   private runner: Runner;
   public readonly maxParallelVerifications: number;
+  private explicitParallelLimit?: number;
   private crewHome: string;
 
   private started = false;
@@ -47,6 +49,7 @@ export class Verifier {
     this.worktreeManager = options.worktreeManager;
     this.runner = options.runner;
     this.maxParallelVerifications = options.maxParallelVerifications ?? 2;
+    this.explicitParallelLimit = options.maxParallelVerifications;
     this.crewHome = options.crewHome || getCrewHome();
   }
 
@@ -159,8 +162,21 @@ export class Verifier {
   private processQueue(): void {
     if (this.isStopped()) return;
 
-    while (this.activeTasks.size < this.maxParallelVerifications && this.queue.length > 0) {
-      const taskId = this.queue.shift()!;
+    const workspaceFor = (taskId: string) => {
+      const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
+      const board = task && this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get();
+      return board && this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get();
+    };
+    const capacity = this.explicitParallelLimit ?? this.db.db.select().from(schema.workspaces).all()
+      .reduce((total, workspace) => total + (typeof workspace.config?.maxParallelVerifications === 'number' ? workspace.config.maxParallelVerifications : this.maxParallelVerifications), 0);
+    while (this.activeTasks.size < capacity && this.queue.length > 0) {
+      const index = this.queue.findIndex((id) => {
+        const workspace = workspaceFor(id);
+        const limit = typeof workspace?.config?.maxParallelVerifications === 'number' ? workspace.config.maxParallelVerifications : this.maxParallelVerifications;
+        return [...this.activeTasks].filter((active) => workspaceFor(active)?.id === workspace?.id).length < limit;
+      });
+      if (index < 0) break;
+      const [taskId] = this.queue.splice(index, 1);
       this.activeTasks.add(taskId);
       this.runPipeline(taskId)
         .catch((err) => {
@@ -515,7 +531,7 @@ export class Verifier {
     const earlierResultsText = vrs.map((r) => `- ${r.step}: ${r.passed ? 'passed' : 'failed'}`).join('\n');
 
     const reviewerPrompt = [
-      reviewerRole?.defaultPrompt || 'You are a code reviewer. Review the changes against the acceptance criteria.',
+      (workspace?.config as ProjectConfig | undefined)?.roles?.[reviewerRole?.name || 'reviewer']?.defaultPrompt || reviewerRole?.defaultPrompt || 'You are a code reviewer. Review the changes against the acceptance criteria.',
       reviewer.personality ? `Persona: ${reviewer.personality}` : '',
       `Task: ${task.title}`,
       task.description ? `Description: ${task.description}` : '',

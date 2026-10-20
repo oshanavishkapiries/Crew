@@ -72,7 +72,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       scheduler,
       runner,
       eventBus,
-      maxParallelAgents: options.maxParallelAgents ?? 3,
+      maxParallelAgents: options.maxParallelAgents,
     });
 
   const verifier =
@@ -83,7 +83,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       scheduler,
       worktreeManager,
       runner,
-      maxParallelVerifications: options.maxParallelVerifications ?? 2,
+      maxParallelVerifications: options.maxParallelVerifications,
     });
 
   const mergeQueue = new MergeQueue({ db, eventBus, scheduler, worktreeManager });

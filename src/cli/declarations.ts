@@ -1,3 +1,4 @@
+import { handleInit } from './commands/init.js';
 import { handleAnswer } from './commands/answer.js';
 import { handleAsk } from './commands/ask.js';
 import { handleCancel } from './commands/cancel.js';
@@ -24,7 +25,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'start',
     category: 'human',
     summary: 'Start the Crew server and web Task Board',
-    description: 'Launches the local Crew server and web Task Board on 127.0.0.1.',
+    description: 'Loads each workspace crew.config.ts before starting the local server on 127.0.0.1. Fix config errors and run start again; the file replaces stored settings on every start.',
     options: [
       { flags: '-p, --port <number>', description: 'Port to bind server to', defaultValue: 4000 },
       { flags: '-h, --host <host>', description: 'Host to bind server to', defaultValue: '127.0.0.1' },
@@ -39,7 +40,8 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'init',
     category: 'human',
     summary: 'Initialize Crew in the current repository',
-    description: 'Creates a crew.config.ts with sensible defaults for verify commands, roles, and limits.',
+    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice.',
+    action: handleInit,
     examples: [
       { description: 'Initialize crew configuration', command: 'crew init' },
     ],

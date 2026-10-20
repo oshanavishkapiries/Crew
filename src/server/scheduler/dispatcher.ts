@@ -24,6 +24,7 @@ export class Dispatcher {
   private runner: Runner;
   private eventBus: EventBus;
   public readonly maxParallelAgents: number;
+  private explicitParallelLimit?: number;
   private tickIntervalMs: number;
   private crewHome: string;
 
@@ -41,6 +42,7 @@ export class Dispatcher {
     this.runner = options.runner;
     this.eventBus = options.eventBus;
     this.maxParallelAgents = options.maxParallelAgents ?? 3;
+    this.explicitParallelLimit = options.maxParallelAgents;
     this.tickIntervalMs = options.tickIntervalMs ?? 5000;
     this.crewHome = options.crewHome || getCrewHome();
   }
@@ -155,7 +157,9 @@ export class Dispatcher {
     const liveRuns = this.runner.getLiveRuns();
     const liveTaskIds = new Set(liveRuns.map((r) => r.taskId));
     const liveAgentIds = new Set(liveRuns.map((r) => r.agentId));
-    let availableSlots = this.maxParallelAgents - liveRuns.length;
+    const capacity = this.explicitParallelLimit ?? this.db.db.select().from(schema.workspaces).all()
+      .reduce((total, workspace) => total + (typeof workspace.config?.maxParallelAgents === 'number' ? workspace.config.maxParallelAgents : this.maxParallelAgents), 0);
+    let availableSlots = capacity - liveRuns.length;
 
     if (availableSlots <= 0) {
       return;
@@ -282,6 +286,11 @@ export class Dispatcher {
       .where(eq(schema.boards.id, task.boardId))
       .get();
     if (!board) return undefined;
+
+    const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get();
+    const limit = typeof workspace?.config?.maxParallelAgents === 'number' ? workspace.config.maxParallelAgents : this.maxParallelAgents;
+    const workspaceAgents = this.db.db.select().from(schema.agents).where(eq(schema.agents.workspaceId, board.workspaceId)).all();
+    if (workspaceAgents.filter((agent) => liveAgentIds.has(agent.id)).length >= limit) return undefined;
 
     // If task already has an assignee
     if (task.assigneeAgentId) {

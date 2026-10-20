@@ -9,7 +9,7 @@ Commands used by developers to manage workspaces, start the server, inspect agen
 
 ### `crew start`
 
-Launches the local Crew server and web Task Board on 127.0.0.1.
+Loads each workspace crew.config.ts before starting the local server on 127.0.0.1. Fix config errors and run start again; the file replaces stored settings on every start.
 
 **Options:**
 
@@ -34,7 +34,7 @@ crew start --port 4001
 
 ### `crew init`
 
-Creates a crew.config.ts with sensible defaults for verify commands, roles, and limits.
+Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice.
 
 **Examples:**
 

@@ -57,6 +57,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     disallowedTools: string[];
     permissionMode: string;
   } {
+    if (permissions.mode === 'orchestrator') {
+      return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)'], disallowedTools: ['Edit', ...FIXED_DENIED_TOOLS], permissionMode: 'dontAsk' };
+    }
     if (permissions.mode === 'read-only') {
       const allowed = [
         'Read',
@@ -98,8 +101,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     if (permissions.allowCommands) {
       for (const cmd of permissions.allowCommands) {
-        const pattern = cmd.includes(' ') || cmd.includes('*') ? `Bash(${cmd})` : `Bash(${cmd} *)`;
-        allowed.push(pattern);
+        allowed.push(`Bash(${cmd} *)`);
         if (!cmd.includes('*')) {
           allowed.push(`Bash(${cmd})`);
         }
