@@ -1,14 +1,13 @@
-# Milestone 4 implementation handoff — manual smoke pending
+# Milestone 4 handoff — done
 
-Status: bullets 0–7 are implemented and tested; bullet 8 is written/typechecked only. Milestone 4 is not marked done. Branch `feat/milestone-4-merge` remains local on base `f9acd405503ffabe34a355f16f8dd6b61eaf1291`; main is unchanged and nothing was pushed. The requested stuck-failure fix is `b02395e`, bullet 6 is `6b32a24`, bullet 7 is `a045c04`, and checkout/nested-retry review fixes are `8b3970b`.
+Status: milestone 4 is done. Bullets 0–8 are implemented on `feat/milestone-4-merge` and merged into `main`. `npm run smoke:m4` passed on 2026-10-20 with real Claude Code authors, a real Reviewer and a real conflict sub-task (alpha merged, beta conflicted, the sub-task resolved it, `main` has both commits, the queue is empty). The §9 proposals are logged as D47–D55. D28 is still open. `rm -r dist && npm test` passes 175 tests across 35 files. Nothing is pushed.
 
-Run `npm run smoke:m4` manually. `scripts/smoke-milestone-4.ts` builds the CLI, uses a throwaway `/tmp` repository on clean main and a separate Crew home, creates both tasks through the Scheduler, and holds the first ref move until both real authors and reviews finish so the same-line changes must conflict. A real lowercase `reviewer` role reviews each task. Setup writes an ignored `.setup-done`; verification checks setup and feature contents. Assertions require both originals merged, a linked conflict child with a real completed work run, real review-run verdict rows for all three tasks, exact author/merge verification output, both final changes, clean main, expected two commits/trailers and branch/worktree cleanup. It prints final `git log --oneline` and `crew queue`, retains artifacts, caps each run at $0.50 using the existing option, and has an eight-minute deadline with cleanup grace. It has NOT been run; real cost and real-agent success are unverified.
+Next: milestone 5 (memory and workflow, then the private preview). It needs `crew init`, `crew.config.ts` loading, an HTTP endpoint to create tasks, and test commands for the standard role profile. Follow-ups noted in D54: simplify the checkout transaction and make its ignored-file check cheaper. The smoke role uses `mode: full`, so the conflict-only git permissions are covered only by the adapter contract test.
 
-Review the proposals in milestone-4 §9 before logging any new PRD decisions: author identity/email, setup reuse/restoration, empty conflict gate, terminal escalation, landed cancellation, conflict-worktree handoff (including nested descendants), and protected checkout transactions/stop exception. No PRD or dependency changes were made. Restart tests reconstruct workers over persisted DB/git state; no OS power-loss test or macOS/Git-other-version validation was performed. Git 2.53.0 was used, with a runtime HEAD-lock capability check.
-
-Verification: `rm -r dist && npm test` passed typecheck and all 175 tests across 35 files (206.75s). `npm run generate:docs` succeeded. The shell guard rejects `rm -rf dist`; the safe recursive removal was used. No smoke execution is included in that suite.
+Earlier handoff notes follow, newest first.
 
 ---
+
 
 # Milestone 4 final review fixes handoff
 

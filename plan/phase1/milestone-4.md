@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 4 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** in progress: bullets 0–7 (through human CLI) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullet 8 smoke script is written and typechecked, but has not been run. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** done. Bullets 0–8 are implemented and the manual smoke (`npm run smoke:m4`, real Claude Code authors, a real Reviewer and a real conflict sub-task) passed on 2026-10-20. The proposals (P1–P9) are logged in the PRD as D38–D46 and the implementation proposals in §9 as D47–D55. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 
@@ -173,7 +173,7 @@ Proposed here and approved by the user on 2026-10-20. The PRD Decision Log holds
 
 ## 9. Proposed during implementation
 
-The following implement the recommendations in §8; they are recorded here for user review, without editing the PRD Decision Log.
+The following implement the recommendations in §8; they were approved by the user on 2026-10-20 and logged in the PRD as D47–D55 (identity D47, setup marker D48, empty conflict D49, terminal failures D50, integration cleanup D51, cancel after landing D52, conflict-parent retry D53, checkout transaction and ignored files D54, stop/cancel exception D55).
 
 - **Merge identity (proposal):** squash commits use the author agent's name and `agent@crew.local`; the committer is the user's git identity, falling back to `Crew <crew@localhost>`. An alternative is the agent name with the user's own email; the hardcoded author email is a proposal for user approval. Rebase preserves the author commits and messages. The fallback also applies while replaying commits. This follows §4.1 and preserves the history promised by the rebase strategy; the strategy harness tests cover both histories and the fallback.
 - **Setup reuse:** keep a success marker in each worktree's private Git directory. Restarting Crew reuses a successful setup; creating a new worktree runs the plain command again. There is no cross-worktree cache or `node_modules` symlink, so one task cannot change another's install through Crew's setup mechanism. The bullet 0 harness covers restart reuse and recreation.
