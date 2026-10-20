@@ -1,3 +1,11 @@
+# Milestone 5 prompt protection correction
+
+Status: bullets 0–3 reviewed, followed by the requested Reviewer diff/Q&A correction. Bullet 4 is next; milestone 5 is not done. Reviewer diffs are protected and capped with an explicit truncation notice; every question/answer is protected. Earlier failure history is retained as a complete list before optional memory when it fits, otherwise explicitly reported omitted; current feedback is retained. §9 records the cap and history choice.
+
+Three regressions failed before the fix; all ten injection tests now pass. Final `rm -r dist && npm test` passed typecheck/build and 220 tests across 39 files (260.63s). One fresh diff read completed. No dependencies, migrations, PRD Decision Log or D28 changes. Nothing pushed.
+
+---
+
 # Milestone 5 bullet 3 handoff
 
 Status: bullets 0–3 implemented and verified (217 tests across 39 files). Stop here as requested; next session starts at bullet 4. Bullets 4–9 are not started and milestone 5 is not done. No milestone 5 smoke or real Claude permission fixture has been written/run this session.

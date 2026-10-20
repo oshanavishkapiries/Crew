@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–3 implemented and verified (217 tests across 39 files). Bullets 4–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–3 implemented and verified (220 tests across 39 files). Bullets 4–9 and the manual smoke remain. Milestone 5 is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 

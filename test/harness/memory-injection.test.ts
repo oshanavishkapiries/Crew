@@ -129,3 +129,51 @@ it('adds the parent, finished blocker results, task memory and earlier messages 
   const prompt = await run('child');
   for (const text of ['Parent feature', 'Parent context', 'Finished database setup', 'Database schema created', 'Task-specific decision', 'Earlier failure detail', 'Current correction', 'Relevant earlier discussion']) expect(prompt).toContain(text);
 });
+
+it('protects a capped oversized diff in the actual Reviewer prompt and explains how to read the rest', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  h.db.db.update(schema.workspaces).set({ config: { memoryBudgetTokens: 250 } }).run();
+  const role = h.addRole('large-reviewer', 'reviewer'); h.addAgent('large-reviewer', role);
+  await h.createTask({ id: 'large-review', title: 'Large change', description: 'Review a large file' });
+  const prompts = capture();
+  h.fakeAdapter.setRunScripts([[{ type: 'edit_file', filePath: 'large.txt', content: 'VISIBLE DIFF START\n' + 'large change\n'.repeat(1500) + 'DIFF END SENTINEL\n' }, { type: 'done', result: 'Large change' }], [{ type: 'review', action: 'approve' }]]);
+  await h.scheduler.transitionTask('large-review', 'doing'); await h.runner.runTask('large-review');
+  await h.waitForTaskStatus('large-review', 'merge-queue'); await h.waitForLiveRuns(0);
+  const reviewer = prompts.find(p => h.db.db.select().from(schema.runs).where(eq(schema.runs.id, p.runId)).get()?.kind === 'review')!.prompt;
+  expect(reviewer).toContain('Git diff against main:'); expect(reviewer).toContain('VISIBLE DIFF START');
+  expect(reviewer).toContain('[truncated; run git diff main...HEAD for the rest]');
+  expect(reviewer).not.toContain('DIFF END SENTINEL');
+  expect(reviewer.length).toBeLessThan(2000);
+});
+
+it('protects low-overlap questions and answers in an overflowing fresh-process fallback', async () => {
+  h = await createPipelineHarness();
+  h.db.db.update(schema.workspaces).set({ config: { memoryBudgetTokens: 80 } }).run();
+  memory('overflow', 'project', 'Database migration '.repeat(500));
+  await h.createTask({ id: 'qa-overflow', title: 'Database migration', description: 'Database migration' });
+  const prompts = capture();
+  await h.runTaskWithAgent('qa-overflow', [{ type: 'ask', message: 'Which colour?' }]);
+  h.fakeAdapter.refuseResume = true; h.fakeAdapter.setScript([{ type: 'done', result: 'Completed' }]);
+  expect((await h.runCrew(['answer', 'qa-overflow', 'Ultraviolet; preserve this exact answer.'])).exitCode).toBe(0);
+  await h.waitForTaskStatus('qa-overflow', 'verifying'); await h.waitForLiveRuns(0);
+  expect(prompts[1].prompt).toContain('Question: Which colour?');
+  expect(prompts[1].prompt).toContain('Answer: Ultraviolet; preserve this exact answer.');
+  expect(prompts[1].prompt).not.toContain('Database migration '.repeat(500));
+});
+
+it('retains the earlier failure attempts list ahead of memory when it fits and explicitly reports its omission otherwise', async () => {
+  h = await createPipelineHarness();
+  for (const [id, budget] of [['history-fits', 300], ['history-overflow', 30]] as const) {
+    h.db.db.update(schema.workspaces).set({ config: { memoryBudgetTokens: budget } }).run();
+    await h.createTask({ id, title: 'Database migration', description: 'Database migration' });
+    h.db.db.insert(schema.messages).values([
+      { id: `${id}-old`, taskId: id, type: 'feedback', body: 'Low-overlap previous failure', createdAt: new Date(100000) },
+      { id: `${id}-new`, taskId: id, type: 'feedback', body: 'Current failure', createdAt: new Date(200000) },
+    ]).run();
+    memory(`${id}-memory`, 'project', 'Database migration '.repeat(300));
+    const prompt = await run(id);
+    expect(prompt).toContain('Current failure');
+    if (id === 'history-fits') { expect(prompt).toContain('Earlier failure attempts:'); expect(prompt).toContain('Low-overlap previous failure'); }
+    else { expect(prompt).not.toContain('Low-overlap previous failure'); expect(prompt).toContain('[Earlier failure attempts omitted: protected context exceeds the remaining prompt budget.]'); }
+  }
+});

@@ -31,6 +31,7 @@ export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Pro
   const feedback = messages.filter(message => message.type === 'feedback');
   const current = feedback.at(-1);
   const review = options.kind === 'review';
+  const budget = (config.memoryBudgetTokens ?? 8000) * 4;
   const persona = [
     config.roles?.[role?.name ?? '']?.defaultPrompt || role?.defaultPrompt || '',
     agent.systemPrompt,
@@ -45,6 +46,20 @@ export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Pro
     review ? 'Review the changes against the acceptance criteria. When done, call crew review approve or crew review changes --feedback "<what to change>".' : '',
     options.instructions || '',
   ].filter(Boolean);
+
+  const qa = messages.filter(message => message.type === 'question' || message.type === 'answer');
+  if (qa.length) taskContext.push(`Questions and Answers:\n${qa.map(message => `${message.type === 'question' ? 'Question' : 'Answer'}: ${message.body}`).join('\n')}`);
+  if (options.reviewContext?.diff) {
+    const { diff, baseBranch } = options.reviewContext;
+    const cap = Math.max(1, Math.min(16000, Math.floor(budget / 2)));
+    const notice = diff.length > cap ? `\n[truncated; run git diff ${baseBranch}...HEAD for the rest]` : '';
+    taskContext.push(`Git diff against ${baseBranch}:\n\`\`\`diff\n${diff.slice(0, cap)}\n\`\`\`${notice}`);
+  }
+  const earlier = feedback.slice(0, -1);
+  if (earlier.length) {
+    const history = `Earlier failure attempts:\n${earlier.map((message, index) => `- Attempt ${index + 1}: ${message.body}`).join('\n')}`;
+    taskContext.push([...persona, ...taskContext, history].join('\n\n').length <= budget ? history : '[Earlier failure attempts omitted: protected context exceeds the remaining prompt budget.]');
+  }
 
   // Read-only Git context. Never stage files just to discover untracked changes.
   const workDir = task.worktreePath || workspace?.repoPath;
@@ -80,7 +95,7 @@ export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Pro
     add('Task context', `Finished blocker: ${blocker.title}\n${results.map(message => message.body).join('\n')}`, blocker.updatedAt);
   }
   for (const message of messages) {
-    if (message.id === current?.id) continue;
+    if (['feedback', 'question', 'answer'].includes(message.type)) continue;
     const label = message.type === 'question' ? 'Question' : message.type === 'answer' ? 'Answer' : message.type === 'feedback' ? 'Earlier failure attempt' : message.type;
     add(message.type === 'question' || message.type === 'answer' ? 'Questions and Answers' : 'Task context', `${label}: ${message.body}`, message.createdAt);
   }
@@ -90,15 +105,13 @@ export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Pro
     if (diffStat || status) add('Worktree git diff --stat summary', diffStat || status, task.updatedAt);
   }
   if (options.reviewContext) {
-    const { diff, baseBranch, results } = options.reviewContext;
-    if (diff) add(`Git diff against ${baseBranch}`, `\`\`\`diff\n${diff}\n\`\`\``, task.updatedAt);
+    const { results } = options.reviewContext;
     if (results) add('Earlier verification results', results, task.updatedAt);
   }
   const order = ['Project memory', 'Role memory', 'Task memory'];
   entries.sort((a, b) => (order.indexOf(a.section) < 0 ? 3 : order.indexOf(a.section)) - (order.indexOf(b.section) < 0 ? 3 : order.indexOf(b.section)));
   const renderEntries = (projectOrRole: boolean) => entries.filter(entry => ['Project memory', 'Role memory'].includes(entry.section) === projectOrRole).map(entry => `${entry.section}:\n${entry.text}`);
   const render = () => [...persona, ...renderEntries(true), ...taskContext, ...renderEntries(false)].join('\n\n');
-  const budget = (config.memoryBudgetTokens ?? 8000) * 4;
   let prompt = render();
   // Remove the least relevant first, oldest first on ties. Protected context may exceed the budget.
   const removalOrder = [...entries].sort((a, b) => a.relevance - b.relevance || a.age - b.age);
