@@ -101,7 +101,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
     if (permissions.allowCommands) {
       for (const cmd of permissions.allowCommands) {
-        allowed.push(`Bash(${cmd} *)`);
+        allowed.push(cmd.includes('*') ? `Bash(${cmd})` : `Bash(${cmd} *)`);
         if (!cmd.includes('*')) {
           allowed.push(`Bash(${cmd})`);
         }

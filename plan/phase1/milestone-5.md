@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 5 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** bullet 0 implemented and verified (194 tests across 36 files). Bullets 1–9 remain; the manual smoke has not been written or run. This milestone is not done. The proposals (P1–P10 below) were approved on 2026-10-20 and are logged in the PRD as D56–D65. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** bullet 0 implemented and verified (196 tests across 36 files). Bullets 1–9 remain; the manual smoke has not been written or run. This milestone is not done. The proposals (P1–P10 below) were approved on 2026-10-20 and are logged in the PRD as D56–D65. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 
@@ -158,3 +158,5 @@ Proposed here and approved by the user on 2026-10-20. The PRD Decision Log holds
 
 - **Review fixes (bullet 0).** Initializing an existing workspace repairs missing default roles, team members and its board without replacing existing workspace/board data. Removing a custom role configuration resets its stored prompt/profile to safe standard defaults while preserving referenced IDs, so old privileges cannot survive file replacement. The real Reviewer prompt and role-specific Stop hook now use workspace overrides. A fresh read-only review found these issues plus broad Git prefixes; each has a regression test observed failing before the fix. No shell sandbox is added: arbitrary trusted project test commands can still execute other programs indirectly.
 - **Limit scope (bullet 0).** Runtime, retry, dispatch and verification limits are per workspace. Without an explicit in-process server ceiling, dispatcher/verifier total capacity is the sum of workspace capacities; each workspace still has its own cap. Explicit server options retain a total ceiling for harness and embedding callers. Ticket/memory/gate limits are validated and stored now and will gain consumers in their respective bullets.
+
+- **Init visibility and adapter pattern fix (after bullet 0).** Init explains in one line that its untracked config pauses merging until reviewed and committed. Merge pause warnings carry the same hint into status and queue output. Explicit adapter `allowCommands` wildcard patterns remain unchanged; plain prefixes retain exact and argument-bearing rules. Config command filtering remains as reviewed in bullet 0. This is a correction, not a change to D39/D58.

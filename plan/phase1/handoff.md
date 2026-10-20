@@ -1,3 +1,7 @@
+# Milestone 5 init and permission-pattern correction
+
+Status: bullet 0 reviewed, followed by the requested init visibility and adapter pattern fix. Bullets 1–9 remain pending; milestone 5 is not done. Init and status now explain that an untracked config pauses merges until committed. The real CLI/git regression preserves config bytes, commits the config, and observes the queued task merge. Adapter contracts cover explicit wildcards and plain prefixes. D28 and the PRD remain untouched. Verification: `rm -r dist && npm test` passed typecheck/build and 196 tests across 36 files (341.57s); both new regressions failed before the fixes. `npm run generate:docs` and `git diff --check` passed.
+
 # Milestone 5 bullet 0 handoff
 
 Status: bullet 0 (config and init) implemented, reviewed and verified on `feat/milestone-5-workflow` (base `4a3737ebbfd52649df0ab083dbfc09c4556fcc16`). Bullets 1–9 have not started. The milestone is not done and no milestone 5 smoke script has been written or run.

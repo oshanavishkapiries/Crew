@@ -420,9 +420,11 @@ export class MergeQueue {
 
   private async checkoutBlocked(workspace: Workspace, candidate?: string | null): Promise<boolean> {
     const branch = await this.git(workspace.repoPath, 'rev-parse', '--abbrev-ref', 'HEAD');
-    const dirty = branch === workspace.defaultBranch && !!await this.git(workspace.repoPath, 'status', '--porcelain=v1', '--untracked-files=all');
+    const status = branch === workspace.defaultBranch ? await this.git(workspace.repoPath, 'status', '--porcelain=v1', '--untracked-files=all') : '';
+    const dirty = !!status;
     if (dirty) {
-      this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has uncommitted changes`);
+      const hint = status.split('\n').includes('?? crew.config.ts') ? ' Untracked crew.config.ts pauses the merge queue; review and commit it before merging.' : '';
+      this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has uncommitted changes${hint}`);
       return true;
     }
     if (branch === workspace.defaultBranch && candidate) {

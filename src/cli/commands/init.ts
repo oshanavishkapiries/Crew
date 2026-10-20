@@ -47,6 +47,6 @@ export async function handleInit(): Promise<void> {
       }
       return db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, id)).get()!;
     })();
-    console.log(`Crew initialized: ${workspace.name} (${workspace.id}).\nConfig: ${file}\nNext: review and commit crew.config.ts, then run crew start.`);
+    console.log(`Crew initialized: ${workspace.name} (${workspace.id}).\nConfig: ${file}\nUntracked crew.config.ts pauses the merge queue; review and commit it before merging.\nNext: review and commit crew.config.ts, then run crew start.`);
   } finally { db.close(); }
 }

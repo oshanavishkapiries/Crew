@@ -34,7 +34,7 @@ crew start --port 4001
 
 ### `crew init`
 
-Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice.
+Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.
 
 **Examples:**
 
@@ -48,7 +48,7 @@ crew init
 
 ### `crew status`
 
-Prints a summary of active agents, tasks, and budget usage in the terminal.
+Prints a summary of active agents, tasks, and budget usage, including merge pause warnings and the hint to commit an untracked crew.config.ts.
 
 **Examples:**
 

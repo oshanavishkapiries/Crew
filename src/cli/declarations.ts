@@ -40,7 +40,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'init',
     category: 'human',
     summary: 'Initialize Crew in the current repository',
-    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice.',
+    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.',
     action: handleInit,
     examples: [
       { description: 'Initialize crew configuration', command: 'crew init' },
@@ -50,7 +50,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'status',
     category: 'human',
     summary: 'Show status of agents, tasks, and budget',
-    description: 'Prints a summary of active agents, tasks, and budget usage in the terminal.',
+    description: 'Prints a summary of active agents, tasks, and budget usage, including merge pause warnings and the hint to commit an untracked crew.config.ts.',
     examples: [
       { description: 'View current project status', command: 'crew status' },
     ],

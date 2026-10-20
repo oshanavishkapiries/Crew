@@ -226,3 +226,30 @@ it.each(['index', 'HEAD'])('pauses for a user-owned %s lock without changing it 
   expect(await git('status', '--porcelain')).toBe('');
   expect(fs.existsSync(lock)).toBe(false);
 });
+
+
+it('pauses for the untracked init config with an actionable status warning and resumes after committing it', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const init = await h.runCrew(['init'], {}, { cwd: h.repoDir });
+  expect(init.exitCode).toBe(0);
+  expect(init.stdout).toContain('Untracked crew.config.ts pauses the merge queue; review and commit it before merging.');
+  const config = path.join(h.repoDir, 'crew.config.ts');
+  const bytes = fs.readFileSync(config);
+  const paused = waitForMerge(h, 'checkout', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  h.server.mergeQueue.start();
+  await paused;
+  const status = await h.runCrew(['status']);
+  expect(status.exitCode).toBe(0);
+  expect(status.stdout).toContain('Untracked crew.config.ts pauses the merge queue; review and commit it before merging.');
+  expect(fs.readFileSync(config)).toEqual(bytes);
+  expect(h.getTask('checkout')).toMatchObject({ status: 'merge-queue', retries: 0 });
+  await git('add', 'crew.config.ts');
+  await git('commit', '-m', 'Configure Crew');
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  h.server.mergeQueue.tick();
+  await done;
+  expect(await git('log', '--oneline')).toContain('Configure Crew');
+  expect(await git('status', '--porcelain')).toBe('');
+  expect(h.server.mergeQueue.warnings.size).toBe(0);
+});

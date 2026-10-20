@@ -33,6 +33,19 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
       expect(config.args[config.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
     });
 
+    it('preserves explicit wildcard patterns and expands plain prefixes to exact and argument rules', () => {
+      const config = adapter.buildSpawn({ prompt: 'Build', workDir: '/tmp/worktree', permissions: { mode: 'standard', allowCommands: ['npm run *', 'node*', 'npm test', 'pytest'] } });
+      const allowed = config.args[config.args.indexOf('--allowedTools') + 1];
+      expect(allowed).toContain('Bash(npm run *)');
+      expect(allowed).toContain('Bash(node*)');
+      expect(allowed).not.toContain('Bash(npm run * *)');
+      expect(allowed).not.toContain('Bash(node* *)');
+      for (const prefix of ['npm test', 'pytest']) {
+        expect(allowed).toContain(`Bash(${prefix})`);
+        expect(allowed).toContain(`Bash(${prefix} *)`);
+      }
+    });
+
     it('keeps the initial orchestrator profile read-only with Crew commands and no project test allowance', () => {
       const config = adapter.buildSpawn({ prompt: 'Plan', workDir: '/tmp/worktree', permissions: { mode: 'orchestrator', allowCommands: ['npm test', 'git push'] } });
       const allowed = config.args[config.args.indexOf('--allowedTools') + 1];
