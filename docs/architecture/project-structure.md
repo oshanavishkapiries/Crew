@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–3 implemented and verified (220 tests across 39 files). Bullets 4–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–4 implemented and verified (248 tests across 42 files). Bullets 5–9 and the manual smoke remain. Milestone 5 is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -35,7 +35,7 @@ crew/
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
-│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–1 implemented; remaining bullets pending)
+│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–4 implemented; remaining bullets pending)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -51,10 +51,10 @@ crew/
 │  │  ├─ worktree/        # Create, set up, transfer inactive conflict worktrees on human retry, clean up/gc; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
 │  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, protected checkout/ref transactions with recovery journals, cleanup, feedback, conflict sub-tasks and interruption/restart recovery (D38–D46)
-│  │  ├─ memory/          # Layers, injection budget, promotion (D15)
+│  │  ├─ memory/          # Layers, shared protected prompt budget, promotion (D15)
+│  │  ├─ workflow/        # Phase instructions, Scheduler phase tasks, durable drafts and human gates
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
-│  ├─ workflows/          # Orchestrator phases: grill, spec, tickets, dispatch, integrate
 │  └─ roles/              # Built-in role prompts and permission profiles; workspace overrides stay in config
 ├─ ui/                    # Board UI (Vite + React), built and served by the server
 └─ test/
@@ -96,3 +96,5 @@ Each repo that *uses* Crew gets a `crew.config.ts` at its root, created by `crew
 `crew init` registers the canonical git root, one grill board and a four-agent Claude Code team, without overwriting an existing config. The real CLI startup loads every registered workspace config before binding; in-process harness startup does not execute repository config. Configured custom role rows use workspace-qualified IDs; built-in rows remain shared, with per-workspace overrides resolved by the runner.
 
 Ticket creation/assignment lives in `scheduler/tickets.ts` and the thin `cli/commands/ticket.ts` client. Generated migration `0004` records task kind and immutable creation phase for durable quotas. Task statuses still belong to the Scheduler.
+
+Phase instructions and lifecycle live in `src/server/workflow/phases.ts` and `index.ts`. The engine uses Scheduler phase transitions, durable task-linked drafts and human gates; `cli/commands/phase.ts` and `approve.ts` are thin clients. `test/harness/phases.test.ts` covers engine/recovery behavior and `phase-transport.test.ts` checks exact CLI transport. Generated migration `0005` links outputs and constrains active phase tasks. `test/adapters/phase-permissions.test.ts` checks the scoped output rule and the recorded real permission probe.

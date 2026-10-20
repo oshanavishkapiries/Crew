@@ -1,3 +1,5 @@
+import { handleApprove } from './commands/approve.js';
+import { handlePhase } from './commands/phase.js';
 import { handleMemory, handleRemember } from './commands/memory.js';
 import { handleAssign, handleTicket } from './commands/ticket.js';
 import { handleInit } from './commands/init.js';
@@ -52,7 +54,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'status',
     category: 'human',
     summary: 'Show status of agents, tasks, and budget',
-    description: 'Prints a summary of active agents, tasks, and budget usage, including merge pause warnings and the hint to commit an untracked crew.config.ts.',
+    description: 'Prints a summary of active agents, tasks, and budget usage, including board phases, gates, phase recovery commands, merge pause warnings and the hint to commit an untracked crew.config.ts.',
     examples: [
       { description: 'View current project status', command: 'crew status' },
     ],
@@ -142,8 +144,8 @@ export const COMMANDS: CommandDefinition[] = [
   {
     name: 'retry',
     category: 'human',
-    summary: 'Restart an escalated task',
-    description: 'Restarts an escalated task with retries reset to zero and an optional feedback note. Requires the human secret.',
+    summary: 'Retry an escalated task or cancelled phase',
+    description: 'Restarts an escalated task with retries reset to zero and an optional feedback note. A cancelled phase gets a replacement task in the same phase; cancelled work stays terminal. Requires the human secret.',
     args: [{ name: 'task', description: 'Task ID', required: true }],
     options: [{ flags: '--note <text>', description: 'Feedback for the next author run' }],
     examples: [
@@ -168,14 +170,17 @@ export const COMMANDS: CommandDefinition[] = [
   {
     name: 'approve',
     category: 'human',
-    summary: 'Approve a phase output or review gate',
-    description: 'Approves a draft phase output or review gate from the terminal.',
-    args: [
-      { name: 'target', description: 'Phase name or Task ID to approve', required: true },
+    summary: 'Approve or reject a draft phase output',
+    description: 'Approves the current draft once. Edits store file contents; rejection starts a fresh phase run with the required note. Use --draft to pin the expected gate.',
+    options: [
+      { flags: '--board <id>', description: 'Board ID (required)' },
+      { flags: '--draft <id>', description: 'Expected draft ID; otherwise read the current gate' },
+      { flags: '--edit <file>', description: 'Replace the draft with the text in this file' },
+      { flags: '--reject', description: 'Reject this draft and rerun the phase' },
+      { flags: '--note <text>', description: 'Feedback for rejection (required with --reject)' },
     ],
-    examples: [
-      { description: 'Approve the spec phase', command: 'crew approve spec' },
-    ],
+    action: handleApprove,
+    examples: [{ description: 'Approve a gate', command: 'crew approve --board <id> --draft <id>' }],
   },
   {
     name: 'answer',
@@ -342,13 +347,14 @@ export const COMMANDS: CommandDefinition[] = [
     category: 'orchestrator',
     summary: 'Inspect current phase or complete it',
     description: 'Checks current orchestrator phase instructions or submits phase output.',
+    args: [{ name: 'action', description: 'done to submit the phase output', required: false }],
+    action: handlePhase,
     options: [
-      { flags: '--done', description: 'Mark current phase as done' },
       { flags: '--output <file>', description: 'Path to phase output markdown file' },
     ],
     examples: [
       { description: 'Check phase instructions', command: 'crew phase' },
-      { description: 'Submit spec phase output', command: 'crew phase --done --output spec.md' },
+      { description: 'Submit spec phase output', command: 'crew phase done --output spec.md' },
     ],
   },
   {

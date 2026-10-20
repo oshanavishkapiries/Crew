@@ -10,7 +10,7 @@ export async function handleStart(options: { port?: string | number; host?: stri
   await loadWorkspaceConfigs(db);
 
   console.log(`Starting Crew server on ${host}:${port}...`);
-  const running = await startServer({ port, host, db, startDispatcher: true, startVerifier: true, startMergeQueue: true });
+  const running = await startServer({ port, host, db, startDispatcher: true, startVerifier: true, startMergeQueue: true, startWorkflow: true });
 
   console.log(`Crew server listening at ${running.url}`);
   console.log(`Task Board available at ${running.url}`);

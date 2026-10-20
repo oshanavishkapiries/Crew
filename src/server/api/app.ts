@@ -1,3 +1,4 @@
+import { WorkflowError, type Workflow } from '../workflow/index.js';
 import * as fs from 'node:fs';
 import { sql, eq, inArray, desc, asc, and } from 'drizzle-orm';
 import { execa } from 'execa';
@@ -39,6 +40,7 @@ export interface AppContext {
   dispatcher?: Dispatcher;
   verifier?: Verifier;
   mergeQueue?: MergeQueue;
+  workflow?: Workflow;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -57,6 +59,7 @@ export function createApp(ctx: AppContext): Hono {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof WorkflowError) return c.json({ error: err.message }, err.status);
     if (err instanceof MemoryError) return c.json({ error: err.message }, err.status);
     if (err instanceof TicketError) return c.json({ error: err.message }, err.status);
     if (err instanceof TaskNotFoundError) return c.json({ error: err.message }, 404);
@@ -165,6 +168,19 @@ export function createApp(ctx: AppContext): Hono {
     if (actor.task && target.boardId !== actor.task.boardId) throw forbidden('cannot assign a task on another board');
     return c.json({ task: tickets.assign(target.id, body.assignee) });
   });
+
+  const activePhase = (c: Context, taskId: string) => {
+    const { agent, task } = requireAssignedAgent(c, taskId);
+    const role = ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get();
+    if (role?.name !== 'orchestrator' || task.kind !== 'phase') throw forbidden('only the assigned Orchestrator can complete a phase');
+    const run = ctx.runner?.getLiveRunByTaskId(taskId);
+    if (!run || run.exitReason || task.status !== 'doing' || ctx.runner?.isCancelling(taskId) || ctx.dispatcher?.isStopped()) throw new WorkflowError('Phase run is no longer active.');
+    return task;
+  };
+  app.post('/api/tasks/:id/phase', c => { const task = activePhase(c, c.req.param('id')); return c.json(ctx.workflow!.snapshot(task.boardId)); });
+  app.post('/api/tasks/:id/phase-done', async c => { const task = activePhase(c, c.req.param('id')); const body = await ticketBody(c); return c.json(await ctx.workflow!.complete(task.id, body.output)); });
+  app.get('/api/boards/:id/phase', c => { requireHuman(c); return c.json(ctx.workflow!.snapshot(c.req.param('id'))); });
+  app.post('/api/boards/:id/phase/approve', async c => { requireHuman(c); const body = await ticketBody(c); return c.json(await ctx.workflow!.approve(c.req.param('id'), body.draftId, body)); });
 
   const memories = new MemoryStore(ctx.db);
   const memoryCaller = (c: Context) => { const caller = identify(c); if (!caller) throw unauthorized(); return caller; };
@@ -331,6 +347,7 @@ export function createApp(ctx: AppContext): Hono {
   app.post('/api/tasks/:id/done', async (c) => {
     const { agent, task } = requireAssignedAgent(c, c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
+    if (task.kind === 'phase') throw forbidden('use crew phase done for phase tasks');
     const result = body.result || 'Work completed';
 
     const liveRun = ctx.runner?.getLiveRunByTaskId(task.id);
@@ -622,8 +639,11 @@ export function createApp(ctx: AppContext): Hono {
     const body = await c.req.json().catch(() => ({}));
     if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: 'Expected an object with an optional note' }, 400);
     if (body.note !== undefined && typeof body.note !== 'string') return c.json({ error: 'note must be a string' }, 400);
-    const task = await ctx.scheduler.retryTaskByHuman(c.req.param('id'), body.note as string | undefined);
-    return c.json({ success: true, status: task.status, retries: task.retries });
+    const original = loadTask(c.req.param('id'));
+    const task = original.kind === 'phase' && original.status === 'cancelled'
+      ? await ctx.workflow!.retryCancelled(original.id, body.note as string | undefined)
+      : await ctx.scheduler.retryTaskByHuman(original.id, body.note as string | undefined);
+    return c.json({ success: true, taskId: task.id, status: task.status, retries: task.retries });
   });
 
   const queueSnapshot = () => {
@@ -731,6 +751,8 @@ export function createApp(ctx: AppContext): Hono {
       .where(eq(schema.agents.status, 'stopped'))
       .run();
 
+    for (const board of ctx.db.db.select().from(schema.boards).all()) await ctx.workflow?.ensureBoard(board.id).catch(error => console.error(`Workflow ${board.id}: ${error.message}`));
+
     // 2. Unpause dispatcher
     ctx.dispatcher?.setStopped(false);
 
@@ -780,6 +802,7 @@ export function createApp(ctx: AppContext): Hono {
     const queue = queueSnapshot();
     return c.json({
       stopped: isStopped,
+      phases: ctx.db.db.select().from(schema.boards).all().map(board => { const state = ctx.workflow!.snapshot(board.id); return { boardId: board.id, phase: board.currentPhase, draftId: state.draft?.id, taskId: state.task?.id, status: state.task?.status, problem: state.problem }; }),
       mergeQueue: { pending: queue.items.filter(i => i.taskStatus === 'merge-queue').length, warnings: queue.warnings },
       agents: agents.map((a) => ({
         id: a.id,

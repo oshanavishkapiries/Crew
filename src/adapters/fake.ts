@@ -2,6 +2,7 @@ import type { AgentAdapter, AgentEvent, PermissionProfile } from './types.js';
 
 export interface FakeScriptStep {
   type:
+    | 'phase_done'
     | 'update'
     | 'done'
     | 'ask'
@@ -84,7 +85,9 @@ export class FakeAdapter implements AgentAdapter {
       console.log(JSON.stringify({ type: 'start', data: { prompt: ${JSON.stringify(opts.prompt)} }, sessionId, timestamp: new Date().toISOString() }));
 
       for (const step of steps) {
-        if (step.type === 'update') {
+        if (step.type === 'phase_done') {
+          crew('phase', 'done', '--output', step.filePath || 'phase-output.md');
+        } else if (step.type === 'update') {
           console.log(JSON.stringify({ type: 'tool_call', data: { tool: 'update', message: step.message }, timestamp: new Date().toISOString() }));
           crew('update', '--', step.message || 'update');
         } else if (step.type === 'edit_file' && step.filePath) {

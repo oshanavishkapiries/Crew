@@ -102,11 +102,12 @@ export class WorktreeManager {
     boardId: string;
     title: string;
     branch?: string | null;
+    kind?: 'work' | 'phase';
     worktreePath?: string | null;
   }): Promise<WorktreeInfo> {
     const workspace = this.getWorkspaceForBoard(task.boardId);
     const worktreePath = task.worktreePath || this.getWorktreePath(workspace.id, task.id);
-    const branch = task.branch || this.getBranchName(task.id, task.title);
+    const branch = task.kind === 'phase' ? '' : task.branch || this.getBranchName(task.id, task.title);
 
     // A prior setup may have been interrupted; only the success marker permits reuse.
     if (fs.existsSync(worktreePath)) {
@@ -117,6 +118,12 @@ export class WorktreeManager {
     const parentDir = path.dirname(worktreePath);
     if (!fs.existsSync(parentDir)) {
       fs.mkdirSync(parentDir, { recursive: true });
+    }
+
+    if (task.kind === 'phase') {
+      await git(['worktree', 'add', '--detach', worktreePath, workspace.defaultBranch], workspace.repoPath);
+      await this.finishSetup(worktreePath, '', workspace.config, task.id);
+      return { worktreePath, branch: '' };
     }
 
     // Check if branch already exists in git
@@ -151,7 +158,7 @@ export class WorktreeManager {
     }
   }
 
-  ensureWorktree(task: { id: string; boardId: string; title: string; branch?: string | null; worktreePath?: string | null }): Promise<WorktreeInfo> {
+  ensureWorktree(task: { kind?: 'work' | 'phase'; id: string; boardId: string; title: string; branch?: string | null; worktreePath?: string | null }): Promise<WorktreeInfo> {
     const existing = this.operations.get(task.id);
     if (existing) return existing.done;
     if (this.stopped) return Promise.reject(new WorktreeSetupInterruptedError());

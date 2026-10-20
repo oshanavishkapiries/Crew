@@ -1,3 +1,4 @@
+import { Workflow } from './workflow/index.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Server } from 'node:http';
@@ -27,6 +28,7 @@ export interface ServerOptions {
   verifier?: Verifier;
   startVerifier?: boolean;
   startMergeQueue?: boolean;
+  startWorkflow?: boolean;
   maxParallelVerifications?: number;
 }
 
@@ -44,6 +46,7 @@ export interface RunningServer {
   dispatcher: Dispatcher;
   verifier: Verifier;
   mergeQueue: MergeQueue;
+  workflow: Workflow;
   close: () => Promise<void>;
 }
 
@@ -88,7 +91,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
   const mergeQueue = new MergeQueue({ db, eventBus, scheduler, worktreeManager });
 
+  const workflow = new Workflow(db, scheduler, eventBus, runner, worktreeManager);
   const app = createApp({
+    workflow,
     db,
     eventBus,
     scheduler,
@@ -129,6 +134,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             // ignore
           }
 
+          if (options.startWorkflow) workflow.start();
           if (options.startDispatcher) {
             dispatcher.start();
           }
@@ -153,6 +159,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             dispatcher,
             verifier,
             mergeQueue,
+            workflow,
             close: () =>
               new Promise<void>((res, rej) => {
                 try {
@@ -162,7 +169,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                 } catch {}
                 dispatcher.stop();
                 verifier.stop();
-                Promise.all([mergeQueue.stop(), worktreeManager.stopAllSetup()]).then(() => {
+                Promise.all([mergeQueue.stop(), worktreeManager.stopAllSetup(), runner.killAll('stopped')]).then(() => workflow.close()).then(() => {
                   server.close((err) => {
                     if (err) rej(err);
                     else res();

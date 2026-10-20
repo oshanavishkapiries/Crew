@@ -259,6 +259,10 @@ describe('Crew Home and Database (D12, D20)', () => {
 
     // Simulate legacy schema created by INITIAL_MIGRATION_SQL (no __drizzle_migrations table, no exit_reason, no prompt)
     rawSqlite.exec(`
+      CREATE TABLE phase_outputs (
+        id text PRIMARY KEY NOT NULL, board_id text NOT NULL, phase text NOT NULL,
+        body text NOT NULL, status text DEFAULT 'draft' NOT NULL, approved_at integer, created_at integer NOT NULL
+      );
       CREATE TABLE merge_queue_items (
         id text PRIMARY KEY NOT NULL, task_id text NOT NULL, position integer NOT NULL,
         status text DEFAULT 'queued' NOT NULL, conflict_task_id text, created_at integer NOT NULL
@@ -320,9 +324,9 @@ describe('Crew Home and Database (D12, D20)', () => {
     // Now open with createCrewDatabase: it should baseline 0000 and run 0001
     const { db, sqlite, close } = createCrewDatabase({ dbPath: oldDbPath });
     try {
-      // 1. __drizzle_migrations exists and has 5 applied migrations
+      // 1. __drizzle_migrations exists and has 6 applied migrations
       const migrationRows = sqlite.prepare('SELECT * FROM __drizzle_migrations ORDER BY created_at ASC').all() as Array<{ hash: string; created_at: number }>;
-      expect(migrationRows).toHaveLength(5);
+      expect(migrationRows).toHaveLength(6);
 
       // 2. Legacy data is preserved
       const legacyWs = db.select().from(schema.workspaces).all();
@@ -387,7 +391,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     const { db, sqlite, close } = createCrewDatabase({ dbPath: m2DbPath });
     try {
       const migrations = sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-      expect(migrations).toHaveLength(5);
+      expect(migrations).toHaveLength(6);
 
       const task = db.select().from(schema.tasks).where(eq(schema.tasks.id, 'task-m2')).get();
       expect(task).toBeDefined();
@@ -436,7 +440,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     old.close();
     const upgraded = createCrewDatabase({ dbPath });
     try {
-      expect(upgraded.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toHaveLength(5);
+      expect(upgraded.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toHaveLength(6);
       for (const t of tables) {
         const rows = upgraded.sqlite.prepare(`SELECT * FROM ${t}`).all();
         expect(rows).toHaveLength(1);
@@ -477,7 +481,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     old.close();
     const upgraded = createCrewDatabase({ dbPath });
     try {
-      expect(upgraded.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toHaveLength(5);
+      expect(upgraded.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toHaveLength(6);
       for (const t of tables) {
         const rows = upgraded.sqlite.prepare(`SELECT * FROM ${t}`).all();
         expect(rows).toHaveLength(1);
@@ -489,6 +493,32 @@ describe('Crew Home and Database (D12, D20)', () => {
     } finally { upgraded.close(); }
   });
 
+  it('upgrades the pre-engine milestone 5 database preserving a draft and enforcing phase uniqueness', () => {
+    const dbPath = path.join(tempDir, 'pre-engine.db'); const old = new Database(dbPath);
+    const migrations = readMigrationFiles({ migrationsFolder: path.resolve(import.meta.dirname, '../drizzle') });
+    old.exec('CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)');
+    for (const migration of migrations.slice(0, 5)) {
+      for (const statement of migration.sql) old.exec(statement);
+      old.prepare('INSERT INTO __drizzle_migrations(hash, created_at) VALUES (?, ?)').run(migration.hash, migration.folderMillis);
+    }
+    old.exec(`INSERT INTO workspaces(id,name,repo_path,created_at) VALUES ('ws','Workspace','/repo',123);
+      INSERT INTO boards(id,workspace_id,current_phase,created_at) VALUES ('board','ws','grill',123);
+      INSERT INTO tasks(id,board_id,title,description,created_at,updated_at) VALUES ('work','board','Preserve work','Body',123,123);
+      INSERT INTO phase_outputs VALUES ('legacy-draft','board','grill','Preserve draft','draft',NULL,123);
+      INSERT INTO memory VALUES ('memory','ws','project',NULL,NULL,'Summary','Preserve summary','human',NULL,123);`);
+    old.close(); const upgraded = createCrewDatabase({ dbPath });
+    try {
+      expect(upgraded.db.select().from(schema.phaseOutputs).get()).toMatchObject({ id: 'legacy-draft', body: 'Preserve draft', taskId: null });
+      expect(upgraded.db.select().from(schema.memory).get()?.source).toBe('human');
+      expect(upgraded.db.select().from(schema.tasks).get()).toMatchObject({ id: 'work', kind: 'work' });
+      const phase = { boardId: 'board', title: 'Phase', description: 'Instructions', kind: 'phase' as const, creationPhase: 'grill', status: 'ready', createdAt: new Date(), updatedAt: new Date() };
+      upgraded.db.insert(schema.tasks).values({ ...phase, id: 'phase-one' }).run();
+      expect(() => upgraded.db.insert(schema.tasks).values({ ...phase, id: 'phase-two' }).run()).toThrow();
+      upgraded.db.insert(schema.phaseOutputs).values({ id: 'linked', taskId: 'phase-one', boardId: 'board', phase: 'grill', body: 'Linked output', createdAt: new Date() }).run();
+      expect(() => upgraded.db.insert(schema.phaseOutputs).values({ id: 'duplicate', taskId: 'phase-one', boardId: 'board', phase: 'grill', body: 'Duplicate', createdAt: new Date() }).run()).toThrow();
+    } finally { upgraded.close(); }
+  });
+
   it('reopening an up-to-date DB is a safe no-op', () => {
     const dbPath = path.join(tempDir, 'reopen.db');
     const first = createCrewDatabase({ dbPath });
@@ -497,7 +527,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     const second = createCrewDatabase({ dbPath });
     try {
       const migrationRows = second.sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-      expect(migrationRows).toHaveLength(5);
+      expect(migrationRows).toHaveLength(6);
     } finally {
       second.close();
     }

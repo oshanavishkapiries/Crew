@@ -80,8 +80,10 @@ export class Scheduler {
   /**
    * Check if a direct transition is allowed by the state machine
    */
-  isValidTransition(from: TaskStatus, to: TaskStatus): boolean {
+  isValidTransition(from: TaskStatus, to: TaskStatus, kind: 'work' | 'phase' = 'work'): boolean {
     if (from === to) return true;
+    if (from === 'doing' && to === 'merged' && kind === 'phase') return true;
+    if (kind === 'phase' && to === 'verifying') return false;
 
     // Terminal states cannot transition to anything
     if (from === 'merged' || from === 'cancelled') {
@@ -185,7 +187,7 @@ export class Scheduler {
     const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
 
-    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus)) {
+    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus, task.kind)) {
       throw new InvalidTransitionError(taskId, currentStatus, requestedStatus);
     }
 
@@ -390,7 +392,7 @@ export class Scheduler {
     const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
 
-    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus)) {
+    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus, task.kind)) {
       throw new InvalidTransitionError(taskId, currentStatus, requestedStatus);
     }
 

@@ -1,3 +1,4 @@
+import { PHASE_OUTPUT_FILE, PHASES } from '../workflow/phases.js';
 import { buildPrompt, type ReviewContext } from '../memory/prompt.js';
 import { commandPrefixes, type ProjectConfig } from '../project-config.js';
 import * as crypto from 'node:crypto';
@@ -194,6 +195,7 @@ export class Runner extends EventEmitter {
   private serverUrl: string;
   private crewHome: string;
 
+  private startingPhases = new Set<string>();
   private liveRuns: Map<string, ActiveRun> = new Map();
   private cancelling: Set<string> = new Set();
   private agentTokens: Map<string, string> = new Map();
@@ -303,6 +305,21 @@ export class Runner extends EventEmitter {
   }
 
   async startRun(options: StartRunOptions): Promise<ActiveRun> {
+    const phase = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, options.taskId)).get()?.kind === 'phase';
+    if (!phase) return this.startRunInner(options);
+    if (this.startingPhases.has(options.taskId) || this.getLiveRunByTaskId(options.taskId)) throw new Error('Phase already has a starting or live run.');
+    this.startingPhases.add(options.taskId);
+    try { return await this.startRunInner(options); }
+    catch (error) {
+      const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, options.taskId)).get();
+      if (!options.isResume && task?.status === 'doing' && !this.isCancelling(task.id) && !fs.existsSync(path.join(this.crewHome, 'stopped'))) {
+        await this.scheduler.transitionTask(task.id, 'doing', { incrementRetries: true, reason: 'Phase preparation failed', alongside: () => this.db.db.insert(schema.messages).values({ id: crypto.randomUUID(), taskId: task.id, type: 'feedback', body: `Phase preparation failed: ${error instanceof Error ? error.message : String(error)}`, createdAt: new Date() }).run() });
+      }
+      throw error;
+    } finally { this.startingPhases.delete(options.taskId); }
+  }
+
+  private async startRunInner(options: StartRunOptions): Promise<ActiveRun> {
     const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, options.taskId)).get();
     if (!task) throw new Error(`Task not found: ${options.taskId}`);
 
@@ -330,7 +347,7 @@ export class Runner extends EventEmitter {
     const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
 
     const prompt = await buildPrompt(this.db, {
-      task, agent, kind: options.kind, instructions: options.prompt,
+      task, agent, kind: options.kind, instructions: [options.prompt, ...(task.kind === 'phase' ? [`Phase: ${task.creationPhase}\n${PHASES[task.creationPhase || '']?.instructions || ''}\nWrite the output to ${path.join(workDir, PHASE_OUTPUT_FILE)}. Call crew phase done --output ${PHASE_OUTPUT_FILE}.`] : [])].filter(Boolean).join('\n\n'),
       fallback: options.fallback, reviewContext: options.reviewContext,
     });
 
@@ -372,6 +389,10 @@ export class Runner extends EventEmitter {
     // Role configuration cannot grant this extra profile to ordinary tasks.
     permissionProfile.conflictResolution = options.kind !== 'review' && !!this.db.db.select().from(schema.mergeQueueItems)
       .where(eq(schema.mergeQueueItems.conflictTaskId, task.id)).get();
+
+    if (task.kind === 'phase') permissionProfile.mode = 'orchestrator';
+    permissionProfile.phaseOutputPath = task.kind === 'phase' && role?.name === 'orchestrator' ? path.join(workDir, PHASE_OUTPUT_FILE) : undefined;
+    if (permissionProfile.phaseOutputPath && !fs.existsSync(permissionProfile.phaseOutputPath)) fs.writeFileSync(permissionProfile.phaseOutputPath, '# Phase output\n');
 
     // Check if Stop hook is enabled (D36: off by default, enabled per workspace or role)
     const isStopHookEnabled = Boolean(
@@ -434,6 +455,11 @@ export class Runner extends EventEmitter {
       fs.mkdirSync(path.dirname(this.snapshotPath(runId)), { recursive: true });
       fs.writeFileSync(this.snapshotPath(runId), mainCheckoutSnapshot, 'utf8');
     } catch {}
+
+    if (task.kind === 'phase' && (this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status !== 'doing' || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped')))) {
+      logStream.end();
+      throw new Error('Phase stopped or cancelled before spawn.');
+    }
 
     // Insert Run in DB
     const startedAt = new Date();
@@ -574,7 +600,7 @@ export class Runner extends EventEmitter {
         logStream.end();
 
         const endedAt = new Date();
-        const exitCode = result.exitCode ?? 0;
+        const exitCode = result.exitCode ?? (task.kind === 'phase' && result.failed ? 1 : 0);
 
         // Determine exitReason
         let exitReason: ExitReason = activeRun.exitReason || 'exited';
@@ -614,7 +640,7 @@ export class Runner extends EventEmitter {
           .run();
 
         // Only a finished work run goes on to the diff gate, which needs its snapshot
-        if (options.kind === 'review' || exitReason !== 'done') {
+        if (task.kind === 'phase' || options.kind === 'review' || exitReason !== 'done') {
           this.clearMainCheckoutSnapshot(runId);
         }
 
@@ -628,6 +654,7 @@ export class Runner extends EventEmitter {
             await this.scheduler.transitionTask(task.id, 'doing', {
               reason: `Run ended with ${exitReason}`,
               incrementRetries: true,
+              alongside: task.kind === 'phase' ? () => this.db.db.insert(schema.messages).values({ id: crypto.randomUUID(), taskId: task.id, type: 'feedback', body: `Phase run ended with ${exitReason}. Address the failure and submit phase output.`, createdAt: new Date() }).run() : undefined,
             });
           } catch {
             // e.g. already transitioned or escalated

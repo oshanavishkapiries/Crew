@@ -1,6 +1,8 @@
 export interface PermissionProfile {
   /** Set by Runner only for a linked merge conflict sub-task. */
   conflictResolution?: boolean;
+  /** Runner supplies this only for phase tasks in their own worktree. */
+  phaseOutputPath?: string;
   mode?: 'standard' | 'full' | 'read-only' | 'orchestrator';
   allowCommands?: string[];
   denyCommands?: string[];

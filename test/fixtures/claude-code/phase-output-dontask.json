@@ -1,0 +1,138 @@
+{
+  "version": "2.1.300",
+  "exitCode": 0,
+  "output": "OUTPUT_AFTER\n",
+  "other": "OTHER_BEFORE\n",
+  "calls": [
+    {
+      "method": "POST",
+      "path": "/api/tasks/fixture-phase/phase-done",
+      "output": "OUTPUT_AFTER\n",
+      "agentAuthenticated": true
+    }
+  ],
+  "tools": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01K59vhurjcq1vVev2SZhSkw",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/crew-m5-phase-fixture-RECORDED/phase-output.md"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01THsJfHcXEFuyWLPh29Veh8",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/crew-m5-phase-fixture-RECORDED/other.md"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01THsJfHcXEFuyWLPh29Veh8",
+      "type": "tool_result",
+      "content": "1\tOTHER_BEFORE\n2\t"
+    },
+    {
+      "tool_use_id": "toolu_01K59vhurjcq1vVev2SZhSkw",
+      "type": "tool_result",
+      "content": "1\tOUTPUT_BEFORE\n2\t"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01N5GkjKhKtb46getzWYxKuJ",
+      "name": "Edit",
+      "input": {
+        "replace_all": false,
+        "file_path": "/tmp/crew-m5-phase-fixture-RECORDED/phase-output.md",
+        "old_string": "OUTPUT_BEFORE",
+        "new_string": "OUTPUT_AFTER"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01N5GkjKhKtb46getzWYxKuJ",
+      "type": "tool_result",
+      "content": "The file /tmp/crew-m5-phase-fixture-RECORDED/phase-output.md has been updated successfully. (file state is current in your context \u2014 no need to Read it back)"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01Abzuyp7SAVJiqnYC7Bn2oS",
+      "name": "Edit",
+      "input": {
+        "replace_all": false,
+        "file_path": "/tmp/crew-m5-phase-fixture-RECORDED/other.md",
+        "old_string": "OTHER_BEFORE",
+        "new_string": "OTHER_AFTER"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "type": "tool_result",
+      "content": "Permission to use Edit has been denied because Claude Code is running in don't ask mode. IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, e.g. do not use your ability to run tests to execute non-test actions. You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. If you believe this capability is essential to complete the user's request, STOP and explain to the user what you were trying to do and why you need this permission. Let the user decide how to proceed.",
+      "is_error": true,
+      "tool_use_id": "toolu_01Abzuyp7SAVJiqnYC7Bn2oS"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01TTv7em3WGvfQBvDtQM7vBA",
+      "name": "Bash",
+      "input": {
+        "command": "crew phase done --output /tmp/crew-m5-phase-fixture-RECORDED/phase-output.md",
+        "description": "Run crew phase done with output file"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01TTv7em3WGvfQBvDtQM7vBA",
+      "type": "tool_result",
+      "content": "{\n  \"success\": true,\n  \"draftStoredByFixtureReceiver\": true\n}",
+      "is_error": false
+    }
+  ],
+  "receiver": "Recording HTTP receiver, not the phase engine; real built crew CLI reads the file and authenticates the POST.",
+  "args": [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "dontAsk",
+    "--permission-prompts",
+    "none",
+    "--allowedTools",
+    "Read Glob Grep Edit(//tmp/crew-m5-phase-fixture-RECORDED/phase-output.md) Bash(crew *)",
+    "--disallowedTools",
+    "Bash(git push *) Bash(git push)",
+    "--setting-sources",
+    "",
+    "--max-budget-usd",
+    "0.50"
+  ],
+  "prompt": "Permission contract probe in a throwaway repository: Read /tmp/crew-m5-phase-fixture-RECORDED/phase-output.md and /tmp/crew-m5-phase-fixture-RECORDED/other.md. Use Edit to replace OUTPUT_BEFORE with OUTPUT_AFTER in /tmp/crew-m5-phase-fixture-RECORDED/phase-output.md. Use Edit once to replace OTHER_BEFORE with OTHER_AFTER in /tmp/crew-m5-phase-fixture-RECORDED/other.md; this should be denied, so do not work around that denial. Then use Bash to run exactly: crew phase done --output /tmp/crew-m5-phase-fixture-RECORDED/phase-output.md . The real crew CLI sends the output to a recording HTTP receiver; its JSON reply is expected. All three operations must be attempted independently even if an earlier one is denied. Stop afterwards. Do not run other commands.",
+  "permission_denials": [
+    {
+      "tool_name": "Edit",
+      "tool_use_id": "toolu_01Abzuyp7SAVJiqnYC7Bn2oS",
+      "tool_input": {
+        "file_path": "/tmp/crew-m5-phase-fixture-RECORDED/other.md",
+        "old_string": "OTHER_BEFORE",
+        "new_string": "OTHER_AFTER",
+        "replace_all": false
+      }
+    }
+  ],
+  "costUsd": 0.05984780000000001
+}

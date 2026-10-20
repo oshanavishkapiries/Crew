@@ -37,6 +37,8 @@ async function repo() {
   return { cwd, home, run, config: path.join(cwd, 'crew.config.ts') };
 }
 async function start(cwd: string, home: string) {
+  // These tests load config without launching the initialized real Claude team.
+  fs.writeFileSync(path.join(home, 'stopped'), 'Config loader test: dispatch paused');
   const child = execa(process.execPath, [cli, 'start', '--port', '0'], { cwd, env: { CREW_HOME: home }, reject: false }); children.push(child);
   await new Promise<void>((resolve, reject) => {
     let output = '';

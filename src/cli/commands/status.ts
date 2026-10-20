@@ -2,6 +2,7 @@ import { getHumanAction } from '../client.js';
 
 interface StatusResponse {
   stopped: boolean;
+  phases?: Array<{ boardId: string; phase: string; draftId?: string; taskId?: string; status?: string; problem?: string }>;
   mergeQueue?: { pending: number; warnings: Array<{ workspaceId: string; message: string }> };
   agents: Array<{ id: string; name: string; cliType: string; status: string }>;
   liveRuns: Array<{ id: string; taskId: string; agentId: string; sessionId?: string; pid?: number }>;
@@ -17,6 +18,8 @@ export async function handleStatus(): Promise<void> {
 
   console.log(`=== Crew Status ===`);
   console.log(`Dispatch: ${status.stopped ? 'PAUSED (stopped)' : 'ACTIVE'}`);
+
+  for (const phase of status.phases || []) console.log(`Board ${phase.boardId}: ${phase.phase}${phase.draftId ? ` gate ${phase.draftId}; crew approve --board ${phase.boardId} --draft ${phase.draftId}` : phase.taskId ? ` ${phase.taskId}: ${phase.status}${['escalated', 'cancelled'].includes(phase.status || '') ? `; crew retry ${phase.taskId}` : ''}` : phase.problem ? ` ${phase.problem}` : ''}`);
 
   if (status.mergeQueue) {
     console.log(`Merge queue: ${status.mergeQueue.pending} pending`);

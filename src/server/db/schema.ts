@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   integer,
+  uniqueIndex,
   primaryKey,
   sqliteTable,
   text,
@@ -75,7 +77,7 @@ export const tasks = sqliteTable('tasks', {
   worktreePath: text('worktree_path'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-});
+}, t => [uniqueIndex('one_active_phase_task').on(t.boardId, t.creationPhase).where(sql`${t.kind} = 'phase' AND ${t.status} NOT IN ('merged', 'cancelled')`)]);
 
 export const taskDependencies = sqliteTable(
   'task_dependencies',
@@ -160,6 +162,7 @@ export const memory = sqliteTable('memory', {
 });
 
 export const phaseOutputs = sqliteTable('phase_outputs', {
+  taskId: text('task_id').unique().references(() => tasks.id),
   id: text('id').primaryKey(),
   boardId: text('board_id')
     .notNull()

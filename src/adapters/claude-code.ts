@@ -58,7 +58,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     permissionMode: string;
   } {
     if (permissions.mode === 'orchestrator') {
-      return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)'], disallowedTools: ['Edit', ...FIXED_DENIED_TOOLS], permissionMode: 'dontAsk' };
+      return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)', ...(permissions.phaseOutputPath ? [`Edit(/${permissions.phaseOutputPath})`] : [])], disallowedTools: [...(permissions.phaseOutputPath ? [] : ['Edit']), ...FIXED_DENIED_TOOLS], permissionMode: 'dontAsk' };
     }
     if (permissions.mode === 'read-only') {
       const allowed = [
@@ -165,6 +165,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       disallowedTools.join(' '),
     ];
 
+    if (opts.permissions.mode === 'orchestrator' && opts.permissions.phaseOutputPath) args.push('--setting-sources', '');
     if (opts.settingsPath) {
       args.push('--settings', opts.settingsPath);
     } else if (opts.stopHook) {
@@ -217,6 +218,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       disallowedTools.join(' '),
     ];
 
+    if (opts.permissions.mode === 'orchestrator' && opts.permissions.phaseOutputPath) args.push('--setting-sources', '');
     if (opts.settingsPath) {
       args.push('--settings', opts.settingsPath);
     } else if (opts.stopHook) {

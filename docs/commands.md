@@ -48,7 +48,7 @@ crew init
 
 ### `crew status`
 
-Prints a summary of active agents, tasks, and budget usage, including merge pause warnings and the hint to commit an untracked crew.config.ts.
+Prints a summary of active agents, tasks, and budget usage, including board phases, gates, phase recovery commands, merge pause warnings and the hint to commit an untracked crew.config.ts.
 
 **Examples:**
 
@@ -182,7 +182,7 @@ crew queue
 
 ### `crew retry`
 
-Restarts an escalated task with retries reset to zero and an optional feedback note. Requires the human secret.
+Restarts an escalated task with retries reset to zero and an optional feedback note. A cancelled phase gets a replacement task in the same phase; cancelled work stays terminal. Requires the human secret.
 
 **Arguments:**
 
@@ -228,18 +228,22 @@ crew cancel task-1
 
 ### `crew approve`
 
-Approves a draft phase output or review gate from the terminal.
+Approves the current draft once. Edits store file contents; rejection starts a fresh phase run with the required note. Use --draft to pin the expected gate.
 
-**Arguments:**
+**Options:**
 
-- `target` (required): Phase name or Task ID to approve
+- `--board <id>`: Board ID (required)
+- `--draft <id>`: Expected draft ID; otherwise read the current gate
+- `--edit <file>`: Replace the draft with the text in this file
+- `--reject`: Reject this draft and rerun the phase
+- `--note <text>`: Feedback for rejection (required with --reject)
 
 **Examples:**
 
-Approve the spec phase:
+Approve a gate:
 
 ```bash
-crew approve spec
+crew approve --board <id> --draft <id>
 ```
 
 ---
@@ -455,9 +459,12 @@ Commands used specifically by the Orchestrator agent to create tickets, manage p
 
 Checks current orchestrator phase instructions or submits phase output.
 
+**Arguments:**
+
+- `action` (optional): done to submit the phase output
+
 **Options:**
 
-- `--done`: Mark current phase as done
 - `--output <file>`: Path to phase output markdown file
 
 **Examples:**
@@ -471,7 +478,7 @@ crew phase
 Submit spec phase output:
 
 ```bash
-crew phase --done --output spec.md
+crew phase done --output spec.md
 ```
 
 ---
