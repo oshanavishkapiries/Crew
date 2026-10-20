@@ -15,6 +15,7 @@ export interface ServerInfo {
 }
 
 export function getServerInfo(): ServerInfo {
+  if (process.env.CREW_AGENT_TOKEN) fail('This is a human command; agents cannot use human authentication.');
   if (process.env.CREW_SERVER_URL && process.env.CREW_SECRET) {
     return {
       url: process.env.CREW_SERVER_URL,

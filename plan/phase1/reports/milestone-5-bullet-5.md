@@ -2,7 +2,7 @@
 
 ## Summary
 
-Bullet 5 implements grill Q&A through real Orchestrator execution, approved spec publication with provenance, and ticket release only after gate approval. The clean-build suite passed 257 tests across 43 files, and the final strengthened early-workflow rerun passed nine cases. Bullets 6 to 9 are not started; milestone 5 is incomplete. Implementation, tests and existing documentation edits remain uncommitted; this separate report commit and push publish the report only.
+Bullet 5 implements grill Q&A through real Orchestrator execution, approved spec publication with provenance, and ticket release only after gate approval. The clean-build suite passed 257 tests across 43 files, and the final strengthened early-workflow rerun passed nine cases. Bullets 6 to 9 are not started; milestone 5 is incomplete. The report was initially published separately. This follow-up commit includes the bullet 5 implementation, tests and matching documentation; this follow-up has not been pushed.
 
 ## Branch and commits
 
@@ -15,8 +15,8 @@ Bullet 5 implements grill Q&A through real Orchestrator execution, approved spec
 - 97a9a17 Reviewer diff and Q&A protection correction
 - b821b4d bullet 4 - Phase engine
 - af5ac4d session prompt and report-directory instructions
-- Bullet 5 implementation: uncommitted working-tree changes.
-- This report: its own commit, message `docs(m5): bullet 5 report`.
+- Bullet 5 implementation: included in this follow-up commit, with tests and matching documentation.
+- fb22548 report-only commit - `docs(m5): bullet 5 report` (published).
 
 The initial push was rejected because the remote branch had advanced. Fetched the remote documentation commit, rebased the report with automatic preservation/restoration of tracked working-tree changes, and retried a normal push. No force-push or main-branch modification.
 
@@ -29,7 +29,7 @@ The initial push was rejected because the remote branch had advanced. Fetched th
 | 2 | Memory store and human CLI | done | Previously: memory.test.ts: curates all three layers; promotes explicitly and atomically; live integrate Orchestrator promotion | Existing authorization retained. |
 | 3 | Memory injection | done | Previously: memory-injection.test.ts: relevance/age trimming; protected overflow; role isolation; low-overlap Q&A fallback protection | Shared prompt builder retained. |
 | 4 | Phase engine | done | Previously: phases.test.ts: concurrent edited approval; rejection feedback; durable restart gate; recovery through retry | One test-proven human-authentication bug fixed this session. Scoped Edit fixture unchanged. |
-| 5 | Grill, spec, tickets | done | early-workflow.test.ts: nine cases listed below | Implemented and verified in working tree; not committed with this report. |
+| 5 | Grill, spec, tickets | done | early-workflow.test.ts: nine cases listed below | Implemented and verified; included in the follow-up implementation commit. |
 | 6 | Dispatch and integrate | skipped | None this session | Not started. |
 | 7 | Interruptions | skipped | None this session | Not started. |
 | 8 | Human CLI polish | skipped | None this session | Not started. |
@@ -75,6 +75,15 @@ Rejection starts a fresh planning task while retaining existing tickets and thei
       Tests  257 passed (257)
    Start at  21:02:24
    Duration  494.02s (tests 94%, import 6%)
+```
+
+Pre-commit clean-build verification for this follow-up: `rm -r dist && npm test` passed typecheck, fresh build and the complete suite.
+
+```text
+ Test Files  43 passed (43)
+      Tests  257 passed (257)
+   Start at  21:15:16
+   Duration  487.80s (tests 94%, import 6%)
 ```
 
 Final strengthened-file rerun: `npx vitest run test/harness/early-workflow.test.ts`.
@@ -173,7 +182,7 @@ One fresh reread of the implementation diff, test file and documentation changes
 - `docs/architecture/project-structure.md`: status and early-workflow test ownership.
 - `plan/phase1/handoff.md`: implemented slice, verification, regression and remaining work.
 - `docs/commands.md`: regenerated, unchanged.
-- This report: separate report-only commit. Implementation documentation changes listed above remain uncommitted.
+- This report: initially published in a separate report-only commit; updated in the follow-up implementation commit.
 - PRD Decision Log, D28, dependency documentation and README: no changes required by this slice.
 
 ## Smoke script
@@ -182,7 +191,7 @@ Not started. No milestone 5 script, run command, run-cap arithmetic or expected-
 
 ## Known issues, TODOs and unverified things
 
-- Bullet 5 implementation, tests and existing documentation edits remain uncommitted. Pushing this report does not publish those changes.
+- The report-only commit was pushed earlier. This follow-up implementation commit has not been pushed.
 - Bullets 6 to 9 are not started; full dispatch/integrate lifecycle and private-preview readiness are incomplete.
 - Zero-ticket dispatch does not yet automatically complete; bullet 6.
 - Exhaustive running-phase crash and in-request interruption windows remain bullet 7.

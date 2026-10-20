@@ -290,7 +290,7 @@ export class Scheduler {
 
       params.alongside?.();
 
-      if (this.dependenciesMerged(params.id)) {
+      if (!this.ticketHeld(this.getTaskOrThrow(params.id)) && this.dependenciesMerged(params.id)) {
         return this.applyTransition(params.id, 'ready', { reason: 'No unmerged blockers' }, pending);
       }
       return this.getTaskOrThrow(params.id);
@@ -298,6 +298,24 @@ export class Scheduler {
 
     this.publish(pending);
     return task;
+  }
+
+  private ticketHeld(task: Task): boolean {
+    return task.kind === 'work' && task.creationPhase === 'tickets' &&
+      this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()?.currentPhase === 'tickets';
+  }
+
+  releaseTickets(boardId: string, approve: () => void): void {
+    const pending: PendingEvent[] = [];
+    this.inTransaction(() => {
+      approve();
+      for (const task of this.db.db.select().from(schema.tasks).where(eq(schema.tasks.boardId, boardId)).all()) {
+        if (task.kind === 'work' && task.creationPhase === 'tickets' && task.status === 'todo' && this.dependenciesMerged(task.id)) {
+          this.applyTransition(task.id, 'ready', { reason: 'Tickets gate approved' }, pending);
+        }
+      }
+    });
+    this.publish(pending);
   }
 
   private inTransaction<T>(fn: () => T): T {
@@ -397,7 +415,7 @@ export class Scheduler {
     }
 
     // Special rule: todo -> ready requires all dependencies to be merged
-    if (requestedStatus === 'ready' && !this.dependenciesMerged(taskId)) {
+    if (requestedStatus === 'ready' && (this.ticketHeld(task) || !this.dependenciesMerged(taskId))) {
       throw new InvalidTransitionError(
         taskId,
         currentStatus,
@@ -480,7 +498,7 @@ export class Scheduler {
         .where(eq(schema.tasks.id, edge.taskId))
         .get();
 
-      if (dependentTask && dependentTask.status === 'todo' && this.dependenciesMerged(dependentTask.id)) {
+      if (dependentTask && dependentTask.status === 'todo' && !this.ticketHeld(dependentTask) && this.dependenciesMerged(dependentTask.id)) {
         this.applyTransition(
           dependentTask.id,
           'ready',

@@ -76,12 +76,40 @@ export class Workflow {
     const commit = () => {
       const state = this.snapshot(boardId);
       if (state.draft?.id !== draftId || state.board.currentPhase !== phase) throw new WorkflowError('Draft missing, stale or already decided.');
+      if (!input.reject && phase === 'tickets') this.validateTickets(boardId);
+      if (!input.reject && phase === 'spec') {
+        this.db.db.insert(schema.memory).values({
+          id: randomUUID(), workspaceId: state.board.workspaceId, layer: 'project',
+          title: 'Approved spec', body: typeof input.edit === 'string' ? input.edit : state.draft.body,
+          source: `phase:spec:${draftId}`, createdAt: new Date(),
+        }).run();
+      }
       this.db.db.update(schema.phaseOutputs).set({ status: input.reject ? 'rejected' : 'approved', body: typeof input.edit === 'string' ? input.edit : state.draft.body, approvedAt: input.reject ? null : new Date() }).where(eq(schema.phaseOutputs.id, draftId)).run();
       this.db.db.update(schema.boards).set({ currentPhase: next }).where(eq(schema.boards.id, boardId)).run();
     };
-    if (next === 'dispatch' || next === 'done') { this.db.db.transaction(commit); this.changed(boardId); }
+    if (next === 'dispatch') { this.scheduler.releaseTickets(boardId, commit); this.changed(boardId); }
+    else if (next === 'done') { this.db.db.transaction(commit); this.changed(boardId); }
     else await this.createPhase(boardId, next, commit, input.reject ? input.note as string : undefined, { taskId: current.task?.id, output: typeof input.edit === 'string' ? input.edit : current.draft.body });
     return this.snapshot(boardId);
+  }
+  private validateTickets(boardId: string) {
+    const tasks = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.boardId, boardId)).all();
+    const byId = new Map(tasks.map(task => [task.id, task]));
+    const edges = this.db.db.select().from(schema.taskDependencies).all();
+    const visited = new Set<string>(), active = new Set<string>();
+    const visit = (id: string) => {
+      if (active.has(id)) throw new WorkflowError('Ticket dependency cycle. Cancel an affected ticket with crew cancel, then approve again.');
+      if (visited.has(id)) return;
+      active.add(id);
+      for (const edge of edges.filter(edge => edge.taskId === id)) {
+        const blocker = byId.get(edge.blockedByTaskId);
+        if (!blocker || blocker.kind !== 'work' || ['cancelled', 'escalated'].includes(blocker.status))
+          throw new WorkflowError('Invalid ticket blocker. Use crew retry for an escalated blocker or crew cancel for the dependent ticket, then approve again.');
+        visit(blocker.id);
+      }
+      active.delete(id); visited.add(id);
+    };
+    for (const task of tasks.filter(task => task.kind === 'work' && !['cancelled', 'merged'].includes(task.status))) visit(task.id);
   }
   async retryCancelled(taskId: string, note?: string) {
     const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();

@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–4 implemented and verified (248 tests across 42 files). Bullets 5–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–5 implemented and verified (257 tests across 43 files). Bullets 6–9 and the manual smoke remain. Milestone 5 is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -35,7 +35,9 @@ crew/
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
-│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–4 implemented; remaining bullets pending)
+│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–5 implemented; remaining bullets pending)
+│     ├─ agent-prompts/   # Saved session instructions for implementing agents
+│     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -98,3 +100,5 @@ Each repo that *uses* Crew gets a `crew.config.ts` at its root, created by `crew
 Ticket creation/assignment lives in `scheduler/tickets.ts` and the thin `cli/commands/ticket.ts` client. Generated migration `0004` records task kind and immutable creation phase for durable quotas. Task statuses still belong to the Scheduler.
 
 Phase instructions and lifecycle live in `src/server/workflow/phases.ts` and `index.ts`. The engine uses Scheduler phase transitions, durable task-linked drafts and human gates; `cli/commands/phase.ts` and `approve.ts` are thin clients. `test/harness/phases.test.ts` covers engine/recovery behavior and `phase-transport.test.ts` checks exact CLI transport. Generated migration `0005` links outputs and constrains active phase tasks. `test/adapters/phase-permissions.test.ts` checks the scoped output rule and the recorded real permission probe.
+
+Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI grill Q&A and fallback, spec publication, held tickets, rejection/recovery and live Orchestrator command boundaries. Scheduler owns the ticket hold/release; Workflow validates the ticket graph and publishes approved spec memory atomically.

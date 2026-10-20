@@ -1,3 +1,19 @@
+# Milestone 5 bullet 5 handoff
+
+Status: bullets 0–5 implemented and verified (257 tests across 43 files). Stop after bullet 5 as requested. Bullets 6–9 are not started. Milestone 5 is not done; no milestone 5 smoke script was written or run.
+
+Bullet 5 connects real Dispatcher/Runner/fake-adapter phase tasks through grill ask/answer (session resume and refused-session fresh-process fallback), spec gates and ticket planning. Spec approval stores the actual edited text in project memory with source `phase:spec:<draft-id>` atomically with approval and the successor task; rejection stores no spec memory. Ungated specs use the same path. Tickets created in tickets stay todo until approval; Scheduler holds creation, explicit ready transitions and blocker promotion. Approval validates dependencies and atomically decides the draft, advances to dispatch and releases dependency-ready tickets. Rejection keeps existing tickets and quota counts for revision; human cancellation discards unwanted ones. See milestone-5.md §9 for recovery and narrow-window choices.
+
+A real live-Orchestrator regression proved `crew approve` could load the human secret from server.json and approve another board's pending gate. The human CLI authentication helper now rejects agent-token environments before reading credentials. This is the only prior-bullet bug fix. Memory delete and promotion outside integrate were already denied. No permission-fixture or D28 changes.
+
+New early-workflow harness cases cover real grill Q&A reaching emitted prompts, edited/rejected specs, visible provenance, stale approval, ungated publication, 0/1/20-ticket gates, live-agent and human 21st-ticket rejection, held tickets through rejection, post-approval worker dispatch, bad creation repair and bad-blocker recovery through human cancel then approve, and live Orchestrator command boundaries. The valid-gate human approval regression was observed red before its fix; the other implementation coverage is not claimed as red-first. Initial runs also exposed test setup (wrong role) and timeout issues; tests now use the staffed backend role and a larger bound for 20 real CLI creations.
+
+Verification: clean-build `rm -r dist && npm test` passed typecheck/build and 257 tests across 43 files (494.02s). Pre-commit clean-build verification also passed all 257 tests across 43 files (487.80s). One fresh own-diff read completed. The final strengthened early-workflow rerun passed all 9 cases (61.98s), including emitted-prompt assertions and live-agent overflow.
+
+Remaining: dispatch/integrate lifecycle and memory summary rewrite (6), exhaustive hard-crash/restart and stop/cancel interleavings (7), CLI polish (8), smoke script only (9). No new dependency or migration. Commands docs regenerated unchanged. PRD decisions and README unchanged. The report-only commit was pushed separately. This follow-up commits all remaining bullet 5 code, tests and documentation locally; it has not been pushed.
+
+---
+
 # Milestone 5 bullet 4 handoff
 
 Status: bullets 0–4 implemented and verified (248 tests across 42 files). Stop here as requested; next is bullet 5. Bullets 5–9 are not started. Milestone 5 is not done and no milestone 5 smoke script was written or run.
