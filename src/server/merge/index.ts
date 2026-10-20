@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { sql, and, desc, eq } from 'drizzle-orm';
 import { execa } from 'execa';
 import picomatch from 'picomatch';
 import type { CrewDatabase } from '../db/index.js';
@@ -45,7 +45,19 @@ export class MergeQueue {
     if (this.started) return;
     this.started = true;
     this.unsubscribe = this.options.eventBus.subscribeBoardEvents('*', e => {
-      if (e.type === 'task_status_changed') this.tick();
+      if (e.type === 'task_status_changed') {
+        const data = e.data as { taskId: string; to: string };
+        if (data.to === 'merge-queue') {
+          // Only a new pipeline approval can reopen a failed attempt; safety ticks cannot retry it.
+          const item = this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, data.taskId)).get();
+          const task = this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, data.taskId)).get();
+          if (item?.status === 'failed' && task) {
+            const position = Math.max(0, ...this.options.db.db.select().from(schema.mergeQueueItems).all().map(i => i.position)) + 1;
+            this.change(item, task, { status: 'queued', position, commitSha: null, output: null });
+          }
+        }
+        this.tick();
+      }
     });
     this.timer = setInterval(() => this.tick(), 5000);
     this.timer.unref();
@@ -154,7 +166,13 @@ export class MergeQueue {
       fs.mkdirSync(path.dirname(integration), { recursive: true });
       await this.git(repo, 'worktree', 'add', '--detach', integration, old);
     }
-    await this.options.worktreeManager.setupWorktree(integration, workspace.config, `merge:${task.id}`);
+    try {
+      await this.options.worktreeManager.setupWorktree(integration, workspace.config, `merge:${task.id}`);
+    } catch (error) {
+      if (!this.live(task)) return false;
+      await this.feedback(item, task, `Integration worktree setup failed: ${String(error)}`, false);
+      return true;
+    }
     if (!this.live(task)) return false;
     this.change(item, task, { status: 'rebasing' });
     await this.git(integration, 'switch', '--detach', task.branch);
@@ -171,11 +189,11 @@ export class MergeQueue {
     const changed = (await this.git(integration, 'diff', '--name-only', '-z', `${old}..HEAD`)).split('\0').filter(Boolean);
     const run = this.options.db.db.select().from(schema.runs)
       .where(and(eq(schema.runs.taskId, task.id), eq(schema.runs.kind, 'work')))
-      .orderBy(desc(schema.runs.startedAt)).get();
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get();
     if (!run) throw new Error('Merge task has no author run');
     const config = workspace.config ?? {};
     const commands = (Array.isArray(config.verifyCommands) ? config.verifyCommands : []) as VerifyCommand[];
-    let failed = false;
+    const failures: string[] = [];
     for (const cmd of commands) {
       if (!cmd.name || !cmd.command || (cmd.paths?.length && !changed.some(file => picomatch(cmd.paths!)(file)))) continue;
       if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
@@ -188,9 +206,12 @@ export class MergeQueue {
       this.options.eventBus.publishBoardEvent(task.boardId, {
         type: 'verification_step', data: { taskId: task.id, step: `merge:${cmd.name}`, passed: result.passed },
       });
-      failed ||= !result.passed;
+      if (!result.passed) failures.push(`Merge verification '${cmd.name}' failed:\n${result.output.slice(-4096)}`);
     }
-    if (failed) throw new Error('Merge re-verification failed');
+    if (failures.length) {
+      await this.feedback(item, task, failures.join('\n\n'), true);
+      return true;
+    }
     if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
     this.change(item, task, { status: 'merging' });
     if (config.mergeStrategy !== 'rebase') {
@@ -235,6 +256,21 @@ export class MergeQueue {
     await this.git(repo, 'branch', '-D', task.branch);
     this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
     return true;
+  }
+
+  private async feedback(item: Item, task: Task, body: string, retry: boolean): Promise<void> {
+    await this.options.scheduler.transitionTask(task.id, retry ? 'doing' : 'escalated', {
+      reason: body,
+      incrementRetries: retry,
+      alongside: () => {
+        this.options.db.db.insert(schema.messages).values({
+          id: randomUUID(), taskId: task.id, fromAgentId: null, type: 'feedback', body, createdAt: new Date(),
+        }).run();
+        this.options.db.db.update(schema.mergeQueueItems).set({ status: 'failed', output: body.slice(-65536), commitSha: null })
+          .where(eq(schema.mergeQueueItems.id, item.id)).run();
+      },
+    });
+    this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
   }
 
   private change(item: Item, task: Task, values: Partial<Item>): void {

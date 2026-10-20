@@ -195,13 +195,13 @@ export class Verifier {
         .select()
         .from(schema.runs)
         .where(and(eq(schema.runs.taskId, taskId), eq(schema.runs.kind, 'work')))
-        .orderBy(desc(schema.runs.startedAt))
+        .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
         .get() ||
       this.db.db
         .select()
         .from(schema.runs)
         .where(eq(schema.runs.taskId, taskId))
-        .orderBy(desc(schema.runs.startedAt))
+        .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
         .get();
 
     if (!lastRun) {

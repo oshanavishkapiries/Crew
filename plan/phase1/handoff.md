@@ -1,3 +1,11 @@
+# Milestone 4 bullet 4 handoff
+
+Bullets 0–4 are implemented on `feat/milestone-4-merge`; bullet 3 is `4094c69`. Merge re-verification stores every matching result and returns all command failures as feedback to a fresh author run. Scheduler transitions `merge-queue → doing` and `merge-queue → escalated` now exist; the feedback, failed item and retry/status update commit atomically. Exhausted retries escalate; integration setup failure escalates without a retry. A failed item is reopened only on a new pipeline approval, never on the safety tick. Full-suite failures exposed second-resolution run timestamp ties: latest-run lookups now use SQLite rowid as a secondary order. A deterministic tied-timestamp regression proves each failed attempt retains its own results; the existing escalation test now triggers a dispatch pass instead of sleeping.
+
+Verification: `rm -r dist && npm test` passed 123 tests across 31 files with typecheck and fresh build. Three new harness tests prove atomic feedback, a green second attempt, exhaustion and integration setup escalation. Commands reference regenerated unchanged. No deviations, dependencies or PRD edits. Next: bullet 5 conflicts, then interruptions and human CLI. Write bullet 8 last without running it; milestone 4/manual smoke remain incomplete.
+
+---
+
 # Milestone 4 bullet 3 handoff
 
 Bullets 0–3 are implemented on `feat/milestone-4-merge`; bullet 2 is `5c0f1ef`. Stored workspace `mergeStrategy: rebase` now retains the rebased commits and their author messages, while the default squash creates one commit with the task trailer. The fake adapter supports git argument arrays, tested through two real author commits. All three strategy tests advance main before merging and assert the resulting history and checkout files; an empty git identity exercises the Crew committer fallback during rebase.

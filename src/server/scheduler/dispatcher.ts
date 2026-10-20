@@ -1,4 +1,4 @@
-import { eq, asc, desc } from 'drizzle-orm';
+import { sql, eq, asc, desc } from 'drizzle-orm';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CrewDatabase } from '../db/index.js';
@@ -191,7 +191,7 @@ export class Dispatcher {
           .select()
           .from(schema.runs)
           .where(eq(schema.runs.taskId, task.id))
-          .orderBy(desc(schema.runs.startedAt))
+          .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
           .get();
 
         if (lastRun?.sessionId && lastRun?.exitReason === 'rate-limited') {

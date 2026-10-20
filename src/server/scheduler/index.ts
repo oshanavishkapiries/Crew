@@ -95,7 +95,7 @@ export class Scheduler {
 
     // Escalated can happen from active working/review states when retries exceed limit
     if (to === 'escalated') {
-      return from === 'doing' || from === 'verifying' || from === 'review';
+      return from === 'doing' || from === 'verifying' || from === 'review' || from === 'merge-queue';
     }
 
     switch (from) {
@@ -112,7 +112,7 @@ export class Scheduler {
       case 'review':
         return to === 'merge-queue' || to === 'doing';
       case 'merge-queue':
-        return to === 'merged';
+        return to === 'merged' || to === 'doing';
       case 'escalated':
         return false;
       default:

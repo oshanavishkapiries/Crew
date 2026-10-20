@@ -20,6 +20,10 @@ describe('Verification escalation (Milestone 3 Bullet 1)', () => {
 
   it('escalates after maxRetries when agent repeatedly fails diff gate, recording all results and events', async () => {
     const taskId = 'task-verify-escalate-1';
+    // SQLite timestamps have second precision. Force the tie that previously lost an attempt.
+    harness.runner.on('run_started', run => {
+      harness.db.db.update(schema.runs).set({ startedAt: new Date('2020-01-01T00:00:00Z') }).where(eq(schema.runs.id, run.id)).run();
+    });
 
     // The fake script makes no changes and calls crew done every run
     harness.fakeAdapter.setScript([
@@ -124,8 +128,8 @@ describe('Verification escalation (Milestone 3 Bullet 1)', () => {
       .all().length;
     expect(initialRunCount).toBe(3);
 
-    // Give a short window to confirm dispatcher stays idle on this task
-    await new Promise((r) => setTimeout(r, 1000));
+    // A real dispatch pass must leave the escalated task alone.
+    await harness.dispatcher.dispatchOnce();
     const postRunCount = harness.db.db
       .select()
       .from(schema.runs)

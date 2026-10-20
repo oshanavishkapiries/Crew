@@ -2,7 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
-import { eq, desc, asc, and } from 'drizzle-orm';
+import { sql, eq, desc, asc, and } from 'drizzle-orm';
 import { execa, type ResultPromise } from 'execa';
 import type { AgentAdapter, AgentEvent, PermissionProfile } from '../../adapters/types.js';
 import { ClaudeCodeAdapter } from '../../adapters/claude-code.js';
@@ -803,7 +803,7 @@ export class Runner extends EventEmitter {
       .select()
       .from(schema.runs)
       .where(eq(schema.runs.taskId, taskId))
-      .orderBy(desc(schema.runs.startedAt))
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
       .get();
 
     const canResume = Boolean(adapter.buildResume && lastRun?.sessionId);

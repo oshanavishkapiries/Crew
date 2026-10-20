@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { eq, inArray, desc, asc, and } from 'drizzle-orm';
+import { sql, eq, inArray, desc, asc, and } from 'drizzle-orm';
 import { execa } from 'execa';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -276,13 +276,13 @@ export function createApp(ctx: AppContext): Hono {
       .select()
       .from(schema.runs)
       .where(and(eq(schema.runs.taskId, task.id), eq(schema.runs.kind, 'review')))
-      .orderBy(desc(schema.runs.startedAt))
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
       .get();
     const lastRun = ctx.db.db
       .select()
       .from(schema.runs)
       .where(eq(schema.runs.taskId, task.id))
-      .orderBy(desc(schema.runs.startedAt))
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
       .get();
 
     let runId = reviewRun?.id || lastRun?.id || ctx.runner?.getLiveRunByTaskId(task.id)?.id;
@@ -716,7 +716,7 @@ export function createApp(ctx: AppContext): Hono {
       .select()
       .from(schema.runs)
       .where(eq(schema.runs.taskId, taskId))
-      .orderBy(desc(schema.runs.startedAt))
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
       .get();
 
     if (!lastRun) {
