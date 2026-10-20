@@ -495,12 +495,12 @@ export class Verifier {
     let gitDiff = '';
     try {
       const baseBranch = workspace?.defaultBranch || 'main';
-      const mergeBaseRes = await execa('git', ['merge-base', baseBranch, 'HEAD'], {
+      const mergeBaseRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'merge-base', baseBranch, 'HEAD'], {
         cwd: worktreePath,
         reject: false,
       });
       const mergeBase = mergeBaseRes.stdout.trim() || baseBranch;
-      const diffRes = await execa('git', ['diff', `${mergeBase}...HEAD`], {
+      const diffRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'diff', `${mergeBase}...HEAD`], {
         cwd: worktreePath,
         reject: false,
       });
@@ -633,12 +633,13 @@ export class Verifier {
 
     // 1. Commit what the agent left behind (D30)
     try {
-      const statusRes = await execa('git', ['status', '--porcelain'], { cwd: worktreePath, reject: false });
+      const statusRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'status', '--porcelain'], { cwd: worktreePath, reject: false });
       if (statusRes.stdout && statusRes.stdout.trim() !== '') {
-        await execa('git', ['add', '-A'], { cwd: worktreePath, reject: false });
+        await execa('git', ['-c', 'core.hooksPath=/dev/null', 'add', '-A'], { cwd: worktreePath, reject: false });
         await execa(
           'git',
           [
+            '-c', 'core.hooksPath=/dev/null',
             '-c',
             'user.name=Crew Verifier',
             '-c',
@@ -658,10 +659,10 @@ export class Verifier {
     // 2. Empty diff check against merge-base
     let changedFiles: string[] = [];
     try {
-      const mbRes = await execa('git', ['merge-base', defaultBranch, 'HEAD'], { cwd: worktreePath, reject: false });
+      const mbRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'merge-base', defaultBranch, 'HEAD'], { cwd: worktreePath, reject: false });
       const mergeBase = mbRes.stdout.trim() || defaultBranch;
 
-      const diffFilesRes = await execa('git', ['diff', '--name-only', `${mergeBase}..HEAD`], {
+      const diffFilesRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'diff', '--name-only', `${mergeBase}..HEAD`], {
         cwd: worktreePath,
         reject: false,
       });
@@ -704,7 +705,7 @@ export class Verifier {
       const startSnapshot = this.runner.getMainCheckoutSnapshot(runId);
       if (startSnapshot !== undefined) {
         try {
-          const currRes = await execa('git', ['status', '--porcelain'], { cwd: mainRepoPath, reject: false });
+          const currRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'status', '--porcelain'], { cwd: mainRepoPath, reject: false });
           const currLines = currRes.stdout.split('\n').map((l) => l.trim()).filter(Boolean);
           const startLines = new Set(startSnapshot.split('\n').map((l) => l.trim()).filter(Boolean));
           const newEntries = currLines.filter((l) => !startLines.has(l));

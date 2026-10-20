@@ -259,6 +259,10 @@ describe('Crew Home and Database (D12, D20)', () => {
 
     // Simulate legacy schema created by INITIAL_MIGRATION_SQL (no __drizzle_migrations table, no exit_reason, no prompt)
     rawSqlite.exec(`
+      CREATE TABLE merge_queue_items (
+        id text PRIMARY KEY NOT NULL, task_id text NOT NULL, position integer NOT NULL,
+        status text DEFAULT 'queued' NOT NULL, conflict_task_id text, created_at integer NOT NULL
+      );
       CREATE TABLE workspaces (
         id text PRIMARY KEY NOT NULL,
         name text NOT NULL,
@@ -316,9 +320,9 @@ describe('Crew Home and Database (D12, D20)', () => {
     // Now open with createCrewDatabase: it should baseline 0000 and run 0001
     const { db, sqlite, close } = createCrewDatabase({ dbPath: oldDbPath });
     try {
-      // 1. __drizzle_migrations exists and has 3 applied migrations
+      // 1. __drizzle_migrations exists and has 4 applied migrations
       const migrationRows = sqlite.prepare('SELECT * FROM __drizzle_migrations ORDER BY created_at ASC').all() as Array<{ hash: string; created_at: number }>;
-      expect(migrationRows).toHaveLength(3);
+      expect(migrationRows).toHaveLength(4);
 
       // 2. Legacy data is preserved
       const legacyWs = db.select().from(schema.workspaces).all();
@@ -379,11 +383,11 @@ describe('Crew Home and Database (D12, D20)', () => {
     rawSqlite.prepare(`INSERT INTO runs (id, task_id, agent_id, adapter, started_at, exit_reason) VALUES (?, ?, ?, ?, ?, ?)`).run('run-m2', 'task-m2', 'agent-m2', 'fake', now, 'done');
     rawSqlite.close();
 
-    // Open with createCrewDatabase: it should apply 0002
+    // Open with createCrewDatabase: it should apply 0002 and 0003
     const { db, sqlite, close } = createCrewDatabase({ dbPath: m2DbPath });
     try {
       const migrations = sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-      expect(migrations).toHaveLength(3);
+      expect(migrations).toHaveLength(4);
 
       const task = db.select().from(schema.tasks).where(eq(schema.tasks.id, 'task-m2')).get();
       expect(task).toBeDefined();
@@ -407,6 +411,45 @@ describe('Crew Home and Database (D12, D20)', () => {
     }
   });
 
+  it('upgrades a milestone 3 database with every existing row intact and adds merge commit_sha and output', () => {
+    const dbPath = path.join(tempDir, 'milestone3.db');
+    const old = new Database(dbPath);
+    const migrations = readMigrationFiles({ migrationsFolder: path.resolve(import.meta.dirname, '../drizzle') });
+    old.exec('CREATE TABLE __drizzle_migrations (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at numeric)');
+    for (const migration of migrations.slice(0, 3)) {
+      for (const statement of migration.sql) old.exec(statement);
+      old.prepare('INSERT INTO __drizzle_migrations(hash, created_at) VALUES (?, ?)').run(migration.hash, migration.folderMillis);
+    }
+    old.exec(`
+      INSERT INTO workspaces VALUES ('ws', 'Milestone 3', '/repo', 'main', '{"verifyCommands":[]}', 123);
+      INSERT INTO boards VALUES ('board', 'ws', 'dispatch', 123);
+      INSERT INTO roles VALUES ('role', 'dev', 'prompt', '{}', 0, 123);
+      INSERT INTO agents (id, workspace_id, role_id, name, cli_type, token_hash, created_at) VALUES ('agent', 'ws', 'role', 'Author', 'fake', 'hash', 123);
+      INSERT INTO tasks (id, board_id, title, description, status, reviewer_agent_id, created_at, updated_at) VALUES ('task', 'board', 'Existing', 'Keep me', 'merge-queue', 'agent', 123, 123);
+      INSERT INTO runs (id, task_id, agent_id, adapter, started_at, exit_reason, kind) VALUES ('run', 'task', 'agent', 'fake', 123, 'done', 'review');
+      INSERT INTO verification_results VALUES ('result', 'run', 'review', 1, 'approved', 123);
+      INSERT INTO messages VALUES ('msg', 'task', NULL, 'feedback', 'Keep feedback', 123);
+      INSERT INTO merge_queue_items VALUES ('item', 'task', 1, 'queued', NULL, 123);
+    `);
+    const tables = ['workspaces', 'boards', 'roles', 'agents', 'tasks', 'runs', 'verification_results', 'messages', 'merge_queue_items'];
+    const before = new Map(tables.map(t => [t, old.prepare(`SELECT * FROM ${t}`).all()]));
+    old.close();
+    const upgraded = createCrewDatabase({ dbPath });
+    try {
+      expect(upgraded.sqlite.prepare('SELECT * FROM __drizzle_migrations').all()).toHaveLength(4);
+      for (const t of tables) {
+        const rows = upgraded.sqlite.prepare(`SELECT * FROM ${t}`).all();
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject(before.get(t)![0] as Record<string, unknown>);
+      }
+      const item = upgraded.db.select().from(schema.mergeQueueItems).get()!;
+      expect(item.commitSha).toBeNull();
+      expect(item.output).toBeNull();
+      upgraded.db.update(schema.mergeQueueItems).set({ commitSha: 'abc123', output: 'Merged' }).run();
+      expect(upgraded.db.select().from(schema.mergeQueueItems).get()).toMatchObject({ commitSha: 'abc123', output: 'Merged' });
+    } finally { upgraded.close(); }
+  });
+
   it('reopening an up-to-date DB is a safe no-op', () => {
     const dbPath = path.join(tempDir, 'reopen.db');
     const first = createCrewDatabase({ dbPath });
@@ -415,7 +458,7 @@ describe('Crew Home and Database (D12, D20)', () => {
     const second = createCrewDatabase({ dbPath });
     try {
       const migrationRows = second.sqlite.prepare('SELECT * FROM __drizzle_migrations').all();
-      expect(migrationRows).toHaveLength(3);
+      expect(migrationRows).toHaveLength(4);
     } finally {
       second.close();
     }

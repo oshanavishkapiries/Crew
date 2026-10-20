@@ -18,7 +18,7 @@ export function slugify(title: string): string {
 }
 
 export async function git(args: string[], cwd?: string): Promise<{ stdout: string; stderr: string }> {
-  return await execa('git', args, { cwd });
+  return await execa('git', ['-c', 'core.hooksPath=/dev/null', ...args], { cwd });
 }
 
 export interface WorktreeInfo {

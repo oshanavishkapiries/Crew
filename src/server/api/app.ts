@@ -17,6 +17,7 @@ import {
 } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
 import type { Runner } from '../runner/index.js';
+import type { MergeQueue } from '../merge/index.js';
 import type { Verifier } from '../verify/index.js';
 import {
   AGENT_TOKEN_HEADER,
@@ -35,6 +36,7 @@ export interface AppContext {
   runner?: Runner;
   dispatcher?: Dispatcher;
   verifier?: Verifier;
+  mergeQueue?: MergeQueue;
 }
 
 type Agent = typeof schema.agents.$inferSelect;
@@ -558,6 +560,7 @@ export function createApp(ctx: AppContext): Hono {
 
     // 2. Stop verifier pipelines and active verify commands
     await ctx.verifier?.stopAll();
+    await ctx.mergeQueue?.stopAll();
 
     // 3. Kill all live runs with exitReason: 'stopped'
     const stoppedRuns = ctx.runner ? await ctx.runner.killAll('stopped') : 0;
@@ -593,6 +596,7 @@ export function createApp(ctx: AppContext): Hono {
 
     // 3. Resume verifier pipelines
     ctx.verifier?.resume();
+    ctx.mergeQueue?.resume();
 
     // 4. Trigger immediate dispatch pass
     ctx.dispatcher?.scheduleDispatch();

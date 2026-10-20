@@ -1,3 +1,15 @@
+# Milestone 4 bullet 1 handoff
+
+Branch: `feat/milestone-4-merge`, based on `f9acd405503ffabe34a355f16f8dd6b61eaf1291`. Bullet 0 is committed as `0b37f79`; bullet 1 adds the merge happy path. Nothing pushed.
+
+Bullets 0–1 are implemented. `MergeQueue` is wired into `crew start`, subscribes to task transitions and checks every 5 seconds. Each workspace runs one item at a time in `<crewHome>/integration/<workspace-id>`. It rebases onto the current default tip, applies path-filtered verification commands with `merge:` results, squashes with the agent as author and the user's configured git identity as committer (Crew fallback), persists the candidate commit before CAS, transitions through the Scheduler with the item update in `alongside`, removes the task worktree/branch and promotes dependents. Hooks are disabled on Crew's worktree, diff-gate and merge housekeeping. Migration `0003_absurd_black_widow.sql` was generated with drizzle-kit and upgrades milestone 3 data without loss.
+
+At this boundary only another-branch/detached checkout merges; the default branch checkout pauses. Bullet 2 adds clean-checkout fast-forwarding, dirty warnings and race retries. Failed rebase/verification items remain failed for now; bullets 4–6 add feedback, conflicts and recovery. Cancellation/restart races have not yet been verified. No queue/retry human commands or smoke script yet. Continue bullets 2–7 in order, then write bullet 8 without running it. Do not mark milestone 4 complete until the user runs the smoke.
+
+Verification: fresh-build `npm test` passed 110 tests across 28 files, including the new migration upgrade and `merge-happy.test.ts`. The environment rejects `rm -rf dist`; `rm -r dist && npm test` removed the build and ran the same typecheck/build/suite. `npm run generate:docs` regenerated an unchanged commands reference. No PRD decisions or dependencies changed.
+
+---
+
 # Handoff: Crew Phase 1 — Milestone 4 in progress (bullet 0 complete)
 
 ## Where things stand

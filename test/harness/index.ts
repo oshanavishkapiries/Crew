@@ -24,6 +24,7 @@ export interface HarnessOptions {
   maxParallelAgents?: number;
   startDispatcher?: boolean;
   startVerifier?: boolean;
+  startMergeQueue?: boolean;
   adapters?: Record<string, any>;
 }
 
@@ -141,6 +142,7 @@ export async function createPipelineHarness(
     dispatcher,
     startDispatcher: options.startDispatcher,
     startVerifier: options.startVerifier,
+    startMergeQueue: options.startMergeQueue,
   });
 
   const now = new Date();

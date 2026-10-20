@@ -5,7 +5,7 @@ export async function handleStart(options: { port?: string | number; host?: stri
   const host = options.host || '127.0.0.1';
 
   console.log(`Starting Crew server on ${host}:${port}...`);
-  const running = await startServer({ port, host, startDispatcher: true, startVerifier: true });
+  const running = await startServer({ port, host, startDispatcher: true, startVerifier: true, startMergeQueue: true });
 
   console.log(`Crew server listening at ${running.url}`);
   console.log(`Task Board available at ${running.url}`);

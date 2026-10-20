@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullet 0 (worktree setup) is implemented; the merge queue and manual smoke run remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullets 0–1 (worktree setup and merge happy path) are implemented; checkout safety, strategies, failures, conflicts, recovery, human CLI and the manual smoke remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -30,7 +30,7 @@ crew/
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
-│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullet 0 implemented)
+│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullets 0–1 implemented)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -44,7 +44,7 @@ crew/
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
 │  │  ├─ worktree/        # Create, set up, clean up and gc task worktrees; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
-│  │  ├─ merge/           # Merge queue, integration worktree, rebase, conflict tasks (D11)
+│  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash and cleanup (D38); conflict tasks pending
 │  │  ├─ memory/          # Layers, injection budget, promotion (D15)
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
@@ -54,7 +54,7 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook, worktree setup
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook, worktree setup, merge queue
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit and hook-blocked samples (D5, D7, D26)
 ```
@@ -71,6 +71,7 @@ Crew writes its state to the user's machine, not to the repo it manages (D12):
 ├─ rate-limits.json       # Persisted rate-limit pauses and backoff step (D7)
 ├─ claude-settings.json   # Stop hook settings passed to Claude Code via --settings (D26, D36)
 ├─ hook-stops/            # Per-run block counters for crew hook stop (D36)
+├─ integration/           # <workspace-id>/ detached git worktree for serial merge processing (D38)
 ├─ snapshots/             # Main-checkout `git status` at run start, one file per run, until the diff gate decides (D31)
 ├─ bin/                   # `crew` shim put on the agent's PATH
 ├─ logs/                  # Run logs (agent event streams, <run-id>.jsonl)

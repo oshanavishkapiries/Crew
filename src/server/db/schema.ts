@@ -177,5 +177,7 @@ export const mergeQueueItems = sqliteTable('merge_queue_items', {
   position: integer('position').notNull(),
   status: text('status').notNull().default('queued'), // 'queued' | 'rebasing' | 'verifying' | 'merging' | 'merged' | 'conflict' | 'failed'
   conflictTaskId: text('conflict_task_id').references(() => tasks.id),
+  commitSha: text('commit_sha'),
+  output: text('output'),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 });

@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 4 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** in progress: bullet 0 (worktree setup) implemented and tested; bullets 1–8 remain. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** in progress: bullets 0–1 (worktree setup and happy path) implemented and tested; bullets 2–8 remain. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 

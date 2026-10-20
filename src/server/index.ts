@@ -10,6 +10,7 @@ import { getEventBus, type EventBus } from './events/index.js';
 import { Scheduler, Dispatcher } from './scheduler/index.js';
 import { WorktreeManager } from './worktree/index.js';
 import { Runner } from './runner/index.js';
+import { MergeQueue } from './merge/index.js';
 import { Verifier } from './verify/index.js';
 
 export interface ServerOptions {
@@ -25,6 +26,7 @@ export interface ServerOptions {
   maxParallelAgents?: number;
   verifier?: Verifier;
   startVerifier?: boolean;
+  startMergeQueue?: boolean;
   maxParallelVerifications?: number;
 }
 
@@ -41,6 +43,7 @@ export interface RunningServer {
   runner: Runner;
   dispatcher: Dispatcher;
   verifier: Verifier;
+  mergeQueue: MergeQueue;
   close: () => Promise<void>;
 }
 
@@ -83,6 +86,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       maxParallelVerifications: options.maxParallelVerifications ?? 2,
     });
 
+  const mergeQueue = new MergeQueue({ db, eventBus, scheduler, worktreeManager });
+
   const app = createApp({
     db,
     eventBus,
@@ -91,6 +96,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     runner,
     dispatcher,
     verifier,
+    mergeQueue,
     perStartSecret,
   });
 
@@ -131,6 +137,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             verifier.start();
           }
 
+          if (options.startMergeQueue) mergeQueue.start();
+
           resolve({
             server: server as unknown as Server,
             port: actualPort,
@@ -144,6 +152,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             runner,
             dispatcher,
             verifier,
+            mergeQueue,
             close: () =>
               new Promise<void>((res, rej) => {
                 try {
@@ -153,7 +162,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                 } catch {}
                 dispatcher.stop();
                 verifier.stop();
-                worktreeManager.stopAllSetup().then(() => {
+                Promise.all([mergeQueue.stop(), worktreeManager.stopAllSetup()]).then(() => {
                   server.close((err) => {
                     if (err) rej(err);
                     else res();
