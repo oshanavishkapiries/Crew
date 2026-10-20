@@ -1,3 +1,11 @@
+# Milestone 4 bullet 3 handoff
+
+Bullets 0–3 are implemented on `feat/milestone-4-merge`; bullet 2 is `5c0f1ef`. Stored workspace `mergeStrategy: rebase` now retains the rebased commits and their author messages, while the default squash creates one commit with the task trailer. The fake adapter supports git argument arrays, tested through two real author commits. All three strategy tests advance main before merging and assert the resulting history and checkout files; an empty git identity exercises the Crew committer fallback during rebase.
+
+Verification: `rm -r dist && npm test` passed 120 tests across 30 files, including typecheck and a fresh build. Commands reference regenerated unchanged. No deviations, dependencies or PRD changes. Next: bullet 4 (re-verify failure), then conflicts, interruptions, human CLI and the smoke script without running it. Manual smoke is pending; milestone 4 is not complete.
+
+---
+
 # Milestone 4 bullet 2 handoff
 
 Bullets 0–2 are implemented on `feat/milestone-4-merge`; bullet 1 is `cd76972`. Checkout safety now covers clean default-branch fast-forward, another branch/detached HEAD ref-only update, and dirty tracked/untracked default checkout pause. The initial check and a second check before ref movement preserve dirty bytes; queue output and the worker warning map name the branch. The 5-second safety tick resumes a clean checkout. A lost CAS repeats rebase/re-verification, bounded at three attempts; exhaustion leaves the item failed without overwriting competing commits. CLI/API warning presentation remains bullet 7.

@@ -38,7 +38,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestones 2 and 3: runner, resume, permissions, rate-limits, read-only review, stop hook) |
 | Codex | `codex exec --json` | `codex exec resume <id>` | Launch (milestone 7) |
 | Antigravity | Unknown | — | Pull mode only (D17) |
-| Fake | Scripted `crew` calls | Supported | Tests and demos |
+| Fake | Scripted `crew` calls and git argument arrays | Supported | Tests and demos, including multi-commit history |
 
 Tool versions checked on 2026-10-18: Claude Code 2.1.300 (minimum supported 2.1.0), codex-cli 0.163.0.
 

@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullets 0–2 (worktree setup, merge happy path and checkout safety) are implemented; strategies, failures, conflicts, recovery, human CLI and the manual smoke remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullets 0–3 (worktree setup, merge happy path, checkout safety and strategies) are implemented; failures, conflicts, recovery, human CLI and the manual smoke remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -30,7 +30,7 @@ crew/
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
-│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullets 0–2 implemented)
+│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullets 0–3 implemented)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -44,7 +44,7 @@ crew/
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
 │  │  ├─ worktree/        # Create, set up, clean up and gc task worktrees; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
-│  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash, safe checkout/ref updates and cleanup (D38–D39); conflict tasks pending
+│  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, safe checkout/ref updates and cleanup (D38–D39); conflict tasks pending
 │  │  ├─ memory/          # Layers, injection budget, promotion (D15)
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)

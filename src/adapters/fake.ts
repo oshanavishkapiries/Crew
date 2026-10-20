@@ -8,6 +8,7 @@ export interface FakeScriptStep {
     | 'review'
     | 'edit_file'
     | 'symlink'
+    | 'git'
     | 'custom_command'
     | 'rate_limit'
     | 'hang'
@@ -21,6 +22,7 @@ export interface FakeScriptStep {
   targetPath?: string;
   content?: string;
   command?: string;
+  args?: string[];
   durationMs?: number;
   exitCode?: number;
   rateLimitResetTime?: string;
@@ -96,6 +98,8 @@ export class FakeAdapter implements AgentAdapter {
           const resolvedPath = path.isAbsolute(step.filePath) ? step.filePath : path.resolve(step.filePath);
           fs.symlinkSync(step.targetPath, resolvedPath);
           console.log(JSON.stringify({ type: 'symlink', data: { file: resolvedPath, target: step.targetPath }, timestamp: new Date().toISOString() }));
+        } else if (step.type === 'git' && step.args) {
+          execFileSync('git', step.args, { stdio: 'inherit', env: process.env });
         } else if (step.type === 'custom_command' && step.command) {
           execFileSync('sh', ['-c', step.command], { stdio: 'inherit' });
           console.log(JSON.stringify({ type: 'custom_command', data: { command: step.command }, timestamp: new Date().toISOString() }));

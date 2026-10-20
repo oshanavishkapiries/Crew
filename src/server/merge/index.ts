@@ -158,8 +158,10 @@ export class MergeQueue {
     if (!this.live(task)) return false;
     this.change(item, task, { status: 'rebasing' });
     await this.git(integration, 'switch', '--detach', task.branch);
+    const userName = await this.git(repo, 'config', 'user.name').catch(() => 'Crew');
+    const userEmail = await this.git(repo, 'config', 'user.email').catch(() => 'crew@localhost');
     try {
-      await this.git(integration, 'rebase', old);
+      await this.git(integration, '-c', `user.name=${userName || 'Crew'}`, '-c', `user.email=${userEmail || 'crew@localhost'}`, 'rebase', old);
     } catch (error) {
       await this.git(integration, 'rebase', '--abort');
       throw error;
@@ -191,12 +193,12 @@ export class MergeQueue {
     if (failed) throw new Error('Merge re-verification failed');
     if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
     this.change(item, task, { status: 'merging' });
-    const agent = this.options.db.db.select().from(schema.agents).where(eq(schema.agents.id, run.agentId)).get();
-    const userName = await this.git(repo, 'config', 'user.name').catch(() => 'Crew');
-    const userEmail = await this.git(repo, 'config', 'user.email').catch(() => 'crew@localhost');
-    await this.git(integration, 'reset', '--soft', old);
-    await this.git(integration, '-c', `user.name=${userName || 'Crew'}`, '-c', `user.email=${userEmail || 'crew@localhost'}`,
-      'commit', `--author=${agent?.name ?? 'Crew'} <agent@crew.local>`, '-m', `${task.title}\n\nCrew-Task: ${task.id}`);
+    if (config.mergeStrategy !== 'rebase') {
+      const agent = this.options.db.db.select().from(schema.agents).where(eq(schema.agents.id, run.agentId)).get();
+      await this.git(integration, 'reset', '--soft', old);
+      await this.git(integration, '-c', `user.name=${userName || 'Crew'}`, '-c', `user.email=${userEmail || 'crew@localhost'}`,
+        'commit', `--author=${agent?.name ?? 'Crew'} <agent@crew.local>`, '-m', `${task.title}\n\nCrew-Task: ${task.id}`);
+    }
     const commitSha = await this.git(integration, 'rev-parse', 'HEAD');
     // Persist before moving the ref: recovery can recognize a merge that landed before a crash.
     this.change(item, task, { commitSha });
