@@ -1,3 +1,11 @@
+# Milestone 5 bullet 2 handoff
+
+Status: bullets 0–2 implemented and verified; bullets 3–9 remain. Milestone 5 is not done. Memory CRUD, role-scoped agent learning, scoped reads and explicit atomic promotion are implemented through the API and real CLI. Entries record human/agent sources; promotion traces the original entry and stamps both rows. Only a live integrate Orchestrator can promote as an agent; the phase context is seeded in the harness until bullet 4. See §9 for API/CLI details and provenance policy. No migration, dependencies, PRD Decision Log or D28 changes.
+
+Verification: all five new memory tests failed before implementation and then passed. The first full run found the old unimplemented-command test still using remember (209 passed, 1 failed); it now checks the out-of-scope join stub. Final `rm -r dist && npm test` passed typecheck/build and 210 tests across 38 files (274.43s). Commands docs regenerated, one own-diff read completed. Nothing pushed. Next: bullet 3 shared prompt builder; stop after it this session. Phase engine and real permission fixture remain bullet 4; smoke remains unwritten/unrun.
+
+---
+
 # Milestone 5 bullet 1 handoff
 
 Status: bullet 0 reviewed (6405147), the requested init/adapter fixes committed (e6d9279), and bullet 1 ticket API/CLI implemented and verified (205 tests across 37 files). Bullets 2–9 remain. Milestone 5 is not done; no real permission fixture or smoke was run.

@@ -6,6 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
+import { MemoryStore, MemoryError } from '../memory/index.js';
 import { Tickets, TicketError } from '../scheduler/tickets.js';
 import type { EventBus } from '../events/index.js';
 import {
@@ -56,6 +57,7 @@ export function createApp(ctx: AppContext): Hono {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof MemoryError) return c.json({ error: err.message }, err.status);
     if (err instanceof TicketError) return c.json({ error: err.message }, err.status);
     if (err instanceof TaskNotFoundError) return c.json({ error: err.message }, 404);
     if (err instanceof InvalidTransitionError || err instanceof DependencyCycleError) {
@@ -162,6 +164,57 @@ export function createApp(ctx: AppContext): Hono {
     const target = loadTask(c.req.param('id'));
     if (actor.task && target.boardId !== actor.task.boardId) throw forbidden('cannot assign a task on another board');
     return c.json({ task: tickets.assign(target.id, body.assignee) });
+  });
+
+  const memories = new MemoryStore(ctx.db);
+  const memoryCaller = (c: Context) => { const caller = identify(c); if (!caller) throw unauthorized(); return caller; };
+  const memoryKeys = (body: Record<string, unknown>, allowed: string[]) => {
+    if (Object.keys(body).some(key => !allowed.includes(key))) throw new MemoryError('Unknown memory field; source and scope cannot be edited.');
+  };
+  app.get('/api/memory', c => {
+    const caller = memoryCaller(c);
+    const workspaceId = memories.workspace(c.req.query('workspaceId') ?? (caller.kind === 'agent' ? caller.agent.workspaceId : undefined));
+    if (caller.kind === 'agent' && caller.agent.workspaceId !== workspaceId) throw forbidden('memory belongs to another workspace');
+    const layer = c.req.query('layer');
+    if (layer && !['project', 'role', 'task'].includes(layer)) throw new MemoryError('Unknown memory layer.');
+    const entries = ctx.db.db.select().from(schema.memory).where(eq(schema.memory.workspaceId, workspaceId)).all().filter(entry => {
+      if (layer && entry.layer !== layer) return false;
+      if (caller.kind === 'human') return true;
+      if (entry.layer === 'project') return true;
+      if (entry.layer === 'role') return entry.roleId === caller.agent.roleId;
+      const task = entry.taskId ? loadTask(entry.taskId) : undefined;
+      return task?.assigneeAgentId === caller.agent.id || task?.reviewerAgentId === caller.agent.id;
+    });
+    return c.json({ entries });
+  });
+  app.post('/api/memory', async c => {
+    const caller = memoryCaller(c); const body = await ticketBody(c);
+    if (caller.kind === 'agent') {
+      if ((body.layer !== undefined && body.layer !== 'role') || (body.roleId !== undefined && body.roleId !== caller.agent.roleId) || (body.workspaceId !== undefined && body.workspaceId !== caller.agent.workspaceId) || body.source !== undefined || body.taskId !== undefined) throw forbidden('agents can remember only their own role memory');
+      memoryKeys(body, ['title', 'body', 'layer', 'roleId', 'workspaceId']);
+      return c.json({ entry: memories.add({ ...body, layer: 'role', roleId: caller.agent.roleId, workspaceId: caller.agent.workspaceId }, `agent:${caller.agent.id}`) }, 201);
+    }
+    memoryKeys(body, ['workspaceId', 'layer', 'roleId', 'taskId', 'title', 'body']);
+    return c.json({ entry: memories.add(body, 'human') }, 201);
+  });
+  app.patch('/api/memory/:id', async c => {
+    const caller = memoryCaller(c); const body = await ticketBody(c);
+    if (body.promote === true) {
+      memoryKeys(body, ['promote', 'contextTaskId']);
+      if (caller.kind === 'agent') {
+        const actor = requireTicketCaller(c, { taskId: body.contextTaskId });
+        const entry = memories.get(c.req.param('id'));
+        if (actor.board?.currentPhase !== 'integrate' || actor.board.workspaceId !== entry.workspaceId) throw forbidden('only an active integrate Orchestrator can promote memory');
+      }
+      return c.json({ entry: memories.promote(c.req.param('id')) });
+    }
+    if (caller.kind !== 'human') throw forbidden('only humans can edit memory');
+    memoryKeys(body, ['title', 'body']);
+    return c.json({ entry: memories.edit(c.req.param('id'), body) });
+  });
+  app.delete('/api/memory/:id', c => {
+    if (memoryCaller(c).kind !== 'human') throw forbidden('only humans can delete memory');
+    memories.delete(c.req.param('id')); return c.json({ deleted: true });
   });
 
   // Health check endpoint

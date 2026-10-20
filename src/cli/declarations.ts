@@ -1,3 +1,4 @@
+import { handleMemory, handleRemember } from './commands/memory.js';
 import { handleAssign, handleTicket } from './commands/ticket.js';
 import { handleInit } from './commands/init.js';
 import { handleAnswer } from './commands/answer.js';
@@ -194,13 +195,22 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'memory',
     category: 'human',
     summary: 'View and edit memory',
-    description: 'Inspect, curate, or promote project and role memory.',
+    description: 'Inspect and curate all three layers. Humans supply --workspace for list/add. Promotion explicitly copies role memory into project memory with provenance.',
     args: [
-      { name: 'action', description: 'Action to perform: list, get, set, promote', required: true },
-      { name: 'key', description: 'Memory key or ID', required: false },
+      { name: 'action', description: 'Action: list, add, edit, delete, promote', required: true },
+      { name: 'key', description: 'Memory ID for edit, delete or promote', required: false },
     ],
+    options: [
+      { flags: '--workspace <id>', description: 'Workspace ID (required for human list/add)' },
+      { flags: '--layer <layer>', description: 'project, role or task (add defaults to project)' },
+      { flags: '--role <id>', description: 'Role ID for role memory' },
+      { flags: '--task <id>', description: 'Task ID for task memory' },
+      { flags: '--title <text>', description: 'Entry title for add/edit' },
+      { flags: '--body <text>', description: 'Entry body for add/edit' },
+    ],
+    action: handleMemory,
     examples: [
-      { description: 'List project memory items', command: 'crew memory list' },
+      { description: 'List project memory items', command: 'crew memory list --workspace <id> --layer project' },
     ],
   },
   {
@@ -276,6 +286,7 @@ export const COMMANDS: CommandDefinition[] = [
     args: [
       { name: 'learning', description: 'Insight or guideline to remember', required: true },
     ],
+    action: handleRemember,
     examples: [
       { description: 'Save learning', command: 'crew remember "Always use transactions for multi-table updates"' },
     ],

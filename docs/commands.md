@@ -265,19 +265,28 @@ crew answer task-1 "Use ESM modules"
 
 ### `crew memory`
 
-Inspect, curate, or promote project and role memory.
+Inspect and curate all three layers. Humans supply --workspace for list/add. Promotion explicitly copies role memory into project memory with provenance.
 
 **Arguments:**
 
-- `action` (required): Action to perform: list, get, set, promote
-- `key` (optional): Memory key or ID
+- `action` (required): Action: list, add, edit, delete, promote
+- `key` (optional): Memory ID for edit, delete or promote
+
+**Options:**
+
+- `--workspace <id>`: Workspace ID (required for human list/add)
+- `--layer <layer>`: project, role or task (add defaults to project)
+- `--role <id>`: Role ID for role memory
+- `--task <id>`: Task ID for task memory
+- `--title <text>`: Entry title for add/edit
+- `--body <text>`: Entry body for add/edit
 
 **Examples:**
 
 List project memory items:
 
 ```bash
-crew memory list
+crew memory list --workspace <id> --layer project
 ```
 
 ---
