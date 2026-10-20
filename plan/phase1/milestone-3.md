@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 3 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** implemented, pending the user's review and the manual smoke run (`npm run smoke:m3`, bullet 8). Tracer bullets 0–7 are done with harness tests. After the first review: a Reviewer now waits while its tool is rate-limit paused (D7), the main-checkout snapshot lives on disk, and Reviewer selection skips stopped and paused agents. P1–P9 (D29–D37) are implemented.
+**Status:** done. Tracer bullets 0–8 are implemented, reviewed and smoke-tested with real Claude Code 2.1.300 on 2026-10-20: the author wrote `smoke.txt`, the diff gate and the `test -f smoke.txt` command gate passed, and a real read-only Reviewer ran `crew review approve` (review step output "Approved"), so the task reached `merge-queue`. The first smoke run skipped the review because of a case-sensitive role-name match; that was fixed and the run repeated. P1–P9 are logged as D29–D37.
 
 ## 1. Goal
 
