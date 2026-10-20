@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullet 0 implemented and verified (196 tests); bullets 1–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–1 implemented and verified (205 tests across 37 files). Bullets 2–9 and the manual smoke remain. Milestone 5 is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -33,7 +33,7 @@ crew/
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
-│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullet 0 implemented; remaining bullets pending)
+│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–1 implemented; remaining bullets pending)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -44,7 +44,7 @@ crew/
 │  │  ├─ project-config.ts # jiti loader, config validation/template and command prefix filtering (CLI startup only)
 │  │  ├─ api/             # REST + SSE endpoints, Host-header and token checks (D13)
 │  │  ├─ db/              # Drizzle schema and migrations (SQLite in ~/.crew, D12)
-│  │  ├─ scheduler/       # Task state machine and dependencies (index.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
+│  │  ├─ scheduler/       # Task state machine/dependencies (index.ts), authorized ticket creation/quota/assignment (tickets.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
 │  │  ├─ worktree/        # Create, set up, transfer inactive conflict worktrees on human retry, clean up/gc; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
@@ -58,7 +58,7 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook, worktree setup, merge queue, config/init
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook, worktree setup, merge queue, config/init, ticket creation/assignment
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit and hook-blocked samples (D5, D7, D26)
 ```
@@ -92,3 +92,5 @@ Each repo that *uses* Crew gets a `crew.config.ts` at its root, created by `crew
 - Successful worktree setup is recorded as `crew-setup-complete` inside that worktree's private Git directory. It survives server restarts, is removed with the worktree, and adds no tracked files. Interrupted setup is run again on resume.
 
 `crew init` registers the canonical git root, one grill board and a four-agent Claude Code team, without overwriting an existing config. The real CLI startup loads every registered workspace config before binding; in-process harness startup does not execute repository config. Configured custom role rows use workspace-qualified IDs; built-in rows remain shared, with per-workspace overrides resolved by the runner.
+
+Ticket creation/assignment lives in `scheduler/tickets.ts` and the thin `cli/commands/ticket.ts` client. Generated migration `0004` records task kind and immutable creation phase for durable quotas. Task statuses still belong to the Scheduler.

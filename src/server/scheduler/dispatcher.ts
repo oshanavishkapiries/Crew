@@ -58,7 +58,7 @@ export class Dispatcher {
         if (data?.to === 'ready' || data?.to === 'todo' || data?.to === 'doing') {
           this.scheduleDispatch();
         }
-      } else if (event.type === 'rate_limit_cleared') {
+      } else if (event.type === 'rate_limit_cleared' || event.type === 'task_assignment_changed') {
         this.scheduleDispatch();
       }
     });
@@ -258,7 +258,8 @@ export class Dispatcher {
         const startedTask = await this.scheduler.transitionTask(task.id, 'doing', {
           reason: `Dispatched to agent ${agent.name}`,
         });
-        if (startedTask.status !== 'doing' || this.isStopped() || this.runner.isCancelling(task.id)) {
+        // Human assignment can change while worktree setup awaits; the next pass uses the new owner.
+        if (startedTask.status !== 'doing' || startedTask.assigneeAgentId !== agent.id || this.isStopped() || this.runner.isCancelling(task.id)) {
           this.db.db.update(schema.agents).set({ status: 'idle' }).where(eq(schema.agents.id, agent.id)).run();
           continue;
         }

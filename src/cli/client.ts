@@ -133,3 +133,20 @@ export async function postTaskAction<T>(command: string, action: string, body: u
 
   return (await res.json()) as T;
 }
+
+/** Shared Orchestrator/human actions prefer the agent token in spawned processes. */
+export async function postWorkflowAction<T>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+  const token = process.env.CREW_AGENT_TOKEN;
+  if (!token) return postHumanAction<T>(endpoint, body);
+  const url = process.env.CREW_SERVER_URL;
+  if (!url || !process.env.CREW_TASK_ID) fail('This agent command needs CREW_SERVER_URL and CREW_TASK_ID.');
+  let res: Response;
+  try {
+    res = await fetch(`${url}${endpoint}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', [AGENT_TOKEN_HEADER]: token },
+      body: JSON.stringify({ ...body, taskId: process.env.CREW_TASK_ID }),
+    });
+  } catch (error) { fail(`Failed to connect to Crew server at ${url}: ${(error as Error).message}`); }
+  if (!res.ok) fail(`Request failed: ${res.status} ${await res.text()}`);
+  return await res.json() as T;
+}

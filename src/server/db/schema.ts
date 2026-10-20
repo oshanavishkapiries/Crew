@@ -54,6 +54,8 @@ export const agents = sqliteTable('agents', {
 });
 
 export const tasks = sqliteTable('tasks', {
+  kind: text('kind').notNull().default('work').$type<'work' | 'phase'>(),
+  creationPhase: text('creation_phase'),
   id: text('id').primaryKey(),
   boardId: text('board_id')
     .notNull()

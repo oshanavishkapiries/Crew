@@ -1,3 +1,4 @@
+import { handleAssign, handleTicket } from './commands/ticket.js';
 import { handleInit } from './commands/init.js';
 import { handleAnswer } from './commands/answer.js';
 import { handleAsk } from './commands/ask.js';
@@ -343,11 +344,15 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'ticket',
     category: 'orchestrator',
     summary: 'Create a task ticket',
-    description: 'Creates a task ticket with title, description, dependencies, and acceptance criteria.',
+    description: 'Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota.',
+    action: handleTicket,
     args: [
       { name: 'action', description: 'Action to perform: create', required: true },
     ],
     options: [
+      { flags: '--board <id>', description: 'Board ID (required for humans; inferred for the Orchestrator)' },
+      { flags: '--phase <phase>', description: 'Expected current phase (required for humans)' },
+      { flags: '--assignee <agent>', description: 'Optional agent ID or exact name in this workspace' },
       { flags: '--title <title>', description: 'Task title' },
       { flags: '--description <desc>', description: 'Task description' },
       { flags: '--criteria <criteria>', description: 'Acceptance criteria' },
@@ -357,7 +362,7 @@ export const COMMANDS: CommandDefinition[] = [
     examples: [
       {
         description: 'Create a task ticket',
-        command: 'crew ticket create --title "Build auth API" --role backend --criteria "JWT auth with refresh tokens"',
+        command: 'crew ticket create --board board-1 --phase tickets --title "Build auth API" --role backend --criteria "JWT auth with refresh tokens"',
       },
     ],
   },
@@ -365,7 +370,8 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'assign',
     category: 'orchestrator',
     summary: 'Assign a task to an agent or role',
-    description: 'Assigns a created task to a specific agent or role for execution.',
+    description: 'Assigns a todo or ready work ticket to an agent ID/name or staffed role. A role clears the explicit assignee for automatic dispatch. Requires a live Orchestrator phase run or human secret.',
+    action: handleAssign,
     args: [
       { name: 'agent', description: 'Agent ID or role name', required: true },
       { name: 'task', description: 'Task ID', required: true },

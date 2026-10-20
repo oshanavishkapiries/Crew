@@ -249,6 +249,8 @@ export class Scheduler {
     parentTaskId?: string;
     depth?: number;
     blockedByIds?: string[];
+    kind?: 'work' | 'phase';
+    creationPhase?: string;
     branch?: string;
     alongside?: () => void;
   }): Promise<Task> {
@@ -261,6 +263,8 @@ export class Scheduler {
         .insert(schema.tasks)
         .values({
           id: params.id,
+          kind: params.kind ?? 'work',
+          creationPhase: params.creationPhase,
           boardId: params.boardId,
           title: params.title,
           description: params.description,

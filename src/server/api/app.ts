@@ -6,6 +6,7 @@ import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
+import { Tickets, TicketError } from '../scheduler/tickets.js';
 import type { EventBus } from '../events/index.js';
 import {
   DependencyCycleError,
@@ -55,6 +56,7 @@ export function createApp(ctx: AppContext): Hono {
 
   app.onError((err, c) => {
     if (err instanceof HTTPException) return err.getResponse();
+    if (err instanceof TicketError) return c.json({ error: err.message }, err.status);
     if (err instanceof TaskNotFoundError) return c.json({ error: err.message }, 404);
     if (err instanceof InvalidTransitionError || err instanceof DependencyCycleError) {
       return c.json({ error: err.message }, 409);
@@ -117,6 +119,50 @@ export function createApp(ctx: AppContext): Hono {
     }
     return { agent: caller.agent, task };
   };
+
+  const tickets = new Tickets(ctx.db, ctx.scheduler, ctx.eventBus);
+  const requireTicketCaller = (c: Context, body: Record<string, unknown>) => {
+    const caller = identify(c);
+    if (!caller) throw unauthorized();
+    if (caller.kind === 'human') return { caller };
+    const role = ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, caller.agent.roleId)).get();
+    if (role?.name !== 'orchestrator') throw forbidden('only the Orchestrator or a human can create or assign tickets');
+    if (typeof body.taskId !== 'string') throw new TicketError('The Orchestrator must supply its current taskId.');
+    const task = loadTask(body.taskId);
+    if (task.assigneeAgentId !== caller.agent.id) throw forbidden('Orchestrator context is not assigned to this agent');
+    const run = ctx.runner?.getLiveRunByTaskId(task.id);
+    if (task.kind !== 'phase' || task.status !== 'doing' || !run || run.agentId !== caller.agent.id || run.exitReason || ctx.runner?.isCancelling(task.id) || ctx.dispatcher?.isStopped()) {
+      throw new TicketError('The Orchestrator phase run is no longer active; no ticket changes were made.', 409);
+    }
+    const board = tickets.board(task.boardId);
+    if (task.creationPhase !== board.currentPhase) throw new TicketError('The board has moved on from this phase run.', 409);
+    return { caller, task, board };
+  };
+  const ticketBody = async (c: Context): Promise<Record<string, unknown>> => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new TicketError('Expected a JSON object.');
+    return body;
+  };
+
+  app.post('/api/tasks', async c => {
+    const body = await ticketBody(c);
+    const actor = requireTicketCaller(c, body);
+    const boardId = actor.task?.boardId ?? body.boardId;
+    const phase = actor.task?.creationPhase ?? body.phase;
+    if (typeof boardId !== 'string' || typeof phase !== 'string') throw new TicketError('Human creation requires --board <id> and --phase <phase>.');
+    if (actor.task && ((body.boardId !== undefined && body.boardId !== boardId) || (body.phase !== undefined && body.phase !== phase))) throw forbidden('ticket board/phase must match the active Orchestrator task');
+    const task = await tickets.create(body, boardId, phase, actor.caller.kind === 'human' ? 'human' : `agent:${actor.caller.agent.id}`);
+    return c.json({ task }, 201);
+  });
+
+  app.post('/api/tasks/:id/assign', async c => {
+    const body = await ticketBody(c);
+    const actor = requireTicketCaller(c, body);
+    if (typeof body.assignee !== 'string' || !body.assignee) throw new TicketError('An agent ID/name or role is required.');
+    const target = loadTask(c.req.param('id'));
+    if (actor.task && target.boardId !== actor.task.boardId) throw forbidden('cannot assign a task on another board');
+    return c.json({ task: tickets.assign(target.id, body.assignee) });
+  });
 
   // Health check endpoint
   app.get('/health', (c) => {

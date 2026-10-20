@@ -1,3 +1,15 @@
+# Milestone 5 bullet 1 handoff
+
+Status: bullet 0 reviewed (6405147), the requested init/adapter fixes committed (e6d9279), and bullet 1 ticket API/CLI implemented and verified (205 tests across 37 files). Bullets 2–9 remain. Milestone 5 is not done; no real permission fixture or smoke was run.
+
+`POST /api/tasks`, `crew ticket create` and `crew assign` now support human-secret and live Orchestrator-phase authentication. Human creation names the board and expected phase; agent context is inferred from its live phase task. Public creation cannot make phase tasks. Creation validates roles, assignees and blockers and counts durable per-board/phase quota atomically in Scheduler creation; assignment accepts a staffed role or workspace agent only before execution. Bad requests roll back without consuming quota. The existing dispatcher picks an idle matching-role agent. Generated migration `0004_clever_red_hulk.sql` adds `tasks.kind` (default work) and nullable `creation_phase`; see the migration-order proposal in §9. There is no phase engine yet: the Orchestrator harness seeds its phase context through the Scheduler, while real human creation works on existing boards. Ticket gate release remains bullet 5.
+
+Focused verification: 15 tests pass across ticket harness/database, including the milestone 4 upgrade. Eight ticket tests and the upgrade test were observed failing before implementation/fixes. The single diff re-read identified reassignment during asynchronous worktree setup; the real setup-command regression failed, then a pre-spawn assignee recheck made the next dispatch use the new owner without a retry. Final verification: `rm -r dist && npm test` passed typecheck/build and 205 tests across 37 files (226.47s). `npm run generate:docs` and `git diff --check` passed. Docs commands regenerated. D28 and the PRD Decision Log untouched; nothing pushed.
+
+Next: bullet 2 memory store/API/human CLI. See §9 proposals for early migration and caller context. Follow with shared prompt builder (3), phase engine and real permission fixture (4), workflow (5–6), interruptions (7), polish (8), and smoke script only (9).
+
+---
+
 # Milestone 5 init and permission-pattern correction
 
 Status: bullet 0 reviewed, followed by the requested init visibility and adapter pattern fix. Bullets 1–9 remain pending; milestone 5 is not done. Init and status now explain that an untracked config pauses merges until committed. The real CLI/git regression preserves config bytes, commits the config, and observes the queued task merge. Adapter contracts cover explicit wildcards and plain prefixes. D28 and the PRD remain untouched. Verification: `rm -r dist && npm test` passed typecheck/build and 196 tests across 36 files (341.57s); both new regressions failed before the fixes. `npm run generate:docs` and `git diff --check` passed.

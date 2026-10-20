@@ -469,7 +469,7 @@ crew phase --done --output spec.md
 
 ### `crew ticket`
 
-Creates a task ticket with title, description, dependencies, and acceptance criteria.
+Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota.
 
 **Arguments:**
 
@@ -477,6 +477,9 @@ Creates a task ticket with title, description, dependencies, and acceptance crit
 
 **Options:**
 
+- `--board <id>`: Board ID (required for humans; inferred for the Orchestrator)
+- `--phase <phase>`: Expected current phase (required for humans)
+- `--assignee <agent>`: Optional agent ID or exact name in this workspace
 - `--title <title>`: Task title
 - `--description <desc>`: Task description
 - `--criteria <criteria>`: Acceptance criteria
@@ -488,14 +491,14 @@ Creates a task ticket with title, description, dependencies, and acceptance crit
 Create a task ticket:
 
 ```bash
-crew ticket create --title "Build auth API" --role backend --criteria "JWT auth with refresh tokens"
+crew ticket create --board board-1 --phase tickets --title "Build auth API" --role backend --criteria "JWT auth with refresh tokens"
 ```
 
 ---
 
 ### `crew assign`
 
-Assigns a created task to a specific agent or role for execution.
+Assigns a todo or ready work ticket to an agent ID/name or staffed role. A role clears the explicit assignee for automatic dispatch. Requires a live Orchestrator phase run or human secret.
 
 **Arguments:**
 
