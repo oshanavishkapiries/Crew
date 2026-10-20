@@ -15,10 +15,12 @@ import { killProcessGroup } from '../runner/index.js';
 import { CommandRunner, type VerifyCommand } from '../verify/command-runner.js';
 
 class MergeInterrupted extends Error {}
-interface Job { taskId: string; interrupted: boolean; processes: Set<ResultPromise>; }
+interface Job { taskId: string; interrupted: boolean; processes: Set<ResultPromise>; checkout?: { commitSha: string; workspace: Workspace }; }
+interface CheckoutLock { index: string; lock: string; temporary: string; inode: number; commitSha: string; writeCheckout?: boolean; old?: string; indexPublished?: boolean; }
 type Item = typeof schema.mergeQueueItems.$inferSelect;
 type Workspace = typeof schema.workspaces.$inferSelect;
 export interface MergeHooks {
+  beforeCheckoutWrite?: (task: Task) => Promise<void>;
   beforeCheckoutMerge?: (task: Task) => Promise<void>;
   beforeRefUpdate?: (task: Task, commitSha: string) => Promise<void>;
 }
@@ -113,11 +115,14 @@ export class MergeQueue {
   endCancel(taskId: string): void { this.cancelling.delete(taskId); }
 
   private async interrupt(job: Job): Promise<void> {
+    // A checkout write already in progress finishes its index/ref transaction.
+    // Once the ref landed, only bookkeeping may remain and it is safe to kill.
+    const checkoutWriting = job.checkout && !await this.landed({ commitSha: job.checkout.commitSha } as Item, job.checkout.workspace);
     await Promise.all([
       this.commands.cancel(job.taskId),
       this.options.worktreeManager.cancelSetup(`merge:${job.taskId}`),
       ...[...job.processes].map(async p => {
-        if (p.pid) await killProcessGroup(p.pid, 'SIGTERM', 1000);
+        if (p.pid && !checkoutWriting) await killProcessGroup(p.pid, 'SIGTERM', 1000);
         await p.catch(() => {});
       }),
     ]);
@@ -190,15 +195,160 @@ export class MergeQueue {
     }
   }
 
-  private async git(cwd: string, ...args: string[]): Promise<string> {
+  private git(cwd: string, ...args: string[]): Promise<string> {
+    return this.gitWithEnv(cwd, {}, ...args);
+  }
+
+  private async gitWithEnv(cwd: string, env: Record<string, string>, ...args: string[]): Promise<string> {
     const job = this.context.getStore();
     if (job?.interrupted || (job && this.isStopped())) throw new MergeInterrupted();
     const process = execa('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-      cwd, env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true' }, detached: true,
+      cwd, env: { GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', ...env }, detached: true,
     });
     job?.processes.add(process);
     try { return (await process).stdout; }
     finally { job?.processes.delete(process); }
+  }
+
+  private checkoutJournal(workspace: Workspace): string {
+    return path.join(this.home, 'integration', `${workspace.id}.checkout.json`);
+  }
+
+  private async finishCheckout(workspace: Workspace, state: CheckoutLock): Promise<void> {
+    const ownLock = fs.existsSync(state.lock) && fs.statSync(state.lock).ino === state.inode;
+    const published = state.indexPublished || (!fs.existsSync(state.lock) && fs.existsSync(state.index) && fs.statSync(state.index).ino === state.inode);
+    if (published && state.old && !await this.landed({ commitSha: state.commitSha } as Item, workspace)) {
+      // Files/index were already published under HEAD's lock: finish only the CAS.
+      await this.git(workspace.repoPath, 'update-ref', `refs/heads/${workspace.defaultBranch}`, state.commitSha, state.old);
+    }
+    if (ownLock) {
+      if (state.writeCheckout && await this.landed({ commitSha: state.commitSha } as Item, workspace)) {
+        // Recover an older interrupted handoff with the ref moved but index locked.
+        await this.gitWithEnv(workspace.repoPath, { GIT_INDEX_FILE: state.temporary }, 'diff', '--cached', '--quiet', state.commitSha, '--');
+        if (await this.git(workspace.repoPath, 'branch', '--show-current') === workspace.defaultBranch) {
+          const bytes = fs.readFileSync(state.temporary);
+          fs.writeFileSync(state.lock, bytes);
+          fs.renameSync(state.lock, state.index);
+        } else {
+          this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} landed but checkout changed; index preserved`);
+          fs.unlinkSync(state.lock);
+        }
+      } else fs.unlinkSync(state.lock);
+    }
+    fs.rmSync(state.temporary, { force: true });
+    fs.rmSync(this.checkoutJournal(workspace), { force: true });
+  }
+
+  private async recoverCheckout(workspace: Workspace): Promise<void> {
+    const journal = this.checkoutJournal(workspace);
+    if (!fs.existsSync(journal)) return;
+    const state = JSON.parse(fs.readFileSync(journal, 'utf8')) as CheckoutLock;
+    await this.finishCheckout(workspace, state);
+  }
+
+  private async fastForward(item: Item, task: Task, workspace: Workspace, old: string, commitSha: string): Promise<boolean> {
+    const index = path.resolve(workspace.repoPath, await this.git(workspace.repoPath, 'rev-parse', '--git-path', 'index'));
+    const lock = index + '.lock';
+    let descriptor: number;
+    try { descriptor = fs.openSync(lock, 'wx'); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const warning = `Merge queue paused: ${workspace.defaultBranch} checkout is busy (index.lock)`;
+      this.warnings.set(workspace.id, warning);
+      this.change(item, task, { status: 'queued', output: warning });
+      return false;
+    }
+    const temporary = path.join(this.home, 'integration', `${workspace.id}.index`);
+    const state: CheckoutLock = { index, lock, temporary, inode: fs.fstatSync(descriptor).ino, commitSha, old };
+    try {
+      fs.writeFileSync(descriptor, 'Crew merge checkout lock\n');
+      fs.copyFileSync(index, temporary);
+      fs.writeFileSync(this.checkoutJournal(workspace), JSON.stringify(state));
+    } catch (error) {
+      fs.rmSync(lock, { force: true });
+      fs.rmSync(temporary, { force: true });
+      throw error;
+    } finally { fs.closeSync(descriptor); }
+    try {
+      if (await this.checkoutBlocked(workspace, commitSha)) {
+        this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
+        return false;
+      }
+      // A checkout that already switched uses CAS; the prepared transaction below
+      // protects HEAD for writes in the default checkout.
+      if (await this.git(workspace.repoPath, 'branch', '--show-current') !== workspace.defaultBranch) {
+        await this.git(workspace.repoPath, 'update-ref', `refs/heads/${workspace.defaultBranch}`, commitSha, old);
+        return true;
+      }
+      if (await this.git(workspace.repoPath, 'rev-parse', workspace.defaultBranch) !== old) throw new Error('Default branch moved before checkout update');
+      const headLock = path.resolve(workspace.repoPath, await this.git(workspace.repoPath, 'rev-parse', '--git-path', 'HEAD')) + '.lock';
+      if (fs.existsSync(headLock)) {
+        const warning = `Merge queue paused: ${workspace.defaultBranch} checkout is busy (HEAD.lock)`;
+        this.warnings.set(workspace.id, warning);
+        this.change(item, task, { status: 'queued', output: warning });
+        return false;
+      }
+      const job = this.context.getStore();
+      // `update HEAD` prepares locks on both HEAD and its referent. Re-check HEAD
+      // after prepare: a switch that won the lock race is aborted before any write.
+      const transaction = execa('git', ['-c', 'core.hooksPath=/dev/null', 'update-ref', '--stdin'], {
+        cwd: workspace.repoPath, detached: true, stdin: 'pipe',
+      });
+      job?.processes.add(transaction);
+      let committed = false;
+      try {
+        const prepared = new Promise<void>((resolve, reject) => {
+          let output = '';
+          const data = (chunk: Buffer) => {
+            output += chunk.toString();
+            if (output.includes('prepare: ok')) { transaction.stdout.off('data', data); resolve(); }
+          };
+          transaction.stdout.on('data', data);
+          transaction.then(() => reject(new Error('Ref transaction ended before prepare')), reject);
+        });
+        transaction.stdin.write(`start\nupdate HEAD ${commitSha} ${old}\nprepare\n`);
+        await prepared;
+        if (!fs.existsSync(headLock)) throw new Error('Git did not lock HEAD for the prepared transaction; update Git (verified with 2.53.0)');
+        if (!this.live(task)) return false;
+        if (await this.git(workspace.repoPath, 'branch', '--show-current') !== workspace.defaultBranch) {
+          transaction.stdin.end('abort\n');
+          await transaction;
+          await this.git(workspace.repoPath, 'update-ref', `refs/heads/${workspace.defaultBranch}`, commitSha, old);
+          return true;
+        }
+        // This hook observes the actual protected window, not a check before it.
+        await this.hooks.beforeCheckoutWrite?.(task);
+        if (!this.live(task)) return false;
+        if (await this.checkoutBlocked(workspace, commitSha)) {
+          this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
+          return false;
+        }
+        if (!this.live(task)) return false;
+        state.writeCheckout = true;
+        fs.writeFileSync(this.checkoutJournal(workspace), JSON.stringify(state));
+        if (job) job.checkout = { commitSha, workspace };
+        // From the first file write through the ref commit, finish even if a stop
+        // arrives. read-tree refuses dirty/untracked/ignored collisions by default.
+        await this.context.exit(() => this.gitWithEnv(workspace.repoPath, { GIT_INDEX_FILE: temporary }, 'read-tree', '-m', '-u', old, commitSha));
+        // Publish while HEAD is still locked; no branch switch can cross the write.
+        fs.writeFileSync(lock, fs.readFileSync(temporary));
+        fs.renameSync(lock, index);
+        state.indexPublished = true;
+        fs.writeFileSync(this.checkoutJournal(workspace), JSON.stringify(state));
+        transaction.stdin.end('commit\n');
+        await transaction;
+        committed = true;
+      } finally {
+        if (!committed && !transaction.stdin.destroyed && !transaction.stdin.writableEnded) transaction.stdin.end('abort\n');
+        await transaction.catch(() => {});
+        job?.processes.delete(transaction);
+        if (job) job.checkout = undefined;
+      }
+      return true;
+    } finally {
+      // Cleanup must also run after the active job has been marked interrupted.
+      await this.context.exit(() => this.finishCheckout(workspace, state));
+    }
   }
 
   // Recovery/cleanup commands run after the active process has been reaped.
@@ -222,6 +372,7 @@ export class MergeQueue {
 
   private async recover(): Promise<void> {
     const { db, worktreeManager } = this.options;
+    for (const workspace of db.db.select().from(schema.workspaces).all()) await this.recoverCheckout(workspace);
     for (const item of db.db.select().from(schema.mergeQueueItems).all()) {
       const task = db.db.select().from(schema.tasks).where(eq(schema.tasks.id, item.taskId)).get();
       if (!task) continue;
@@ -267,12 +418,20 @@ export class MergeQueue {
     return !this.isStopped() && !this.cancelling.has(task.id) && !this.context.getStore()?.interrupted && this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status === 'merge-queue';
   }
 
-  private async checkoutBlocked(workspace: Workspace): Promise<boolean> {
+  private async checkoutBlocked(workspace: Workspace, candidate?: string | null): Promise<boolean> {
     const branch = await this.git(workspace.repoPath, 'rev-parse', '--abbrev-ref', 'HEAD');
     const dirty = branch === workspace.defaultBranch && !!await this.git(workspace.repoPath, 'status', '--porcelain=v1', '--untracked-files=all');
     if (dirty) {
       this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has uncommitted changes`);
       return true;
+    }
+    if (branch === workspace.defaultBranch && candidate) {
+      const changed = (await this.git(workspace.repoPath, 'diff', '--name-only', '--diff-filter=ACMRT', '-z', `${workspace.defaultBranch}..${candidate}`)).split('\0').filter(Boolean);
+      const ignored = (await this.git(workspace.repoPath, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z')).split('\0').filter(Boolean);
+      if (ignored.some(file => changed.some(target => file === target || file.startsWith(target + '/') || target.startsWith(file + '/')))) {
+        this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has ignored files that incoming work would overwrite`);
+        return true;
+      }
     }
     this.warnings.delete(workspace.id);
     return false;
@@ -288,7 +447,7 @@ export class MergeQueue {
   }
 
   private async mergeAttempt(item: Item, task: Task, workspace: Workspace): Promise<boolean | 'retry'> {
-    if (await this.checkoutBlocked(workspace)) {
+    if (await this.checkoutBlocked(workspace, item.commitSha ?? task.branch)) {
       this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
       return false;
     }
@@ -368,7 +527,7 @@ export class MergeQueue {
     this.change(item, task, { commitSha });
     if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
     await this.hooks.beforeRefUpdate?.(task, commitSha);
-    if (await this.checkoutBlocked(workspace)) {
+    if (await this.checkoutBlocked(workspace, commitSha)) {
       this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
       return false;
     }
@@ -383,13 +542,13 @@ export class MergeQueue {
         }
         await this.hooks.beforeCheckoutMerge?.(task);
         if (!this.live(task)) return false;
-        await this.git(repo, 'merge', '--ff-only', commitSha);
+        if (!await this.fastForward(item, task, workspace, old, commitSha)) return false;
       } else {
         await this.git(repo, 'update-ref', ref, commitSha, old);
       }
     } catch (error) {
       if (!this.live(task)) throw new MergeInterrupted();
-      if (await this.checkoutBlocked(workspace)) {
+      if (await this.checkoutBlocked(workspace, commitSha)) {
         this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
         return false;
       }
@@ -398,6 +557,7 @@ export class MergeQueue {
       return 'retry';
     }
     if (!this.live(task)) return false;
+    if (!await this.landed({ ...item, commitSha }, workspace)) throw new Error('Merge candidate did not reach the default branch; human retry required');
     await this.complete(item, task, workspace, commitSha);
     return true;
   }

@@ -1,3 +1,11 @@
+# Milestone 4 final review fixes handoff
+
+Status: bullets 0–7 are implemented; the local bullet 8 script is prepared but not yet committed or run. Fresh review found ignored-file overwrites, a final branch-switch window, and nested conflict-parent retry missing the actual worktree owner. Regression tests reproduce all three. The fixes pause ignored collisions with bytes preserved, follow inactive conflict descendants, and use a prepared HEAD/ref transaction plus private index for the checkout fast-forward. Foreign HEAD/index locks pause. An inode ownership journal recovers both sides of index/ref publication. Stop/cancel finishes an already-started checkout publication, while rebase/verify/setup are killed; this exception and the command change from the approved `merge --ff-only` are explicit proposals in §9. Git 2.53.0 was used; HEAD locking is checked before writing. The smoke script remains unrun.
+
+Verification: `rm -r dist && npm test` passed typecheck and all 175 tests across 35 files (205.47s). Missing/ignored/branch-switch/nested-retry regressions and checkout journal/PID tests are green. The shell guard rejects the force-delete command.
+
+---
+
 # Milestone 4 bullet 7 handoff
 
 Status: bullets 0–7 and the terminal-failure fix are implemented. Bullet 8 (write the smoke script, do not run it) is next; manual smoke remains pending. Human-secret endpoints `GET /api/merge-queue` and `POST /api/tasks/:id/retry` back `crew queue` and `crew retry <task> [--note]`. Queue output includes order, active phase, conflict child, failures and dirty-checkout warnings; status includes pending count/warnings. Retry resets retries to zero and commits the optional note as feedback with the Scheduler transition. Ordinary transitions still reject escalated→doing; only the separate human retry entry point permits it, with a second state check in the transaction to reject concurrent retries.

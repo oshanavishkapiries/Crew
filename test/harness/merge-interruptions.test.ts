@@ -20,7 +20,7 @@ function waitForFile(file: string): Promise<void> {
 }
 const git = async (...args: string[]) => (await execa('git', args, { cwd: h.repoDir })).stdout;
 
-async function hanging(stage: 'rebase' | 'verify' | 'setup' | 'landed') {
+async function hanging(stage: 'rebase' | 'verify' | 'setup' | 'landed' | 'prepare') {
   h = await createPipelineHarness({ startVerifier: true });
   await readyToMerge(h);
   const signal = path.join(h.crewHomeDir, 'merge-running');
@@ -38,7 +38,7 @@ async function hanging(stage: 'rebase' | 'verify' | 'setup' | 'landed') {
   const command = `if test ! -f ${quote(once)}; then node ${quote(worker)}; fi`;
   if (stage === 'verify') h.setVerifyCommands([{ name: 'interrupt', command }]);
   if (stage === 'setup') h.db.db.update(schema.workspaces).set({ config: { worktreeSetup: `touch interrupted-output; ${command}` } }).run();
-  if (stage === 'rebase' || stage === 'landed') {
+  if (stage === 'rebase' || stage === 'landed' || stage === 'prepare') {
     const realGit = (await execa('which', ['git'])).stdout;
     const bin = path.join(h.crewHomeDir, 'bin');
     fs.mkdirSync(bin, { recursive: true });
@@ -48,14 +48,14 @@ async function hanging(stage: 'rebase' | 'verify' | 'setup' | 'landed') {
       const { spawn, spawnSync } = require('node:child_process');
       const fs = require('node:fs');
       const args = process.argv.slice(2);
-      if (${JSON.stringify(stage)} === 'landed' && args.includes('merge') && args.includes('--ff-only')) {
+      if (${JSON.stringify(stage)} === 'landed' && args.includes('update-ref') && args.includes('--stdin')) {
         const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: 'inherit' });
         if (r.status !== 0) process.exit(r.status ?? 1);
         const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'inherit' });
         process.on('SIGTERM', () => child.kill('SIGTERM'));
         child.on('exit', () => process.exit(0));
         fs.writeFileSync(${JSON.stringify(signal)}, JSON.stringify([process.pid, child.pid, r.pid]));
-      } else if (${JSON.stringify(stage)} === 'landed' || !process.cwd().includes('/integration/') || !args.includes('rebase') || args.includes('--abort') || fs.existsSync(${JSON.stringify(once)})) {
+      } else if (${JSON.stringify(stage)} === 'landed' || fs.existsSync(${JSON.stringify(once)}) || (${JSON.stringify(stage)} === 'prepare' ? !(args.includes('update-ref') && args.includes('--stdin')) : !process.cwd().includes('/integration/') || !args.includes('rebase') || args.includes('--abort'))) {
         const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: 'inherit' }); process.exit(r.status ?? 1);
       }
       else {
@@ -77,7 +77,7 @@ async function hanging(stage: 'rebase' | 'verify' | 'setup' | 'landed') {
   return JSON.parse(fs.readFileSync(signal, 'utf8')) as number[];
 }
 
-it.each(['rebase', 'verify', 'setup'] as const)('stop-all kills %s and every child, remains stopped on restart, and resumes without a retry', async stage => {
+it.each(['rebase', 'verify', 'setup', 'prepare'] as const)('stop-all kills %s and every child, remains stopped on restart, and resumes without a retry', async stage => {
   const pids = await hanging(stage);
   const old = await git('rev-parse', 'main');
   expect((await h.runCrew(['stop-all'])).exitCode).toBe(0);
@@ -97,7 +97,7 @@ it.each(['rebase', 'verify', 'setup'] as const)('stop-all kills %s and every chi
   expect((await git('log', '--format=%s', 'main')).split('\n').filter(s => s === 'Feature checkout')).toHaveLength(1);
 });
 
-it.each(['rebase', 'verify', 'setup'] as const)('cancel kills %s and every child before removing its item, cleans integration and keeps its branch', async stage => {
+it.each(['rebase', 'verify', 'setup', 'prepare'] as const)('cancel kills %s and every child before removing its item, cleans integration and keeps its branch', async stage => {
   const pids = await hanging(stage);
   const task = h.getTask('checkout')!;
   const old = await git('rev-parse', 'main');

@@ -150,8 +150,19 @@ export class Scheduler {
   async retryTaskByHuman(taskId: string, note?: string): Promise<Task> {
     const task = this.getTaskOrThrow(taskId);
     if (task.status !== 'escalated') throw new InvalidTransitionError(taskId, task.status, 'doing', 'Only escalated tasks can be retried');
-    const conflict = this.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, taskId)).get();
-    const child = conflict?.conflictTaskId ? this.getTaskOrThrow(conflict.conflictTaskId) : undefined;
+    let owner = task;
+    let child: Task | undefined;
+    const seen = new Set<string>([taskId]);
+    // Conflict chains share one branch; the deepest inactive descendant owns it.
+    while (true) {
+      const conflict = this.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, owner.id)).get();
+      if (!conflict?.conflictTaskId || seen.has(conflict.conflictTaskId)) break;
+      const descendant = this.getTaskOrThrow(conflict.conflictTaskId);
+      if (descendant.branch !== task.branch || !['escalated', 'cancelled'].includes(descendant.status)) break;
+      seen.add(descendant.id);
+      child = descendant;
+      owner = descendant;
+    }
     const transferred = child && child.branch === task.branch && ['escalated', 'cancelled'].includes(child.status) &&
       await this.worktreeManager?.transferWorktree(child, task);
     try {

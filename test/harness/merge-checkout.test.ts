@@ -117,7 +117,7 @@ it('fails the item after three ref races without overwriting any user commit', a
 });
 
 
-it('pauses when checkout becomes dirty between the final check and ff-only merge', async () => {
+it('pauses for checkout dirtiness introduced in the final update window', async () => {
   h = await createPipelineHarness({ startVerifier: true });
   await readyToMerge(h);
   const old = await git('rev-parse', 'main');
@@ -137,4 +137,92 @@ it('pauses when checkout becomes dirty between the final check and ff-only merge
   const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
   h.server.mergeQueue.tick();
   await done;
+});
+
+it.each(['before attempt', 'before checkout transaction'])('pauses for an ignored file collision %s without overwriting any user bytes', async timing => {
+  h = await createPipelineHarness({ startVerifier: true });
+  fs.writeFileSync(path.join(h.repoDir, '.gitignore'), 'local.env\n');
+  await git('add', '.gitignore');
+  await git('commit', '-m', 'Ignore local environment');
+  await h.createTask({ id: 'ignored', title: 'Track environment fixture', description: 'Tracked incoming path' });
+  await h.runTaskWithAgent('ignored', [
+    { type: 'edit_file', filePath: 'local.env', content: 'task fixture\n' },
+    { type: 'git', args: ['add', '-f', 'local.env'] },
+    { type: 'done', result: 'Tracked fixture' },
+  ]);
+  await h.waitForTaskStatus('ignored', 'merge-queue');
+  const file = path.join(h.repoDir, 'local.env');
+  const bytes = Buffer.from([255, 0, 13, 10, 42]);
+  const old = await git('rev-parse', 'main');
+  if (timing === 'before attempt') fs.writeFileSync(file, bytes);
+  else h.server.mergeQueue.hooks.beforeCheckoutMerge = async () => { fs.writeFileSync(file, bytes); };
+  const paused = waitForMerge(h, 'ignored', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  h.server.mergeQueue.start();
+  await paused;
+  expect(fs.readFileSync(file)).toEqual(bytes);
+  expect(await git('rev-parse', 'main')).toBe(old);
+  expect(h.getTask('ignored')).toMatchObject({ status: 'merge-queue', retries: 0 });
+  expect(h.server.mergeQueue.warnings.get(h.workspaceId)).toContain('main');
+  h.server.mergeQueue.hooks.beforeCheckoutMerge = undefined;
+  fs.unlinkSync(file);
+  const done = waitForMerge(h, 'ignored', i => i.status === 'merged');
+  h.server.mergeQueue.tick();
+  await done;
+  expect(fs.readFileSync(file, 'utf8')).toBe('task fixture\n');
+});
+
+it('rechecks a branch switch immediately before checkout update and lands only on the default branch', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const old = await git('rev-parse', 'main');
+  h.server.mergeQueue.hooks.beforeCheckoutMerge = async () => { await git('switch', '-c', 'user-switched'); };
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  h.server.mergeQueue.start();
+  await done;
+  expect(await git('branch', '--show-current')).toBe('user-switched');
+  expect(await git('rev-parse', 'user-switched')).toBe(old);
+  expect(await git('rev-parse', 'main')).not.toBe(old);
+  expect(fs.existsSync(path.join(h.repoDir, 'checkout.txt'))).toBe(false);
+  expect(await git('status', '--porcelain')).toBe('');
+});
+
+it('holds HEAD stable across the final checkout transaction and fast-forward', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  let attempted = false;
+  let refused = false;
+  h.server.mergeQueue.hooks.beforeCheckoutWrite = async () => {
+    attempted = true;
+    const result = await execa('git', ['switch', '-c', 'racing-switch'], { cwd: h.repoDir, reject: false });
+    refused = result.exitCode !== 0 && /index\.lock|HEAD\.lock/.test(result.stderr);
+  };
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  h.server.mergeQueue.start();
+  await done;
+  expect(attempted).toBe(true);
+  expect(refused).toBe(true);
+  expect(await git('branch', '--show-current')).toBe('main');
+  expect(await git('rev-parse', 'racing-switch')).toBe(await git('rev-parse', 'main^'));
+  expect(await git('status', '--porcelain')).toBe('');
+});
+
+it.each(['index', 'HEAD'])('pauses for a user-owned %s lock without changing it and resumes after it is released', async kind => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const lock = path.join(h.repoDir, '.git', `${kind}.lock`);
+  const bytes = Buffer.from('user git operation lock\n');
+  fs.writeFileSync(lock, bytes);
+  const old = await git('rev-parse', 'main');
+  const paused = waitForMerge(h, 'checkout', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  h.server.mergeQueue.start();
+  await paused;
+  expect(fs.readFileSync(lock)).toEqual(bytes);
+  expect(await git('rev-parse', 'main')).toBe(old);
+  expect(h.getTask('checkout')).toMatchObject({ status: 'merge-queue', retries: 0 });
+  fs.unlinkSync(lock);
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  h.server.mergeQueue.tick();
+  await done;
+  expect(await git('status', '--porcelain')).toBe('');
+  expect(fs.existsSync(lock)).toBe(false);
 });

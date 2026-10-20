@@ -44,7 +44,7 @@ crew/
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
 │  │  ├─ worktree/        # Create, set up, transfer inactive conflict worktrees on human retry, clean up/gc; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
-│  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, safe checkout/ref updates, cleanup, feedback, conflict sub-tasks and interruption/restart recovery (D38–D46)
+│  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, protected checkout/ref transactions with recovery journals, cleanup, feedback, conflict sub-tasks and interruption/restart recovery (D38–D46)
 │  │  ├─ memory/          # Layers, injection budget, promotion (D15)
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
@@ -71,7 +71,7 @@ Crew writes its state to the user's machine, not to the repo it manages (D12):
 ├─ rate-limits.json       # Persisted rate-limit pauses and backoff step (D7)
 ├─ claude-settings.json   # Stop hook settings passed to Claude Code via --settings (D26, D36)
 ├─ hook-stops/            # Per-run block counters for crew hook stop (D36)
-├─ integration/           # <workspace-id>/ detached git worktree for serial merge processing (D38)
+├─ integration/           # <workspace-id>/ detached merge worktree; sibling .index/.checkout.json hold the private checkout index and recovery journal
 ├─ snapshots/             # Main-checkout `git status` at run start, one file per run, until the diff gate decides (D31)
 ├─ bin/                   # `crew` shim put on the agent's PATH
 ├─ logs/                  # Run logs (agent event streams, <run-id>.jsonl)

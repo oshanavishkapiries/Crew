@@ -152,3 +152,42 @@ it('human retry of an escalated conflict parent transfers its terminal child wor
   expect(h.getTask(child.id)?.worktreePath).toBeNull();
   expect(await git('worktree', 'list', '--porcelain')).toContain(parent.worktreePath!);
 });
+
+it('human retry follows nested conflict descendants to preserve the actual branch owner worktree', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await pair();
+  const originalItem = await conflict();
+  const childId = originalItem.conflictTaskId!;
+  // Resolve once while queue is down, then move main so that resolution conflicts again.
+  await h.server.mergeQueue.stop();
+  await h.runTaskWithAgent(childId, [
+    { type: 'git', args: ['rebase', 'main'], allowFailure: true },
+    { type: 'edit_file', filePath: 'README.md', content: 'a and b\n' },
+    { type: 'git', args: ['add', 'README.md'] },
+    { type: 'git', args: ['rebase', '--continue'] },
+    { type: 'done', result: 'First resolution' },
+  ]);
+  await h.waitForTaskStatus(childId, 'merge-queue');
+  fs.writeFileSync(path.join(h.repoDir, 'README.md'), 'user new main\n');
+  await git('add', 'README.md');
+  await git('commit', '-m', 'User advances main again');
+  const conflicted = waitForMerge(h, childId, i => i.status === 'conflict');
+  h.server.mergeQueue.start();
+  const childItem = await conflicted;
+  const grandchildId = childItem.conflictTaskId!;
+  await h.scheduler.transitionTask(grandchildId, 'doing');
+  const grandchild = h.getTask(grandchildId)!;
+  const bytes = Buffer.from('uncommitted nested resolution\r\n');
+  fs.writeFileSync(path.join(grandchild.worktreePath!, 'README.md'), bytes);
+  await h.scheduler.transitionTask(grandchildId, 'escalated');
+  await h.waitForTaskStatus('b', 'escalated');
+  const retry = await h.runCrew(['retry', 'b', '--note', 'Continue the deepest saved resolution']);
+  expect(retry.exitCode, retry.stderr).toBe(0);
+  const parent = h.getTask('b')!;
+  expect(parent).toMatchObject({ status: 'doing', retries: 0, branch: grandchild.branch });
+  expect(fs.readFileSync(path.join(parent.worktreePath!, 'README.md'))).toEqual(bytes);
+  expect(fs.existsSync(grandchild.worktreePath!)).toBe(false);
+  expect(h.getTask(grandchildId)?.worktreePath).toBeNull();
+  const listing = await git('worktree', 'list', '--porcelain');
+  expect(listing.split(`branch refs/heads/${parent.branch}`).length - 1).toBe(1);
+});

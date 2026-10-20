@@ -134,3 +134,91 @@ it('finishes a conflict parent after restart when its child landed while the wor
   expect(await git(h.repoDir, 'worktree', 'list', '--porcelain')).not.toContain(child.worktreePath!);
   expect(await git(h.repoDir, 'rev-parse', 'main')).toBe(sha);
 });
+
+it.each([false, true])('recovers the owned checkout index transaction after a crash (ref moved: %s)', async moved => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const task = h.getTask('checkout')!;
+  const sha = await git(h.repoDir, 'rev-parse', task.branch!);
+  const index = path.join(h.repoDir, '.git', 'index');
+  const lock = index + '.lock';
+  fs.mkdirSync(path.dirname(integration()), { recursive: true });
+  const temporary = path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.index`);
+  const journal = path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.checkout.json`);
+  fs.copyFileSync(index, temporary);
+  fs.writeFileSync(lock, 'Crew merge checkout lock\n');
+  const inode = fs.statSync(lock).ino;
+  if (moved) {
+    await execa('git', ['-c', 'core.hooksPath=/dev/null', 'merge', '--ff-only', '--no-overwrite-ignore', sha], {
+      cwd: h.repoDir, env: { GIT_INDEX_FILE: temporary },
+    });
+    expect(await git(h.repoDir, 'status', '--porcelain')).not.toBe('');
+  }
+  fs.writeFileSync(journal, JSON.stringify({ index, lock, temporary, inode, commitSha: sha, writeCheckout: true }));
+  h.db.db.insert(schema.mergeQueueItems).values({ id: 'checkout-crash', taskId: task.id, position: 1, status: 'merging', commitSha: sha, createdAt: new Date() }).run();
+  const done = waitForMerge(h, task.id, i => i.status === 'merged');
+  restart();
+  await done;
+  expect(h.getTask(task.id)?.status).toBe('merged');
+  expect(await git(h.repoDir, 'status', '--porcelain')).toBe('');
+  expect(fs.readFileSync(path.join(h.repoDir, 'checkout.txt'), 'utf8')).toBe('checkout\n');
+  if (moved) expect(await git(h.repoDir, 'rev-parse', 'main')).toBe(sha);
+  expect(fs.existsSync(lock)).toBe(false);
+  expect(fs.existsSync(temporary)).toBe(false);
+  expect(fs.existsSync(journal)).toBe(false);
+});
+
+it('finishes a crash after publishing the checkout index but before committing its prepared ref', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const task = h.getTask('checkout')!;
+  const sha = await git(h.repoDir, 'rev-parse', task.branch!);
+  const old = await git(h.repoDir, 'rev-parse', 'main');
+  const index = path.join(h.repoDir, '.git', 'index');
+  const lock = index + '.lock';
+  fs.mkdirSync(path.dirname(integration()), { recursive: true });
+  const temporary = path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.index`);
+  fs.copyFileSync(index, temporary);
+  await execa('git', ['read-tree', '-m', '-u', old, sha], { cwd: h.repoDir, env: { GIT_INDEX_FILE: temporary } });
+  fs.copyFileSync(temporary, lock);
+  const inode = fs.statSync(lock).ino;
+  fs.renameSync(lock, index);
+  fs.writeFileSync(path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.checkout.json`), JSON.stringify({ index, lock, temporary, inode, old, commitSha: sha, writeCheckout: true, indexPublished: true }));
+  h.db.db.insert(schema.mergeQueueItems).values({ id: 'index-published', taskId: task.id, position: 1, status: 'merging', commitSha: sha, createdAt: new Date() }).run();
+  const done = waitForMerge(h, task.id, i => i.status === 'merged');
+  restart();
+  await done;
+  expect(await git(h.repoDir, 'rev-parse', 'main')).toBe(sha);
+  expect(await git(h.repoDir, 'status', '--porcelain')).toBe('');
+  expect(h.getVerificationResults(task.id).some(r => r.step.startsWith('merge:'))).toBe(false);
+  expect(h.getTask(task.id)?.retries).toBe(0);
+});
+
+it('never removes a replacement user lock while recovering a checkout journal', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await readyToMerge(h);
+  const index = path.join(h.repoDir, '.git', 'index');
+  const lock = index + '.lock';
+  fs.mkdirSync(path.dirname(integration()), { recursive: true });
+  const temporary = path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.index`);
+  fs.copyFileSync(index, temporary);
+  const descriptor = fs.openSync(lock, 'wx');
+  const inode = fs.fstatSync(descriptor).ino;
+  const sha = await git(h.repoDir, 'rev-parse', h.getTask('checkout')!.branch!);
+  fs.writeFileSync(path.join(h.crewHomeDir, 'integration', `${h.workspaceId}.checkout.json`), JSON.stringify({ index, lock, temporary, inode, commitSha: sha }));
+  fs.unlinkSync(lock);
+  const bytes = Buffer.from('replacement owned by user\n');
+  fs.writeFileSync(lock, bytes);
+  expect(fs.statSync(lock).ino).not.toBe(inode);
+  const paused = waitForMerge(h, 'checkout', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  restart();
+  try {
+    await paused;
+    expect(fs.readFileSync(lock)).toEqual(bytes);
+    expect(h.getTask('checkout')?.status).toBe('merge-queue');
+  } finally { fs.closeSync(descriptor); }
+  fs.unlinkSync(lock);
+  const done = waitForMerge(h, 'checkout', i => i.status === 'merged');
+  replacement!.tick();
+  await done;
+});

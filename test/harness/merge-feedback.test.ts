@@ -110,7 +110,7 @@ it.each(['missing branch', 'empty squash'])('escalates a terminal %s atomically 
   expect(h.getTask('checkout')?.status).toBe('escalated');
   expect(h.getTask('checkout')?.retries).toBe(0);
   expect(atomic).toBe(true);
-  expect(item.output).toMatch(failure === 'missing branch' ? /switch|reference/i : /nothing to commit/i);
+  expect(item.output).toMatch(failure === 'missing branch' ? /switch|reference|revision/i : /nothing to commit/i);
   expect(h.getMessages('checkout').filter(m => m.type === 'feedback')).toHaveLength(1);
   if (failure === 'missing branch') expect((await execa('git', ['rev-parse', 'main'], { cwd: h.repoDir })).stdout).toBe(before);
 });
