@@ -6,18 +6,13 @@ import picomatch from 'picomatch';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import type { EventBus } from '../events/index.js';
-import { killProcessGroup, type Runner } from '../runner/index.js';
+import type { Runner } from '../runner/index.js';
 import type { Scheduler } from '../scheduler/index.js';
 import type { WorktreeManager } from '../worktree/index.js';
 import { getCrewHome } from '../config.js';
+import { CommandRunner, type VerifyCommand } from './command-runner.js';
 
-export interface VerifyCommand {
-  name: string;
-  command: string;
-  cwd?: string;
-  timeoutMs?: number;
-  paths?: string[];
-}
+export type { VerifyCommand } from './command-runner.js';
 
 export interface VerifierOptions {
   db: CrewDatabase;
@@ -42,7 +37,7 @@ export class Verifier {
   private stopped = false;
   private queue: string[] = [];
   private activeTasks = new Set<string>();
-  private activeCommands = new Map<string, { pid?: number; abort: () => Promise<void> }>();
+  private commands = new CommandRunner();
   private unsubscribeBoard?: () => void;
 
   constructor(options: VerifierOptions) {
@@ -109,21 +104,14 @@ export class Verifier {
   }
 
   async cancelTask(taskId: string): Promise<void> {
-    const cmd = this.activeCommands.get(taskId);
-    if (cmd) {
-      await cmd.abort();
-      this.activeCommands.delete(taskId);
-    }
+    await this.commands.cancel(taskId);
     this.queue = this.queue.filter((id) => id !== taskId);
     this.activeTasks.delete(taskId);
   }
 
   async stopAll(): Promise<void> {
     this.stopped = true;
-    for (const [taskId, cmd] of this.activeCommands.entries()) {
-      await cmd.abort();
-    }
-    this.activeCommands.clear();
+    await this.commands.stopAll();
     this.queue = [];
     this.activeTasks.clear();
   }
@@ -328,7 +316,7 @@ export class Verifier {
     for (const cmd of applicableCommands) {
       if (this.isStopped()) return;
 
-      const cmdResult = await this.executeVerifyCommand(cmd, worktreePath, task.id);
+      const cmdResult = await this.commands.execute(cmd, worktreePath, task.id);
       commandResults.push(cmdResult);
 
       if (this.isStopped()) return;
@@ -630,106 +618,6 @@ export class Verifier {
       }, 1000);
       this.runner.on('rate_limit_cleared', onCleared);
     });
-  }
-
-  private async executeVerifyCommand(
-    cmd: VerifyCommand,
-    worktreePath: string,
-    taskId?: string,
-  ): Promise<{ name: string; passed: boolean; output: string }> {
-    const commandCwd = cmd.cwd ? path.resolve(worktreePath, cmd.cwd) : worktreePath;
-    if (!fs.existsSync(commandCwd)) {
-      return {
-        name: cmd.name,
-        passed: false,
-        output: `Working directory does not exist: ${cmd.cwd}`,
-      };
-    }
-
-    const timeoutMs = cmd.timeoutMs ?? 10 * 60 * 1000; // 10 minutes default
-    const env: Record<string, string> = {
-      PATH: process.env.PATH || '',
-      HOME: process.env.HOME || '',
-      LANG: process.env.LANG || 'en_US.UTF-8',
-      LC_ALL: process.env.LC_ALL || process.env.LANG || 'en_US.UTF-8',
-      CI: '1',
-    };
-
-    let timer: NodeJS.Timeout | undefined;
-
-    try {
-      const subprocess = execa(cmd.command, {
-        shell: true,
-        cwd: commandCwd,
-        env,
-        extendEnv: false,
-        detached: true,
-        reject: false,
-      });
-
-      if (taskId) {
-        this.activeCommands.set(taskId, {
-          pid: subprocess.pid,
-          abort: async () => {
-            if (subprocess.pid) {
-              await killProcessGroup(subprocess.pid, 'SIGTERM', 1000);
-            }
-          },
-        });
-      }
-
-      const timeoutPromise = new Promise<{ timedOut: boolean }>((resolve) => {
-        timer = setTimeout(async () => {
-          if (subprocess.pid) {
-            await killProcessGroup(subprocess.pid, 'SIGTERM', 1000);
-          }
-          resolve({ timedOut: true });
-        }, timeoutMs);
-      });
-
-      const outcome = await Promise.race([
-        subprocess.then((res) => ({ res, timedOut: false })),
-        timeoutPromise,
-      ]);
-
-      if (timer) {
-        clearTimeout(timer);
-      }
-
-      if (outcome.timedOut) {
-        try {
-          await subprocess;
-        } catch {}
-        return {
-          name: cmd.name,
-          passed: false,
-          output: `Command '${cmd.name}' timed out after ${timeoutMs / 1000}s`,
-        };
-      }
-
-      const res = (outcome as any).res;
-      const stdout = (res?.stdout || '').trim();
-      const stderr = (res?.stderr || '').trim();
-      const fullOutput = [stdout, stderr].filter(Boolean).join('\n');
-      const passed = res?.exitCode === 0;
-
-      return {
-        name: cmd.name,
-        passed,
-        output: fullOutput || (passed ? 'Command passed' : `Command failed with exit code ${res?.exitCode}`),
-      };
-    } catch (err: any) {
-      if (timer) clearTimeout(timer);
-      return {
-        name: cmd.name,
-        passed: false,
-        output: `Command execution error: ${err.message}`,
-      };
-    } finally {
-      if (taskId) {
-        this.activeCommands.delete(taskId);
-      }
-    }
   }
 
   private async runDiffGate(

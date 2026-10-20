@@ -21,7 +21,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | HTTP server | `hono`, `@hono/node-server` | 4.13.13 / 2.1.5 | REST + SSE API |
 | Database | SQLite via `better-sqlite3` | 13.0.3 | One DB at `~/.crew/crew.db` (D12) |
 | Migrations / ORM | `drizzle-orm`, `drizzle-kit` | 0.45.4 / 0.31.11 | Schema and migrations |
-| Processes | `execa` | 10.2.0 | Spawning agents (structured JSON events, D5) and running verify commands |
+| Processes | `execa` | 10.2.0 | Spawning agents (structured JSON events, D5), verify commands and worktree setup (D45; shared command runner, 10 minute default timeout) |
 | Path matching | `picomatch` | 4.0.7 | Path filter glob matching for command gates (D37) |
 | Git | git CLI wrapper | — | Worktrees, rebase, merge. No libgit bindings |
 | Build / Dev runner | `tsup`, `tsx` | 9.0.0 / 4.23.15 | Bundling to `dist/cli.js` and running dev scripts |

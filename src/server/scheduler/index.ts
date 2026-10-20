@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { eq, inArray } from 'drizzle-orm';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import type { CrewEvent, EventBus } from '../events/index.js';
 
-import type { WorktreeManager } from '../worktree/index.js';
+import { WorktreeSetupError, type WorktreeManager } from '../worktree/index.js';
 
 export type TaskStatus =
   | 'todo'
@@ -150,15 +151,34 @@ export class Scheduler {
     }
 
     let createdWorktree: { worktreePath: string; branch: string } | null = null;
+    let setupFailure: WorktreeSetupError | undefined;
     if (requestedStatus === 'doing' && this.worktreeManager) {
-      createdWorktree = await this.worktreeManager.ensureWorktree(task);
+      try {
+        createdWorktree = await this.worktreeManager.ensureWorktree(task);
+      } catch (error) {
+        if (!(error instanceof WorktreeSetupError)) throw error;
+        setupFailure = error;
+        createdWorktree = error.worktree;
+      }
     }
 
     const pending: PendingEvent[] = [];
     try {
-      const updatedTask = this.inTransaction(() =>
-        this.applyTransition(taskId, requestedStatus, context, pending, createdWorktree),
-      );
+      const updatedTask = this.inTransaction(() => {
+        const updated = this.applyTransition(taskId, requestedStatus, context, pending, createdWorktree);
+        if (!setupFailure) return updated;
+        const failure = setupFailure;
+        // Setup is an environment failure, not an agent retry (D45).
+        return this.applyTransition(taskId, 'escalated', {
+          reason: failure.message,
+          alongside: () => {
+            this.db.db.insert(schema.messages).values({
+              id: randomUUID(), taskId, fromAgentId: null, type: 'feedback',
+              body: failure.message, createdAt: new Date(),
+            }).run();
+          },
+        }, pending);
+      });
       this.publish(pending);
 
       if (requestedStatus === 'cancelled' && this.worktreeManager) {

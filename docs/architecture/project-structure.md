@@ -1,6 +1,6 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 is in progress: bullet 0 (worktree setup) is implemented; the merge queue and manual smoke run remain. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D46).
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -30,7 +30,7 @@ crew/
 │     ├─ prd.md           # Phase 1 PRD: the whole first release
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
-│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (approved)
+│     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (bullet 0 implemented)
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
@@ -42,8 +42,8 @@ crew/
 │  │  ├─ db/              # Drizzle schema and migrations (SQLite in ~/.crew, D12)
 │  │  ├─ scheduler/       # Task state machine and dependencies (index.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
-│  │  ├─ worktree/        # Create, clean up and gc task worktrees
-│  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10)
+│  │  ├─ worktree/        # Create, set up, clean up and gc task worktrees; interrupt setup on stop/cancel
+│  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
 │  │  ├─ merge/           # Merge queue, integration worktree, rebase, conflict tasks (D11)
 │  │  ├─ memory/          # Layers, injection budget, promotion (D15)
 │  │  └─ events/          # In-process event bus behind SSE
@@ -54,7 +54,7 @@ crew/
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary
-   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook
+   ├─ harness/            # In-process pipeline harness (index.ts) plus the pipeline tests: runner, worktree, timeouts, dispatcher, ask/resume, stop-all, rate limits, cancel, human CLI, verification gates, stop hook, worktree setup
    ├─ adapters/           # Adapter contract tests
    └─ fixtures/           # Recorded stream-json / --json output, incl. rate-limit and hook-blocked samples (D5, D7, D26)
 ```
@@ -84,3 +84,4 @@ Each repo that *uses* Crew gets a `crew.config.ts` at its root, created by `crew
 
 - `src/server/events/` and `test/` were added beyond the design doc's tree, to make the event bus and the test seams from the PRD explicit.
 - `node-pty` and PTY code are not part of spawn mode (D5).
+- Successful worktree setup is recorded as `crew-setup-complete` inside that worktree's private Git directory. It survives server restarts, is removed with the worktree, and adds no tracked files. Interrupted setup is run again on resume.

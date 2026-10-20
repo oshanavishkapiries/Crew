@@ -524,6 +524,7 @@ export function createApp(ctx: AppContext): Hono {
     // Stop the agent first so it isn't left running in a worktree that is about to be removed
     let updatedTask;
     try {
+      await ctx.worktreeManager?.cancelSetup(task.id);
       await ctx.verifier?.cancelTask(task.id);
       await ctx.runner?.killTaskRun(task.id, 'cancelled');
       updatedTask = await ctx.scheduler.transitionTask(task.id, 'cancelled', {
@@ -553,6 +554,8 @@ export function createApp(ctx: AppContext): Hono {
     // 1. Pause dispatcher
     ctx.dispatcher?.setStopped(true);
 
+    await ctx.worktreeManager?.stopAllSetup();
+
     // 2. Stop verifier pipelines and active verify commands
     await ctx.verifier?.stopAll();
 
@@ -576,6 +579,7 @@ export function createApp(ctx: AppContext): Hono {
   // PRD line 377: POST /api/control/resume (human secret)
   app.post('/api/control/resume', async (c) => {
     requireHuman(c);
+    ctx.worktreeManager?.resumeSetup();
 
     // 1. Unmark agents that were stopped back to idle
     ctx.db.db

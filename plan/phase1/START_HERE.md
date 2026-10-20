@@ -12,7 +12,7 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 2. [plan/phase1/prd.md](prd.md): what to build. Read the **Decision Log** at the top first. It overrides the design doc wherever they disagree.
 3. [docs/architecture/project-structure.md](../../docs/architecture/project-structure.md): where code goes.
 4. [docs/architecture/project-techstack.md](../../docs/architecture/project-techstack.md): what to build it with.
-   - Working on milestone 4? Read [milestone-4.md](milestone-4.md): the proposed design and tracer bullets. Decisions D38–D46 (approved).
+   - Working on milestone 4? Read [milestone-4.md](milestone-4.md): the approved design and tracer bullets. Decisions D38–D46 (approved).
    - Working on milestone 3? Read [milestone-3.md](milestone-3.md): the design, tracer bullets and decisions D29–D37 (approved).
    - Working on milestone 2? Read [milestone-2.md](milestone-2.md) next: the design, the tracer bullets and decisions D21–D26.
 5. [plan/phase1/handoff.md](handoff.md): what the last session did and left open.
@@ -25,7 +25,8 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
   - Milestone 1: SQLite schema with Drizzle, Hono server on 127.0.0.1 with Host-header DNS rebinding check, D13 auth tokens/secrets, task scheduler state machine, and in-process pipeline harness.
   - Milestone 2: Drizzle migrations baseline with `runs.exitReason`, git worktree manager on dispatch, child process runner with process group kill on timeouts, parallel dispatcher (max 3), `crew ask` / `crew answer` with session resume and git diff fallback, `crew stop-all` / `crew resume`, rate limit pause and backoff schedule, Claude Code adapter with contract tests and recorded fixtures, and human CLI (`status`, `tasks`, `diff`, `logs`, `cancel`, `worktree gc`, `answer`).
   - Milestone 3: Verification pipeline with diff gate (auto-commit, empty diff rejection, out-of-worktree check), command gates with picomatch path matching and process group timeouts, reviewer gate with tool preference and read-only permission profile, `crew review approve|changes` with reviewer auth isolation, feedback prompt builder for retries, restart/stop-all/cancel interruption handling, Claude Code Stop hook with `<crewHome>/claude-settings.json` and hidden `crew hook stop`, `crew results` human CLI and `crew status` enhancements.
-- `npm test` typechecks, builds `dist/` and runs all 103 tests across 26 test suites. The milestone 3 smoke run with a real author and a real Reviewer passed (`npm run smoke:m3`). Next: Milestone 4 (Merge Queue and Rebase).
+- **Milestone 4 is in progress:** bullet 0 adds `workspaces.config.worktreeSetup` before agent dispatch, setup failure escalation, and stop-all/cancel handling. The shared command runner is ready for the integration worktree; the merge worker starts at bullet 1. The milestone 3 smoke run with a real author and a real Reviewer passed (`npm run smoke:m3`). Next: Milestone 4 bullet 1 (happy path through the merge queue).
+- Current full-suite check: `npm test` typechecks, rebuilds `dist/` and passes 108 tests across 27 files. The previous `dist/` was moved to a temporary backup first because the shell guard rejects `rm -rf dist`.
 
 ## 4. Things that are easy to get wrong
 

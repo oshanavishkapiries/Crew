@@ -1,9 +1,18 @@
-# Handoff: Crew Phase 1 — Milestones 1 to 3 done, Milestone 4 planned
+# Handoff: Crew Phase 1 — Milestone 4 in progress (bullet 0 complete)
 
 ## Where things stand
 
 - Repo: `/home/oshan/Projects/Crew`
-- Branch: `feat/milestone-3-verification` holds Milestone 3.
+- Milestones 1–3 are on `main`. Current branch: `feat/milestone-4-merge`, based on `f9acd405503ffabe34a355f16f8dd6b61eaf1291`.
+- **Milestone 4 bullet 0 (Worktree setup) is implemented:**
+  - `workspaces.config.worktreeSetup` runs before a new task worktree is dispatched. Setup and verification share `src/server/verify/command-runner.ts`, including the minimal environment, 10 minute default timeout and process group kill.
+  - A private Git-directory success marker prevents rerunning completed setup after restart; a recreated worktree gets fresh setup. No install cache or symlinks are introduced.
+  - Setup failure stores feedback and escalates through the Scheduler in one transaction, before any agent run; initial setup failure costs no retry. Its worktree and branch remain available for diagnosis.
+  - Stop-all and cancel interrupt setup; cancel waits for setup before removing the worktree and keeps the branch. Resume reruns interrupted setup. Server close also interrupts setup.
+  - Five tests in `test/harness/worktree-setup.test.ts` cover setup-dependent verification, restart/recreation, detached-worktree setup, failure escalation, stop-all/resume and cancel. The kill tests assert that setup and its child processes are gone.
+  - The detached-worktree setup helper is tested directly; automatic integration worktree creation and its call to the helper belong to bullet 1.
+- **Current verification:** fresh-build `npm test` passed typecheck and all 108 tests across 27 files (141.37s). The requested `rm -rf dist && npm test` was rejected by the shell guard; the previous `dist/` was moved to a temporary backup before `npm test`. `npm run generate:docs` succeeded without changing the commands reference.
+- **Next: milestone 4 bullet 1.** Bullets 1–8 are not implemented; the milestone 4 smoke script is not yet written or run.
 - **Milestone 3 (Verification) is fully implemented and tested:**
   1. **Bullet 0 (Diff gate & failure loop):** Migration `0002_silent_owl.sql` adds `runs.kind` (`work` | `review`, default `work`) and `tasks.reviewer_agent_id`. Diff gate auto-commits leftover agent changes, fails empty diffs ("no changes against <base>"), runs out-of-worktree check (symlink escape + main checkout porcelain status snapshot), commits failure feedback message in transaction, and injects failure feedback into the next run's prompt.
   2. **Bullet 1 (Escalation):** Verified end to end that tasks repeatedly failing verification escalate to `escalated` once `retries` exceed `maxRetries`, recording VerificationResults and events.
@@ -15,7 +24,7 @@
   8. **Bullet 7 (Human CLI):** `crew results <task>` prints pass/fail for each verification step followed by the output of failed steps; `GET /api/tasks/:id` extended with `verificationResults`; `crew status` and `GET /api/status` extended with `verifyingTasks` and `reviewTasks` lists; `docs/commands.md` regenerated via `npm run generate:docs`.
   9. **Bullet 8 (Smoke script):** `scripts/smoke-milestone-3.ts` (`npm run smoke:m3`) written and verified with `npm run typecheck`. Ready for manual run by user.
 - **Review fixes after the first look:** a Reviewer waits while its tool is rate-limit paused (no tight re-run loop, D7); the main-checkout snapshot is stored on disk under `<crewHome>/snapshots/` so a restart doesn't skip the D31 check; Reviewer selection skips stopped agents and prefers usable, idle agents on a different tool. The first smoke run (`npm run smoke:m3`) passed but skipped the Reviewer (case-sensitive role-name match, now fixed). The repeated run on 2026-10-20 passed with a real Reviewer: diff, `smoke-file-check` and `review` ("Approved") all passed and the task reached `merge-queue` in 28s.
-- `rm -rf dist && npm test` passes 100%: 103 tests passing across 26 test suites.
+- Milestone 3 baseline: `rm -rf dist && npm test` passed 103 tests across 26 test suites.
 
 ## Open questions answered in Milestone 3
 
@@ -46,4 +55,4 @@ The script will:
 ## Next steps
 
 - Milestones 1 to 3 are done and on `main`; both milestone 3 smoke runs are recorded above.
-- Milestone 4 (Merge): `plan/phase1/milestone-4.md` is approved and logged as D38–D46. Start at tracer bullet 0 (worktree setup). D28 (the optional budget cap on the Claude Code adapter) is still open.
+- Milestone 4 (Merge): `plan/phase1/milestone-4.md` is approved and logged as D38–D46. Continue at tracer bullet 1 (happy path). D28 (the optional budget cap on the Claude Code adapter) is still open.

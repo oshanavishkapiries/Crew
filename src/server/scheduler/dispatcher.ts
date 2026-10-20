@@ -251,9 +251,13 @@ export class Dispatcher {
 
       try {
         // Move task ready -> doing (creates worktree and branch)
-        await this.scheduler.transitionTask(task.id, 'doing', {
+        const startedTask = await this.scheduler.transitionTask(task.id, 'doing', {
           reason: `Dispatched to agent ${agent.name}`,
         });
+        if (startedTask.status !== 'doing' || this.isStopped() || this.runner.isCancelling(task.id)) {
+          this.db.db.update(schema.agents).set({ status: 'idle' }).where(eq(schema.agents.id, agent.id)).run();
+          continue;
+        }
         await this.runner.startRun({ taskId: task.id, agentId: agent.id });
       } catch {
         this.db.db

@@ -153,10 +153,12 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                 } catch {}
                 dispatcher.stop();
                 verifier.stop();
-                server.close((err) => {
-                  if (err) rej(err);
-                  else res();
-                });
+                worktreeManager.stopAllSetup().then(() => {
+                  server.close((err) => {
+                    if (err) rej(err);
+                    else res();
+                  });
+                }, rej);
               }),
           });
         },

@@ -5,6 +5,7 @@ import { execa } from 'execa';
 import { getCrewWorktreesDir } from '../config.js';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
+import { CommandRunner } from '../verify/command-runner.js';
 
 export function slugify(title: string): string {
   const slug = title
@@ -25,7 +26,52 @@ export interface WorktreeInfo {
   branch: string;
 }
 
+export class WorktreeSetupError extends Error {
+  constructor(public readonly worktree: WorktreeInfo, public readonly output: string) {
+    super(`Worktree setup failed:\n${output}`);
+  }
+}
+
+export class WorktreeSetupInterruptedError extends Error {
+  constructor() { super('Worktree setup interrupted'); }
+}
+
 export class WorktreeManager {
+  private commands = new CommandRunner();
+  private stopped = false;
+  private operations = new Map<string, { cancelled: boolean; done: Promise<WorktreeInfo> }>();
+
+  async cancelSetup(taskId: string): Promise<void> {
+    const operation = this.operations.get(taskId);
+    if (!operation) return;
+    operation.cancelled = true;
+    await this.commands.cancel(taskId);
+    await operation.done.catch(() => {});
+  }
+
+  async stopAllSetup(): Promise<void> {
+    this.stopped = true;
+    await Promise.all([...this.operations.keys()].map((id) => this.cancelSetup(id)));
+  }
+
+  resumeSetup(): void { this.stopped = false; }
+
+  /** Run setup once per worktree; the merge worker can use this for detached worktrees. */
+  async setupWorktree(worktreePath: string, config: unknown, key: string): Promise<void> {
+    if (typeof config === 'string') config = JSON.parse(config);
+    const command = (config as { worktreeSetup?: string } | null)?.worktreeSetup;
+    if (!command) return;
+    // A worktree's git directory survives server restarts and is outside tracked files.
+    const result = await git(['rev-parse', '--absolute-git-dir'], worktreePath);
+    const marker = path.join(result.stdout.trim(), 'crew-setup-complete');
+    if (fs.existsSync(marker)) return;
+    if (this.stopped || this.operations.get(key)?.cancelled) throw new WorktreeSetupInterruptedError();
+    const setup = await this.commands.execute({ name: 'worktreeSetup', command }, worktreePath, key);
+    if (this.stopped || this.operations.get(key)?.cancelled) throw new WorktreeSetupInterruptedError();
+    if (!setup.passed) throw new Error(setup.output);
+    fs.writeFileSync(marker, 'complete\n');
+  }
+
   constructor(private db: CrewDatabase) {}
 
   getWorkspaceForBoard(boardId: string) {
@@ -51,7 +97,7 @@ export class WorktreeManager {
   /**
    * Creates a worktree and branch for the task, or reuses existing one.
    */
-  async ensureWorktree(task: {
+  private async createWorktree(task: {
     id: string;
     boardId: string;
     title: string;
@@ -62,8 +108,9 @@ export class WorktreeManager {
     const worktreePath = task.worktreePath || this.getWorktreePath(workspace.id, task.id);
     const branch = task.branch || this.getBranchName(task.id, task.title);
 
-    // If worktree directory already exists, reuse it
+    // A prior setup may have been interrupted; only the success marker permits reuse.
     if (fs.existsSync(worktreePath)) {
+      await this.finishSetup(worktreePath, branch, workspace.config, task.id);
       return { worktreePath, branch };
     }
 
@@ -90,7 +137,28 @@ export class WorktreeManager {
       );
     }
 
+    await this.finishSetup(worktreePath, branch, workspace.config, task.id);
     return { worktreePath, branch };
+  }
+
+  private async finishSetup(worktreePath: string, branch: string, config: unknown, key: string): Promise<void> {
+    if (this.stopped || this.operations.get(key)?.cancelled) throw new WorktreeSetupInterruptedError();
+    try {
+      await this.setupWorktree(worktreePath, config, key);
+    } catch (error) {
+      if (error instanceof WorktreeSetupInterruptedError) throw error;
+      throw new WorktreeSetupError({ worktreePath, branch }, String(error instanceof Error ? error.message : error).slice(-65536));
+    }
+  }
+
+  ensureWorktree(task: { id: string; boardId: string; title: string; branch?: string | null; worktreePath?: string | null }): Promise<WorktreeInfo> {
+    const existing = this.operations.get(task.id);
+    if (existing) return existing.done;
+    if (this.stopped) return Promise.reject(new WorktreeSetupInterruptedError());
+    const operation = { cancelled: false, done: Promise.resolve({ worktreePath: '', branch: '' }) };
+    this.operations.set(task.id, operation);
+    operation.done = this.createWorktree(task).finally(() => this.operations.delete(task.id));
+    return operation.done;
   }
 
   /**
