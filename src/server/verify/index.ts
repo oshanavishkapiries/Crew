@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { execa } from 'execa';
 import picomatch from 'picomatch';
 import type { CrewDatabase } from '../db/index.js';
@@ -428,7 +428,8 @@ export class Verifier {
           .where(
             and(
               eq(schema.agents.workspaceId, workspace.id),
-              eq(schema.roles.name, 'reviewer'),
+              // Role names are free text (a user may call it "Reviewer"), so match ignoring case
+              sql`lower(${schema.roles.name}) = 'reviewer'`,
             ),
           )
           .all()

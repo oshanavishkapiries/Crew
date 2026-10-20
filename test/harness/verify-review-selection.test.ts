@@ -43,4 +43,25 @@ describe('Reviewer selection skips agents that cannot review now (D8, D34)', () 
       .find((r) => r.kind === 'review');
     expect(reviewRun?.agentId).toBe('rev-fake-idle');
   });
+
+  it('finds a reviewer whose role is named with different capitalisation, such as "Reviewer"', async () => {
+    harness.db.db.update(schema.roles).set({ name: 'Reviewer' }).where(eq(schema.roles.id, 'role-reviewer')).run();
+
+    const taskId = 'task-review-role-case';
+    await harness.createTask({ id: taskId, title: 'Role name case', description: 'Reviewer role is capitalised' });
+
+    const authorScript = [
+      { type: 'edit_file' as const, filePath: 'case.txt', content: 'content' },
+      { type: 'done' as const, result: 'done' },
+    ];
+    harness.fakeAdapter.setRunScripts([authorScript, [{ type: 'review' as const, action: 'approve' as const }]]);
+
+    await harness.runTaskWithAgent(taskId, authorScript);
+    await harness.waitForTaskStatus(taskId, 'merge-queue');
+
+    const reviewStep = harness.getVerificationResults(taskId).find((r) => r.step === 'review')!;
+    expect(reviewStep.output).not.toContain('skipped');
+    const reviewRun = harness.db.db.select().from(schema.runs).where(eq(schema.runs.taskId, taskId)).all().find((r) => r.kind === 'review');
+    expect(reviewRun).toBeDefined();
+  });
 });

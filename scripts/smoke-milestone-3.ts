@@ -259,6 +259,12 @@ async function runSmoke(): Promise<void> {
       console.log(`  - [${vr.passed ? 'PASS' : 'FAIL'}] Step: ${vr.step} (Output: ${vr.output?.trim().slice(0, 80) || ''})`);
     }
 
+    // The point of this smoke run is the real Reviewer. A skipped review means it never ran.
+    const reviewStep = vrs.find((vr) => vr.step === 'review');
+    if (!reviewStep || reviewStep.output?.startsWith('skipped')) {
+      throw new Error(`The review gate was skipped, so the real Reviewer was not exercised: ${reviewStep?.output}`);
+    }
+
     // Check worktree file
     if (finalTask.worktreePath && fs.existsSync(finalTask.worktreePath)) {
       const filePath = path.join(finalTask.worktreePath, 'smoke.txt');
