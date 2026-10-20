@@ -14,6 +14,9 @@ import { CommandRunner, type VerifyCommand } from '../verify/command-runner.js';
 
 type Item = typeof schema.mergeQueueItems.$inferSelect;
 type Workspace = typeof schema.workspaces.$inferSelect;
+export interface MergeHooks {
+  beforeRefUpdate?: (task: Task, commitSha: string) => Promise<void>;
+}
 export interface MergeQueueOptions {
   db: CrewDatabase;
   eventBus: EventBus;
@@ -32,6 +35,7 @@ export class MergeQueue {
   private active = new Map<string, Promise<void>>();
   private commands = new CommandRunner();
   readonly warnings = new Map<string, string>();
+  readonly hooks: MergeHooks = {};
 
   constructor(private options: MergeQueueOptions) {
     this.home = options.crewHome ?? getCrewHome();
@@ -118,9 +122,9 @@ export class MergeQueue {
 
   private async checkoutBlocked(workspace: Workspace): Promise<boolean> {
     const branch = await this.git(workspace.repoPath, 'rev-parse', '--abbrev-ref', 'HEAD');
-    if (branch === workspace.defaultBranch) {
-      // Fast-forward support is added by the checkout tracer bullet. Never update a checked-out ref.
-      this.warnings.set(workspace.id, `Merge queue paused: checkout is on ${workspace.defaultBranch}`);
+    const dirty = branch === workspace.defaultBranch && !!await this.git(workspace.repoPath, 'status', '--porcelain=v1', '--untracked-files=all');
+    if (dirty) {
+      this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has uncommitted changes`);
       return true;
     }
     this.warnings.delete(workspace.id);
@@ -128,7 +132,19 @@ export class MergeQueue {
   }
 
   private async merge(item: Item, task: Task, workspace: Workspace): Promise<boolean> {
-    if (await this.checkoutBlocked(workspace)) return false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await this.mergeAttempt(item, task, workspace);
+      if (result !== 'retry') return result;
+    }
+    this.change(item, task, { status: 'failed', output: 'Default branch moved during merge three times; retry required' });
+    return true;
+  }
+
+  private async mergeAttempt(item: Item, task: Task, workspace: Workspace): Promise<boolean | 'retry'> {
+    if (await this.checkoutBlocked(workspace)) {
+      this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
+      return false;
+    }
     if (!task.branch) throw new Error('Merge task has no branch');
     const repo = workspace.repoPath;
     const ref = `refs/heads/${workspace.defaultBranch}`;
@@ -185,8 +201,29 @@ export class MergeQueue {
     // Persist before moving the ref: recovery can recognize a merge that landed before a crash.
     this.change(item, task, { commitSha });
     if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
-    if (await this.checkoutBlocked(workspace)) { this.change(item, task, { status: 'queued' }); return false; }
-    await this.git(repo, 'update-ref', ref, commitSha, old);
+    await this.hooks.beforeRefUpdate?.(task, commitSha);
+    if (await this.checkoutBlocked(workspace)) {
+      this.change(item, task, { status: 'queued', output: this.warnings.get(workspace.id)! });
+      return false;
+    }
+    if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
+    try {
+      const branch = await this.git(repo, 'rev-parse', '--abbrev-ref', 'HEAD');
+      if (branch === workspace.defaultBranch) {
+        // ff-only refuses a diverged tip, preserving the user's competing commit.
+        if (await this.git(repo, 'rev-parse', ref) !== old) {
+          this.change(item, task, { status: 'queued', commitSha: null, output: 'Default branch moved; rebasing again' });
+          return 'retry';
+        }
+        await this.git(repo, 'merge', '--ff-only', commitSha);
+      } else {
+        await this.git(repo, 'update-ref', ref, commitSha, old);
+      }
+    } catch (error) {
+      if (await this.git(repo, 'rev-parse', ref) === old) throw error;
+      this.change(item, task, { status: 'queued', commitSha: null, output: 'Default branch moved; rebasing again' });
+      return 'retry';
+    }
     await this.options.scheduler.transitionTask(task.id, 'merged', {
       reason: `Merged ${commitSha}`,
       alongside: () => this.options.db.db.update(schema.mergeQueueItems)

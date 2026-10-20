@@ -1,3 +1,11 @@
+# Milestone 4 bullet 2 handoff
+
+Bullets 0–2 are implemented on `feat/milestone-4-merge`; bullet 1 is `cd76972`. Checkout safety now covers clean default-branch fast-forward, another branch/detached HEAD ref-only update, and dirty tracked/untracked default checkout pause. The initial check and a second check before ref movement preserve dirty bytes; queue output and the worker warning map name the branch. The 5-second safety tick resumes a clean checkout. A lost CAS repeats rebase/re-verification, bounded at three attempts; exhaustion leaves the item failed without overwriting competing commits. CLI/API warning presentation remains bullet 7.
+
+Verification: `rm -r dist && npm test` passed 117 tests across 29 files (typecheck and fresh build included); the environment rejects `rm -rf`. Seven checkout harness cases cover those paths and late dirtiness. No product deviations, dependencies or PRD edits. Next: bullet 3 (strategies), then bullets 4–7 and the smoke script only. Milestone 4 is not complete; manual smoke remains pending.
+
+---
+
 # Milestone 4 bullet 1 handoff
 
 Branch: `feat/milestone-4-merge`, based on `f9acd405503ffabe34a355f16f8dd6b61eaf1291`. Bullet 0 is committed as `0b37f79`; bullet 1 adds the merge happy path. Nothing pushed.
