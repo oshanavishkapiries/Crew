@@ -210,6 +210,8 @@ export class Scheduler {
     parentTaskId?: string;
     depth?: number;
     blockedByIds?: string[];
+    branch?: string;
+    alongside?: () => void;
   }): Promise<Task> {
     const pending: PendingEvent[] = [];
 
@@ -230,6 +232,7 @@ export class Scheduler {
           createdBy: params.createdBy || 'human',
           parentTaskId: params.parentTaskId,
           depth: params.depth || 0,
+          branch: params.branch,
           retries: 0,
           createdAt: now,
           updatedAt: now,
@@ -239,6 +242,8 @@ export class Scheduler {
       for (const blockerId of params.blockedByIds ?? []) {
         this.insertDependency(params.id, blockerId);
       }
+
+      params.alongside?.();
 
       if (this.dependenciesMerged(params.id)) {
         return this.applyTransition(params.id, 'ready', { reason: 'No unmerged blockers' }, pending);

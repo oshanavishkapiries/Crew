@@ -56,6 +56,7 @@ export class MergeQueue {
             this.change(item, task, { status: 'queued', position, commitSha: null, output: null });
           }
         }
+        this.reconcileParent(data.taskId, data.to).catch(error => console.error('Conflict parent transition failed:', error));
         this.tick();
       }
     });
@@ -181,7 +182,12 @@ export class MergeQueue {
     try {
       await this.git(integration, '-c', `user.name=${userName || 'Crew'}`, '-c', `user.email=${userEmail || 'crew@localhost'}`, 'rebase', old);
     } catch (error) {
+      const files = (await this.git(integration, 'diff', '--name-only', '--diff-filter=U', '-z')).split('\0').filter(Boolean);
       await this.git(integration, 'rebase', '--abort');
+      if (files.length) {
+        await this.conflict(item, task, workspace, files);
+        return true;
+      }
       throw error;
     }
     if (!this.live(task)) { this.change(item, task, { status: 'queued' }); return false; }
@@ -256,6 +262,57 @@ export class MergeQueue {
     await this.git(repo, 'branch', '-D', task.branch);
     this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
     return true;
+  }
+
+  private async conflict(item: Item, task: Task, workspace: Workspace, files: string[]): Promise<void> {
+    if (!this.live(task)) return;
+    const maxDepth = typeof workspace.config?.maxDepth === 'number' ? workspace.config.maxDepth : 3;
+    if (task.depth + 1 > maxDepth) {
+      await this.feedback(item, task, `Conflict exceeds maximum task depth ${maxDepth}: ${files.join(', ')}`, false);
+      return;
+    }
+    // Git forbids checking a branch out in two worktrees: remove first, then publish the child.
+    await this.options.worktreeManager.removeWorktree(task);
+    if (!this.live(task)) return;
+    const childId = randomUUID();
+    const description = [
+      `Rebase + resolve for task ${task.id}: ${task.title}`,
+      task.description,
+      `Conflicting files: ${files.join(', ')}`,
+      `Continue branch ${task.branch}. Rebase onto ${workspace.defaultBranch}, resolve every conflict, run the project's checks, then call crew done.`,
+      'Preserve the original task acceptance criteria and the changes already on the default branch.',
+    ].join('\n\n');
+    await this.options.scheduler.createTask({
+      id: childId, boardId: task.boardId, title: `Rebase + resolve: ${task.title}`,
+      description, acceptanceCriteria: task.acceptanceCriteria, roleId: task.roleId ?? undefined,
+      assigneeAgentId: task.assigneeAgentId ?? undefined, parentTaskId: task.id, depth: task.depth + 1,
+      branch: task.branch!, createdBy: 'merge-queue',
+      alongside: () => this.options.db.db.update(schema.mergeQueueItems)
+        .set({ status: 'conflict', conflictTaskId: childId, output: `Conflicts: ${files.join(', ')}` })
+        .where(eq(schema.mergeQueueItems.id, item.id)).run(),
+    });
+    this.emit(task, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
+  }
+
+  private async reconcileParent(childId: string, status: string): Promise<void> {
+    if (!['merged', 'escalated', 'cancelled'].includes(status)) return;
+    const item = this.options.db.db.select().from(schema.mergeQueueItems)
+      .where(and(eq(schema.mergeQueueItems.conflictTaskId, childId), eq(schema.mergeQueueItems.status, 'conflict'))).get();
+    if (!item) return;
+    const parent = this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, item.taskId)).get();
+    if (!parent || parent.status !== 'merge-queue') return;
+    if (status !== 'merged') {
+      await this.feedback(item, parent, `Conflict sub-task ${childId} was ${status}`, false);
+      return;
+    }
+    const childItem = this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, childId)).get();
+    await this.options.scheduler.transitionTask(parent.id, 'merged', {
+      reason: `merged via ${childId}`,
+      alongside: () => this.options.db.db.update(schema.mergeQueueItems)
+        .set({ status: 'merged', commitSha: childItem?.commitSha, output: `merged via ${childId}` })
+        .where(eq(schema.mergeQueueItems.id, item.id)).run(),
+    });
+    this.emit(parent, this.options.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.id, item.id)).get()!);
   }
 
   private async feedback(item: Item, task: Task, body: string, retry: boolean): Promise<void> {

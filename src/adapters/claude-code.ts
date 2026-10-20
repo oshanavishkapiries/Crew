@@ -87,6 +87,11 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     const permissionMode = isFull ? 'acceptEdits' : 'dontAsk';
 
     const allowed = [...BASE_ALLOWED_TOOLS];
+    if (permissions.conflictResolution) {
+      for (const command of ['rebase', 'add', 'status', 'diff', 'log']) {
+        allowed.push(`Bash(git ${command} *)`, `Bash(git ${command})`);
+      }
+    }
     if (isFull) {
       allowed.push('Bash(*)');
     }

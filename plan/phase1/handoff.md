@@ -1,3 +1,13 @@
+# Milestone 4 bullet 5 handoff
+
+Bullets 0–5 are implemented on `feat/milestone-4-merge`; bullet 4 is `67f96f5`. Rebase conflicts abort cleanly, remove the original worktree while retaining the branch, and create a same-role/depth+1 sub-task on that branch. The branch and queue link commit before the child is published. A merged child closes its parent and promotes dependents; depth limits or child escalation/cancellation escalate the parent. Only linked conflict work runs receive extra git permissions and `GIT_EDITOR=true`; push remains denied. Empty resolutions remain subject to the normal diff gate.
+
+Verification: `rm -r dist && npm test` passed 129 tests across 32 files with typecheck and fresh build. Five conflict harness cases and a Claude Code profile contract were added. The real conflict resolution test configures a failing editor and still completes, proving the environment override. §9 of milestone-4 records the implementation recommendations for the three §8 questions (identity, setup reuse and empty resolution) for user review; no PRD Decision Log edits or dependencies. Commands reference regenerated unchanged.
+
+Next: bullet 6 interruptions (restart, stop-all and cancellation, including parent cancellation), then bullet 7 human CLI. Write bullet 8 last and do not run it. Milestone 4 remains incomplete until the user runs the manual smoke.
+
+---
+
 # Milestone 4 bullet 4 handoff
 
 Bullets 0–4 are implemented on `feat/milestone-4-merge`; bullet 3 is `4094c69`. Merge re-verification stores every matching result and returns all command failures as feedback to a fresh author run. Scheduler transitions `merge-queue → doing` and `merge-queue → escalated` now exist; the feedback, failed item and retry/status update commit atomically. Exhausted retries escalate; integration setup failure escalates without a retry. A failed item is reopened only on a new pipeline approval, never on the safety tick. Full-suite failures exposed second-resolution run timestamp ties: latest-run lookups now use SQLite rowid as a secondary order. A deterministic tied-timestamp regression proves each failed attempt retains its own results; the existing escalation test now triggers a dispatch pass instead of sleeping.

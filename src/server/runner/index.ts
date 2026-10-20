@@ -395,6 +395,10 @@ export class Runner extends EventEmitter {
             denyCommands: [],
           };
 
+    // Role configuration cannot grant this extra profile to ordinary tasks.
+    permissionProfile.conflictResolution = options.kind !== 'review' && !!this.db.db.select().from(schema.mergeQueueItems)
+      .where(eq(schema.mergeQueueItems.conflictTaskId, task.id)).get();
+
     // Check if Stop hook is enabled (D36: off by default, enabled per workspace or role)
     const isStopHookEnabled = Boolean(
       (workspace?.config as any)?.stopHook ||
@@ -434,6 +438,7 @@ export class Runner extends EventEmitter {
     }
 
     Object.assign(childEnv, spawnConfig.env);
+    if (permissionProfile.conflictResolution) childEnv.GIT_EDITOR = 'true';
 
     // Ensure logs directory exists
     const logsDir = getCrewLogsDir();

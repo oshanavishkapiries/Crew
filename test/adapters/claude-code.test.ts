@@ -24,6 +24,21 @@ describe('Claude Code Adapter Contract Tests (PRD Milestone 2 Bullet 8)', () => 
   });
 
   describe('buildSpawn', () => {
+    it('adds conflict-only rebase permissions while retaining the push denial', () => {
+      const build = (conflictResolution: boolean) => adapter.buildSpawn({
+        prompt: 'Resolve', workDir: '/worktree', permissions: { mode: 'standard', conflictResolution },
+      });
+      const conflict = build(true);
+      const allowed = conflict.args[conflict.args.indexOf('--allowedTools') + 1];
+      for (const command of ['rebase', 'add', 'status', 'diff', 'log']) {
+        expect(allowed).toContain(`Bash(git ${command} *)`);
+        expect(allowed).toContain(`Bash(git ${command})`);
+      }
+      expect(conflict.args[conflict.args.indexOf('--disallowedTools') + 1]).toContain('Bash(git push *)');
+      const normal = build(false);
+      expect(normal.args[normal.args.indexOf('--allowedTools') + 1]).not.toContain('Bash(git rebase');
+    });
+
     it('builds spawn command with standard permission profile (dontAsk, allowed tools, deny list)', () => {
       const sessionId = '11111111-2222-3333-4444-555555555555';
       const spawnConfig = adapter.buildSpawn({
