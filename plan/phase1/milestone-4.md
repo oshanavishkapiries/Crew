@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 4 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** in progress: bullets 0–6 (through interruptions) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullets 7–8 remain. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
+**Status:** in progress: bullets 0–7 (through human CLI) implemented and tested; terminal merge failures now escalate with feedback and no retry charge; bullet 8 script remains. The manual smoke run is still pending. The proposals (P1–P9 below) were approved on 2026-10-20 and are logged in the PRD as D38–D46. D28 (the optional budget cap on the Claude Code adapter) is still open and unrelated.
 
 ## 1. Goal
 
@@ -183,3 +183,5 @@ The following implement the recommendations in §8; they are recorded here for u
 
 - **Interrupted integration cleanup:** abort a rebase, reset hard and clean untracked files before another attempt. If cleaning removes setup output, invalidate its private success marker and rerun setup to restore that environment; ignored install files survive `clean -fd`. This extends once-per-worktree reuse only when Crew cleanup destroyed output. Recovery also escalates legacy failed items left in `merge-queue`, with their stored reason and no retry charge.
 - **Cancellation after ref movement:** if the candidate is already an ancestor of the default branch when cancellation finishes stopping the worker, record the landed merge and clean up instead of reporting cancellation of work that is already on main.
+
+- **Retrying an escalated conflict parent:** transfer an inactive linked child worktree to the parent with `git worktree move`, preserving uncommitted files and setup state, and clear the child worktree path alongside the human retry transition. Otherwise Git refuses the shared branch checkout and `crew retry` cannot recover that parent. A test preserves the child edits byte for byte. This is a proposal for the handoff case not described in §4.9.

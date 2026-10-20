@@ -40,6 +40,10 @@ it('hands the same branch to a new worktree, resolves with an agent and merges b
   expect(child).toMatchObject({ parentTaskId: 'b', depth: 1, roleId: original.roleId, branch: original.branch });
   expect(child.description).toContain('README.md');
   expect(child.description).toContain('main');
+  const queue = await h.runCrew(['queue']);
+  expect(queue.exitCode).toBe(0);
+  expect(queue.stdout).toContain(`[conflict]`);
+  expect(queue.stdout).toContain(`Conflict sub-task: ${child.id}`);
   expect(fs.existsSync(original.worktreePath!)).toBe(false);
   expect(await git('worktree', 'list', '--porcelain')).not.toContain(original.worktreePath!);
   expect(await git('branch', '--list', original.branch!)).not.toBe('');
@@ -126,4 +130,25 @@ it.each(['parent', 'child'] as const)('cancels a conflict %s while its child is 
   expect(h.getTask('dependent')?.status).toBe('todo');
   await h.dispatcher.dispatchOnce();
   expect(h.runner.getLiveRuns()).toHaveLength(0);
+});
+
+it('human retry of an escalated conflict parent transfers its terminal child worktree without losing uncommitted work', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  await pair();
+  const item = await conflict();
+  await h.scheduler.transitionTask(item.conflictTaskId!, 'doing');
+  const child = h.getTask(item.conflictTaskId!)!;
+  const bytes = Buffer.from('agent resolution in progress\r\n');
+  fs.writeFileSync(path.join(child.worktreePath!, 'README.md'), bytes);
+  await h.scheduler.transitionTask(child.id, 'escalated');
+  await h.waitForTaskStatus('b', 'escalated');
+  const retry = await h.runCrew(['retry', 'b', '--note', 'Continue the saved conflict work']);
+  expect(retry.exitCode, retry.stderr).toBe(0);
+  const parent = h.getTask('b')!;
+  expect(parent.status).toBe('doing');
+  expect(parent.branch).toBe(child.branch);
+  expect(fs.readFileSync(path.join(parent.worktreePath!, 'README.md'))).toEqual(bytes);
+  expect(fs.existsSync(child.worktreePath!)).toBe(false);
+  expect(h.getTask(child.id)?.worktreePath).toBeNull();
+  expect(await git('worktree', 'list', '--porcelain')).toContain(parent.worktreePath!);
 });

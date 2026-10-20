@@ -143,10 +143,38 @@ export class Scheduler {
     requestedStatus: TaskStatus,
     context: TransitionContext = {},
   ): Promise<Task> {
+    return this.transition(taskId, requestedStatus, context, false);
+  }
+
+  /** D44: only the human-authenticated retry endpoint calls this entry point. */
+  async retryTaskByHuman(taskId: string, note?: string): Promise<Task> {
+    const task = this.getTaskOrThrow(taskId);
+    if (task.status !== 'escalated') throw new InvalidTransitionError(taskId, task.status, 'doing', 'Only escalated tasks can be retried');
+    const conflict = this.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, taskId)).get();
+    const child = conflict?.conflictTaskId ? this.getTaskOrThrow(conflict.conflictTaskId) : undefined;
+    const transferred = child && child.branch === task.branch && ['escalated', 'cancelled'].includes(child.status) &&
+      await this.worktreeManager?.transferWorktree(child, task);
+    try {
+      return await this.transition(taskId, 'doing', {
+        reason: 'Retried by human',
+        alongside: () => {
+          if (transferred && child) this.db.db.update(schema.tasks).set({ worktreePath: null }).where(eq(schema.tasks.id, child.id)).run();
+          if (note !== undefined) this.db.db.insert(schema.messages).values({
+            id: randomUUID(), taskId, fromAgentId: null, type: 'feedback', body: note, createdAt: new Date(),
+          }).run();
+        },
+      }, true);
+    } catch (error) {
+      if (transferred && child) await this.worktreeManager?.transferWorktree(task, child);
+      throw error;
+    }
+  }
+
+  private async transition(taskId: string, requestedStatus: TaskStatus, context: TransitionContext, humanRetry: boolean): Promise<Task> {
     const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
 
-    if (!this.isValidTransition(currentStatus, requestedStatus)) {
+    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus)) {
       throw new InvalidTransitionError(taskId, currentStatus, requestedStatus);
     }
 
@@ -165,7 +193,7 @@ export class Scheduler {
     const pending: PendingEvent[] = [];
     try {
       const updatedTask = this.inTransaction(() => {
-        const updated = this.applyTransition(taskId, requestedStatus, context, pending, createdWorktree);
+        const updated = this.applyTransition(taskId, requestedStatus, context, pending, createdWorktree, humanRetry);
         if (!setupFailure) return updated;
         const failure = setupFailure;
         // Setup is an environment failure, not an agent retry (D45).
@@ -342,11 +370,12 @@ export class Scheduler {
     context: TransitionContext,
     pending: PendingEvent[],
     createdWorktree?: { worktreePath: string; branch: string } | null,
+    humanRetry = false,
   ): Task {
     const task = this.getTaskOrThrow(taskId);
     const currentStatus = task.status as TaskStatus;
 
-    if (!this.isValidTransition(currentStatus, requestedStatus)) {
+    if (humanRetry ? currentStatus !== 'escalated' || requestedStatus !== 'doing' : !this.isValidTransition(currentStatus, requestedStatus)) {
       throw new InvalidTransitionError(taskId, currentStatus, requestedStatus);
     }
 
@@ -363,7 +392,7 @@ export class Scheduler {
     context.alongside?.();
 
     let finalStatus = requestedStatus;
-    let newRetries = task.retries;
+    let newRetries = humanRetry ? 0 : task.retries;
 
     // Retry handling when moving back to 'doing' from verification or review failure
     if (

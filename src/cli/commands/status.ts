@@ -2,6 +2,7 @@ import { getHumanAction } from '../client.js';
 
 interface StatusResponse {
   stopped: boolean;
+  mergeQueue?: { pending: number; warnings: Array<{ workspaceId: string; message: string }> };
   agents: Array<{ id: string; name: string; cliType: string; status: string }>;
   liveRuns: Array<{ id: string; taskId: string; agentId: string; sessionId?: string; pid?: number }>;
   rateLimits: Array<{ cliType: string; isPaused: boolean; resetTime?: number; backoffStep: number }>;
@@ -16,6 +17,11 @@ export async function handleStatus(): Promise<void> {
 
   console.log(`=== Crew Status ===`);
   console.log(`Dispatch: ${status.stopped ? 'PAUSED (stopped)' : 'ACTIVE'}`);
+
+  if (status.mergeQueue) {
+    console.log(`Merge queue: ${status.mergeQueue.pending} pending`);
+    for (const warning of status.mergeQueue.warnings) console.log(`  ${warning.workspaceId}: ${warning.message}`);
+  }
 
   console.log(`\nAgents (${status.agents.length}):`);
   for (const agent of status.agents) {

@@ -62,7 +62,7 @@ crew status
 
 ### `crew stop-all`
 
-Immediately halts all running agents and pauses task dispatching.
+Stops agents, verification and merge work, and pauses scheduling until resume.
 
 **Examples:**
 
@@ -76,7 +76,7 @@ crew stop-all
 
 ### `crew resume`
 
-Resumes paused task dispatching and restores stopped agents to idle.
+Resumes dispatch, verification and the merge queue, and restores stopped agents to idle.
 
 **Examples:**
 
@@ -162,6 +162,48 @@ View verification results for task-1:
 
 ```bash
 crew results task-1
+```
+
+---
+
+### `crew queue`
+
+Lists queued and active merge items in order, conflict sub-tasks, failures and checkout pause warnings.
+
+**Examples:**
+
+Inspect pending merges:
+
+```bash
+crew queue
+```
+
+---
+
+### `crew retry`
+
+Restarts an escalated task with retries reset to zero and an optional feedback note. Requires the human secret.
+
+**Arguments:**
+
+- `task` (required): Task ID
+
+**Options:**
+
+- `--note <text>`: Feedback for the next author run
+
+**Examples:**
+
+Retry an escalated task:
+
+```bash
+crew retry task-1
+```
+
+Retry with feedback:
+
+```bash
+crew retry task-1 --note "The environment is repaired"
 ```
 
 ---

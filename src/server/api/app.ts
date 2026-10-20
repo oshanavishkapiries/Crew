@@ -517,6 +517,37 @@ export function createApp(ctx: AppContext): Hono {
     return c.json({ success: true, status: updatedTask.status });
   });
 
+  // D44: the generic task transition API has no human retry capability.
+  app.post('/api/tasks/:id/retry', async (c) => {
+    requireHuman(c);
+    const body = await c.req.json().catch(() => ({}));
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return c.json({ error: 'Expected an object with an optional note' }, 400);
+    if (body.note !== undefined && typeof body.note !== 'string') return c.json({ error: 'note must be a string' }, 400);
+    const task = await ctx.scheduler.retryTaskByHuman(c.req.param('id'), body.note as string | undefined);
+    return c.json({ success: true, status: task.status, retries: task.retries });
+  });
+
+  const queueSnapshot = () => {
+    const tasks = new Map(ctx.db.db.select().from(schema.tasks).all().map(t => [t.id, t]));
+    const boards = new Map(ctx.db.db.select().from(schema.boards).all().map(b => [b.id, b]));
+    const items = ctx.db.db.select().from(schema.mergeQueueItems).orderBy(asc(schema.mergeQueueItems.position)).all()
+      .filter(item => item.status !== 'merged' && tasks.get(item.taskId)?.status !== 'cancelled')
+      .map(item => {
+        const task = tasks.get(item.taskId)!;
+        return { ...item, title: task.title, taskStatus: task.status, workspaceId: boards.get(task.boardId)!.workspaceId };
+      });
+    return {
+      items,
+      warnings: [...(ctx.mergeQueue?.warnings ?? [])].map(([workspaceId, message]) => ({ workspaceId, message })),
+      stopped: ctx.dispatcher?.isStopped() ?? false,
+    };
+  };
+
+  app.get('/api/merge-queue', (c) => {
+    requireHuman(c);
+    return c.json(queueSnapshot());
+  });
+
   // PRD line 375: POST /api/tasks/:id/cancel (human secret)
   app.post('/api/tasks/:id/cancel', async (c) => {
     requireHuman(c);
@@ -647,8 +678,10 @@ export function createApp(ctx: AppContext): Hono {
       .filter((t) => t.status === 'review')
       .map((t) => ({ id: t.id, title: t.title, reviewerAgentId: t.reviewerAgentId }));
 
+    const queue = queueSnapshot();
     return c.json({
       stopped: isStopped,
+      mergeQueue: { pending: queue.items.filter(i => i.taskStatus === 'merge-queue').length, warnings: queue.warnings },
       agents: agents.map((a) => ({
         id: a.id,
         name: a.name,

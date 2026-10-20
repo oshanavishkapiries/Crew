@@ -1,3 +1,13 @@
+# Milestone 4 bullet 7 handoff
+
+Status: bullets 0–7 and the terminal-failure fix are implemented. Bullet 8 (write the smoke script, do not run it) is next; manual smoke remains pending. Human-secret endpoints `GET /api/merge-queue` and `POST /api/tasks/:id/retry` back `crew queue` and `crew retry <task> [--note]`. Queue output includes order, active phase, conflict child, failures and dirty-checkout warnings; status includes pending count/warnings. Retry resets retries to zero and commits the optional note as feedback with the Scheduler transition. Ordinary transitions still reject escalated→doing; only the separate human retry entry point permits it, with a second state check in the transaction to reject concurrent retries.
+
+Harness tests cover missing/agent credentials, queue/status warnings, active phase, conflict links, invalid requests, optional note, no automatic escape from escalation, concurrent retry, and complete human recovery/merge after each terminal failure type (missing branch, empty squash, three ref races). Retrying an escalated conflict parent moves its inactive child's worktree without losing uncommitted bytes (proposal in §9). `docs/commands.md` is regenerated from declarations. No dependencies or PRD changes.
+
+Verification: `rm -r dist && npm test` passed typecheck and 162 tests across 35 files (223.88s). `npm run generate:docs` regenerated the command reference. The shell guard rejects `rm -rf dist`; the safe recursive removal was used.
+
+---
+
 # Milestone 4 bullet 6 handoff
 
 Status: bullets 0–6 and the terminal-failure fix are implemented; human CLI (7) and smoke script (8) remain. Restart recovers queued/rebasing/verifying/merging items, completes persisted commits already reachable from the default branch, and resumes conflict-parent reconciliation/merged cleanup. Legacy failed items escalate with feedback instead of staying stuck. Integration reuse aborts rebase, resets hard and cleans untracked output; removing setup output invalidates its marker so setup can restore it.

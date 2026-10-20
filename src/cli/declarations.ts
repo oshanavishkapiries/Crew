@@ -5,6 +5,8 @@ import { handleDiff } from './commands/diff.js';
 import { handleDone } from './commands/done.js';
 import { handleHook } from './commands/hook.js';
 import { handleLogs } from './commands/logs.js';
+import { handleQueue } from './commands/queue.js';
+import { handleRetry } from './commands/retry.js';
 import { handleResults } from './commands/results.js';
 import { handleResume } from './commands/resume.js';
 import { handleReview } from './commands/review.js';
@@ -56,7 +58,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'stop-all',
     category: 'human',
     summary: 'Emergency stop switch for all running agents',
-    description: 'Immediately halts all running agents and pauses task dispatching.',
+    description: 'Stops agents, verification and merge work, and pauses scheduling until resume.',
     examples: [
       { description: 'Stop all running processes and dispatching', command: 'crew stop-all' },
     ],
@@ -66,7 +68,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'resume',
     category: 'human',
     summary: 'Resume task dispatch after stop-all',
-    description: 'Resumes paused task dispatching and restores stopped agents to idle.',
+    description: 'Resumes dispatch, verification and the merge queue, and restores stopped agents to idle.',
     examples: [
       { description: 'Resume dispatching after stop-all', command: 'crew resume' },
     ],
@@ -124,6 +126,27 @@ export const COMMANDS: CommandDefinition[] = [
       { description: 'View verification results for task-1', command: 'crew results task-1' },
     ],
     action: handleResults,
+  },
+  {
+    name: 'queue',
+    category: 'human',
+    summary: 'Show the merge queue and pause warnings',
+    description: 'Lists queued and active merge items in order, conflict sub-tasks, failures and checkout pause warnings.',
+    examples: [{ description: 'Inspect pending merges', command: 'crew queue' }],
+    action: handleQueue,
+  },
+  {
+    name: 'retry',
+    category: 'human',
+    summary: 'Restart an escalated task',
+    description: 'Restarts an escalated task with retries reset to zero and an optional feedback note. Requires the human secret.',
+    args: [{ name: 'task', description: 'Task ID', required: true }],
+    options: [{ flags: '--note <text>', description: 'Feedback for the next author run' }],
+    examples: [
+      { description: 'Retry an escalated task', command: 'crew retry task-1' },
+      { description: 'Retry with feedback', command: 'crew retry task-1 --note "The environment is repaired"' },
+    ],
+    action: handleRetry,
   },
   {
     name: 'cancel',

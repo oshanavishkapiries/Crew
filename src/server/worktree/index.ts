@@ -161,6 +161,20 @@ export class WorktreeManager {
     return operation.done;
   }
 
+  /** Transfer an inactive conflict child's worktree without discarding its local edits. */
+  async transferWorktree(
+    source: { id: string; boardId: string; worktreePath?: string | null },
+    target: { id: string; boardId: string; worktreePath?: string | null },
+  ): Promise<boolean> {
+    if (!source.worktreePath || !fs.existsSync(source.worktreePath)) return false;
+    const workspace = this.getWorkspaceForBoard(target.boardId);
+    if (this.getWorkspaceForBoard(source.boardId).id !== workspace.id) throw new Error('Cannot transfer worktrees between workspaces');
+    const destination = target.worktreePath || this.getWorktreePath(workspace.id, target.id);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    await git(['worktree', 'move', '--', source.worktreePath, destination], workspace.repoPath);
+    return true;
+  }
+
   /**
    * Removes worktree for a task, keeping the branch so work is preserved.
    */
