@@ -283,3 +283,23 @@ prompt; reopen to mint another. These choices add no persistent terminal lease o
 credential retrieval mechanism. Existing review-result/transition window above
 remains. Restart/resume grace is an implementation rule under D90, not a new
 Decision Log entry; reviewer should assess that explicit rule and these limits.
+
+Session 3 verification follow-up: the first clean suite passed all 58 files / 400
+tests but exited 1 for a late scanner callback from a replaced test server after
+its DB closed (527.98s). Harness cleanup had retained the original server even
+when a restart test replaced harness.server. It now closes the current server
+and the original when different. The restart regression advances the injected
+clock after cleanup and checks the replacement HTTP listener is closed; it failed
+before the fix and passed afterward. Stale + phase suite: 33 tests passed (46.04s).
+
+UI build (typecheck/lint/static export) and 22 client checks passed. Real Chromium
+against actual crew init/start in an isolated repo/home passed: stopped all default
+spawn agents before start; configured Antigravity Pull worker; authenticated with
+the actual one-time browser URL; Team disconnected, private dialog/copy/no-storage,
+join connected, next running, then stale with staleAfterMs=3000 and production
+5s scanner; ready task kept draft/worktree/retries; Board showed stale previous-run
+badge. Screenshots were taken only after clearing the private dialog. The initial
+Board wait used exact text on a span containing both name and status; diagnosis
+confirmed the badge rendered and the selector was corrected. A final UI pass spaces
+Team actions and includes Pull running in the Board staffing bar. No browser page
+errors or model processes. Final clean root repeat is pending.

@@ -182,3 +182,8 @@ spawn/Pull mode, with Antigravity restricted to explicit Pull. `ui/lib/agent-log
 provides status precedence/relative heartbeat labels; client checks cover both.
 The Board uses staleAgentId history to show the retired assignment after ownership
 is cleared. Pull connect/config behavior is covered by the real CLI harness.
+
+The pipeline harness cleanup closes a replacement harness.server after restart
+tests as well as the original, before releasing the DB. The stale restart case
+asserts the replacement listener and timer are gone. Board staffing activity
+counts both spawn busy and Pull running statuses.

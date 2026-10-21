@@ -431,7 +431,8 @@ export async function createPipelineHarness(
     server.verifier.stop();
     await runner.killAll();
     // Tests may have closed the server already (e.g. the server.json lifecycle test)
-    await server.close().catch(() => {});
+    await harness.server.close().catch(() => {});
+    if (harness.server !== server) await server.close().catch(() => {});
     db.close();
 
     if (originalCrewHome !== undefined) {
@@ -448,7 +449,7 @@ export async function createPipelineHarness(
     }
   };
 
-  return {
+  const harness: PipelineHarness = {
     server,
     db,
     eventBus,
@@ -480,4 +481,5 @@ export async function createPipelineHarness(
     setVerifyCommands,
     cleanup,
   };
+  return harness;
 }

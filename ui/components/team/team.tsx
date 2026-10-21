@@ -148,10 +148,12 @@ export function Team() {
                     <p className="text-sm text-muted-foreground">
                       Last heartbeat: <span title={agent.lastHeartbeatAt ?? undefined}>{relativeHeartbeat(agent.lastHeartbeatAt)}</span>
                     </p>
+                    <div className="flex flex-wrap gap-2">
                     {agent.mode === "pull" && <Button variant="outline" disabled={connection?.busy ?? false} onClick={() => void connect(agent)}>Connect prompt</Button>}
                     <Button variant="outline" onClick={() => setEditing(agent)}>
                       Edit persona
                     </Button>
+                    </div>
                   </CardContent>
                 </Card>
               );

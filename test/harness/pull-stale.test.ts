@@ -22,8 +22,10 @@ class ManualClock implements Clock {
 }
 let h: PipelineHarness;
 let clock: ManualClock;
-afterEach(async () => { await h?.cleanup(); });
+let cleaned = false;
+afterEach(async () => { if (!cleaned) await h?.cleanup(); });
 async function setup() {
+  cleaned = false;
   clock = new ManualClock();
   h = await createPipelineHarness({ clock, staleScanIntervalMs: 1000 });
   h.db.db.update(schema.workspaces).set({ config: { staleAfterMs: 10000 } }).run();
@@ -89,6 +91,11 @@ it('restart grants a full configured grace window without rewriting persisted he
   clock.advance(9000); expect(agent().status).toBe('idle');
   clock.advance(2000); expect(agent().status).toBe('stale');
   expect(h.getTask('restart')).toMatchObject({ status: 'ready', retries: 0 });
+  const replacementUrl = h.server.url;
+  await h.cleanup(); cleaned = true;
+  clock.advance(60000); // no scanner may access the database after harness shutdown
+  const closed = await fetch(replacementUrl + '/health').then(() => false, () => true);
+  expect(closed).toBe(true);
 });
 
 it('stop-all suspends stale evaluation and resume grants grace before recovery', async () => {
