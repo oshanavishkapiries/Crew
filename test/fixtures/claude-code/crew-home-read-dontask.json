@@ -1,0 +1,72 @@
+{
+  "version": "2.1.300",
+  "source": "https://code.claude.com/docs/en/permissions",
+  "args": [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--permission-mode",
+    "dontAsk",
+    "--setting-sources",
+    "",
+    "--tools",
+    "Read",
+    "--allowedTools",
+    "Read",
+    "--disallowedTools",
+    "Read(//tmp/crew-read-probe-yw1FEi/fake crew home/**) Read(//tmp/crew-read-probe-yw1FEi/fake crew home/server.json)",
+    "--max-budget-usd",
+    "0.50"
+  ],
+  "deadlineMs": 120000,
+  "exitCode": 0,
+  "timedOut": false,
+  "tools": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/crew-read-probe-yw1FEi/fake crew home/server.json"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "type": "tool_result",
+      "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
+      "is_error": true,
+      "tool_use_id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01HvS6Hd9HS7f7BVGdAtSKLw",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/crew-read-probe-yw1FEi/normal.txt"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01HvS6Hd9HS7f7BVGdAtSKLw",
+      "type": "tool_result",
+      "content": "1\tNORMAL_READ_PROBE\n2\t"
+    }
+  ],
+  "permission_denials": [
+    {
+      "tool_name": "Read",
+      "tool_use_id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d",
+      "tool_input": {
+        "file_path": "/tmp/crew-read-probe-yw1FEi/fake crew home/server.json"
+      }
+    }
+  ],
+  "total_cost_usd": 0.1684215,
+  "result": "Only one of the two reads worked.\n\n- **`/tmp/crew-read-probe-yw1FEi/fake crew home/server.json`:** denied. The Read tool returned \"File is in a directory that is denied by your permission settings.\" I didn't retry.\n- **`/tmp/crew-read-probe-yw1FEi/normal.txt`:** worked. It contains one line, `NORMAL_READ_PROBE`.",
+  "stderr": "Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer."
+}

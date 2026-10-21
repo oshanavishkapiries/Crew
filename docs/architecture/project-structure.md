@@ -102,3 +102,5 @@ Ticket creation/assignment lives in `scheduler/tickets.ts` and the thin `cli/com
 Phase instructions and lifecycle live in `src/server/workflow/phases.ts` and `index.ts`. The engine uses Scheduler phase transitions, durable task-linked drafts and human gates; `cli/commands/phase.ts` and `approve.ts` are thin clients. `test/harness/phases.test.ts` covers engine/recovery behavior and `phase-transport.test.ts` checks exact CLI transport. Generated migration `0005` links outputs and constrains active phase tasks. `test/adapters/phase-permissions.test.ts` checks the scoped output rule and the recorded real permission probe.
 
 Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI grill Q&A and fallback, spec publication, held tickets, rejection/recovery and live Orchestrator command boundaries. Scheduler owns the ticket hold/release; Workflow validates the ticket graph and publishes approved spec memory atomically.
+
+`test/adapters/crew-home-permissions.test.ts` covers Crew-home Read denials for every Claude profile, spawn/resume and custom homes; the matching real Read probe is in `test/fixtures/claude-code/crew-home-read-dontask.json`.
