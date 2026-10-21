@@ -34,7 +34,7 @@ an exposed `NEXT_PUBLIC_*` variable. Restart `next dev` after changing it.
 board list cannot work end to end. `lib/types.ts` copies the actual boards response read from Track A's sibling
 checkout; confirm that shape against the final Track A merge. There
 are no mock routes or secret-header fallbacks in the shipped app. Browser
-checks using temporary mocks are recorded in `../plan/phase1/reports/m6-ui.md`.
+checks using temporary mocks and the isolated Track A server are recorded in `../plan/phase1/reports/m6-ui.md`.
 
 ## Build and check
 

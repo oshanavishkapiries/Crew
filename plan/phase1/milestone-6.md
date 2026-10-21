@@ -108,7 +108,9 @@ Proposed by Claude, awaiting approval:
   actual board-list shape was read from Track A's sibling checkout and copied:
   `{ boards: [{ id, workspaceId, currentPhase, createdAt,
   workspace: { id, name, repoPath, defaultBranch }, stopped }] }`.
-  Confirm it against Track A's final merge; no response fields were guessed. No mock
+  Confirm it against Track A's final merge; no response fields were guessed.
+  Browser integration also runs against a separately built copy of that source,
+  leaving both tracks' source ownership intact. No mock
   data, browser secret header, mock endpoint or fixture mode ships in the app.
 - One selected board streams at a time on the list, with a Connect control to
   switch; all boards refresh every 15 seconds. This avoids exhausting HTTP/1.1
@@ -179,3 +181,16 @@ versions are exact and `ui/package-lock.json` pins the full graph.
 - `docs/commands.md`: no CLI declarations changed; no regeneration needed here.
 - PRD: no edits; these are implementation notes/proposals for review, not newly
   approved decisions. Track B intentionally leaves Track A-owned docs unchanged.
+
+#### Track B integration observations for Track A
+
+The final browser smoke uses an isolated build copied from Track A's current
+source, the real CLI in a throwaway git repository and a separate stopped
+CREW_HOME, plus this track's static export. No paid agents run. The report records
+the resulting login, real cookie/read/SSE, route and restart checks. This does
+not merge Track A code into Track B.
+
+A graceful SIGTERM while the browser kept its SSE stream open left the isolated
+server waiting in `server.close`; the restart check therefore kills that
+throwaway server and starts it again. Track A should review stream shutdown
+before packaging. Track B did not edit server sources to address it.
