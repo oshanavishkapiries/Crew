@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConfirmAction } from '@/components/board/confirm-action';
 import { DiffView } from './diff-view';
-import { LogViewer } from './log-viewer';
+import { RunLogs } from './run-logs';
 export function TaskPanel({ taskId, boardId, revision, stopped, agents, onClose, refreshBoard }: { taskId: string; boardId: string; revision: number; stopped: boolean; agents?: StatusResponse['agents']; onClose: () => void; refreshBoard: () => void }) {
   const [detail, setDetail] = useState<TaskDetail>();
   const [diff, setDiff] = useState<TaskDiff>();
@@ -22,7 +22,6 @@ export function TaskPanel({ taskId, boardId, revision, stopped, agents, onClose,
   const refresh = useRef<() => void>(() => {});
   const task = detail?.task;
   const valid = task?.boardId === boardId;
-  const liveRun = detail?.runs.findLast(run => !run.endedAt);
   useEffect(() => {
     const controller = new AbortController();
     const coalescer = createCoalescer(async () => {
@@ -64,7 +63,7 @@ export function TaskPanel({ taskId, boardId, revision, stopped, agents, onClose,
           <p>Dependencies: {detail.dependencies.length ? detail.dependencies.map(edge => edge.blockedByTaskId).join(', ') : 'None'}</p>
           <h3 className="font-medium">Runs</h3>{detail.runs.length === 0 && <p>No runs yet.</p>}{detail.runs.map(run => <Card key={run.id}><CardContent className="space-y-1 p-3 text-sm"><p className="break-all">{run.id} · {run.kind} · {run.adapter}</p><p>{new Date(run.startedAt).toLocaleString()} — {run.endedAt ? new Date(run.endedAt).toLocaleString() : 'Running'}</p><p>Exit: {run.exitReason ?? 'In progress'}{run.exitCode !== null ? ` (code ${run.exitCode})` : ''}</p></CardContent></Card>)}
         </TabsContent>
-        <TabsContent value="log">{tab === 'log' && <LogViewer taskId={taskId} run={liveRun ?? detail.runs.at(-1)} onEnded={update} />}</TabsContent>
+        <TabsContent value="log">{tab === 'log' && <RunLogs taskId={taskId} runs={detail.runs} onEnded={update} />}</TabsContent>
         <TabsContent value="diff">{errors.Diff && <Alert variant="destructive"><AlertDescription>{errors.Diff} Use Refresh task to retry.</AlertDescription></Alert>}{diff ? <DiffView data={diff} /> : !errors.Diff && <Skeleton className="h-24 w-full" aria-label="Loading diff" />}</TabsContent>
         <TabsContent value="verification" className="space-y-3">{detail.verificationResults.length === 0 && <p>No verification steps yet.</p>}{detail.verificationResults.map(result => <Card key={result.id}><CardHeader><CardTitle><Badge variant={result.passed ? 'secondary' : 'destructive'}>{result.passed ? 'Pass' : 'Fail'}</Badge> {result.step}</CardTitle><p className="break-all text-xs text-muted-foreground">Run {result.runId}</p></CardHeader><CardContent><pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs">{result.output || 'No output recorded.'}</pre></CardContent></Card>)}</TabsContent>
         <TabsContent value="messages" className="space-y-3">{detail.messages.length === 0 && <p>No messages yet.</p>}{detail.messages.map(message => <Card key={message.id}><CardHeader><CardTitle><Badge variant="outline">{message.type}</Badge></CardTitle><p className="text-xs text-muted-foreground">{new Date(message.createdAt).toLocaleString()} · {agents?.find(agent => agent.id === message.fromAgentId)?.name ?? message.fromAgentId ?? 'Human / system'}</p></CardHeader><CardContent className="whitespace-pre-wrap break-words">{message.body}</CardContent></Card>)}</TabsContent>

@@ -1,4 +1,6 @@
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { getCrewHome } from '../config.js';
+import { LogReadError, logTailBytes, readRunLog } from './logs.js';
 import { BrowserSessions } from './sessions.js';
 import { serveBoard } from './static.js';
 import { WorkflowError, type Workflow } from '../workflow/index.js';
@@ -57,6 +59,7 @@ function newMessageId(): string {
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
+  const crewHome = getCrewHome();
   const sessions = ctx.browserSessions ?? new BrowserSessions();
 
   // D13: Host-header validation middleware on all routes
@@ -66,6 +69,7 @@ export function createApp(ctx: AppContext): Hono {
     if (err instanceof HTTPException) return err.getResponse();
     if (err instanceof WorkflowError) return c.json({ error: err.message }, err.status);
     if (err instanceof MemoryError) return c.json({ error: err.message }, err.status);
+    if (err instanceof LogReadError) return c.json({ error: err.message }, err.status);
     if (err instanceof TicketError) return c.json({ error: err.message }, err.status);
     if (err instanceof TaskNotFoundError) return c.json({ error: err.message }, 404);
     if (err instanceof InvalidTransitionError || err instanceof DependencyCycleError) {
@@ -667,7 +671,7 @@ export function createApp(ctx: AppContext): Hono {
       .select()
       .from(schema.runs)
       .where(eq(schema.runs.taskId, taskId))
-      .orderBy(asc(schema.runs.startedAt))
+      .orderBy(asc(schema.runs.startedAt), asc(sql`${schema.runs}.rowid`))
       .all();
 
     const runIds = runs.map((r) => r.id);
@@ -694,7 +698,10 @@ export function createApp(ctx: AppContext): Hono {
         commits.push({ sha, subject, source: 'branch' });
       }
     }
-    return c.json({ success: true, task, messages, runs, verificationResults, dependencies, commits });
+    return c.json({ success: true, task, messages, runs: runs.map(run => {
+      const agent = ctx.db.db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, run.agentId)).get();
+      return { ...run, agent: agent ?? null };
+    }), verificationResults, dependencies, commits });
   });
 
   // PRD line 370: POST /api/tasks/:id/answer (human secret)
@@ -995,31 +1002,17 @@ export function createApp(ctx: AppContext): Hono {
   app.get('/api/tasks/:id/logs', async (c) => {
     requireHuman(c);
     const taskId = c.req.param('id');
-    const task = loadTask(taskId);
+    loadTask(taskId);
 
-    const lastRun = ctx.db.db
-      .select()
-      .from(schema.runs)
-      .where(eq(schema.runs.taskId, taskId))
-      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
-      .get();
-
-    if (!lastRun) {
-      return c.json({ content: '', logPath: null, runId: null });
-    }
-
-    let content = '';
-    if (lastRun.logPath && fs.existsSync(lastRun.logPath)) {
-      content = fs.readFileSync(lastRun.logPath, 'utf-8');
-    }
-
-    return c.json({
-      content,
-      logPath: lastRun.logPath,
-      runId: lastRun.id,
-      exitReason: lastRun.exitReason,
-      exitCode: lastRun.exitCode,
-    });
+    const tail = logTailBytes(c.req.query('tail'));
+    const runId = c.req.query('run');
+    const run = ctx.db.db.select().from(schema.runs)
+      .where(runId !== undefined ? and(eq(schema.runs.taskId, taskId), eq(schema.runs.id, runId)) : eq(schema.runs.taskId, taskId))
+      .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get();
+    if (runId !== undefined && !run) return c.json({ error: 'Run not found for this task. Run crew logs <task> --list to choose one of its run IDs.' }, 404);
+    if (!run) return c.json({ content: '', logPath: null, runId: null, missing: false, truncated: false, offset: 0 });
+    return c.json({ ...readRunLog(crewHome, run.logPath, tail), logPath: run.logPath,
+      runId: run.id, exitReason: run.exitReason, exitCode: run.exitCode });
   });
 
   app.get('*', c => {

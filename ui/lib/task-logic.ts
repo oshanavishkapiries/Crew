@@ -28,7 +28,7 @@ export function renderEvent(type: string, payload: unknown): LogEntry[] {
 }
 export function parseHistory(content: string): LogEntry[] {
   let entries: LogEntry[] = [];
-  // Bound parsing too, not just DOM nodes. History API currently serves only the latest run.
+  // Bound parsing too, not just DOM nodes. The API bounds file reads; keep parsing and DOM bounds too.
   for (const line of content.slice(-2_000_000).split('\n').slice(-1000)) {
     if (!line.trim()) continue;
     let rendered: LogEntry[];
@@ -68,4 +68,14 @@ export function createLogBuffer() {
     },
     entries() { return current; },
   };
+}
+
+/** Keep an explicitly selected historical run while new runs arrive. */
+export function selectLogRun<T extends { id: string }>(runs: T[], selected: string): T | undefined {
+  return selected === "latest" ? runs.at(-1) : runs.find(run => run.id === selected);
+}
+export function runLogPath(taskId: string, runId: string | undefined, tail: number) {
+  const query = new URLSearchParams({ tail: String(tail) });
+  if (runId) query.set("run", runId);
+  return `/api/tasks/${encodeURIComponent(taskId)}/logs?${query}`;
 }

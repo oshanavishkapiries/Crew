@@ -2,9 +2,9 @@
 
 The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** bullets 0–5 implemented and merged on `feat/milestone-6-board` (2026-10-21): server prerequisites, UI scaffold, Board view, task detail, Inbox, phase gates, Team and Memory. The merged branch passes `rm -r dist && npm test` (324 tests), `npm run build:ui` and the UI checks (18). Bullet 6 is partly done (README quick start, UI README, gate link); the user's manual browser checklist (§6), a decision on the gaps below and the preview packaging (npm tag, tarball or git URL) remain. D80–D87 are decided and logged.
+**Status:** bullets 0–5 implemented and merged on `feat/milestone-6-board` (2026-10-21): server prerequisites, UI scaffold, Board view, task detail, Inbox, phase gates, Team and Memory. The merged branch passes `rm -r dist && npm test` (324 tests), `npm run build:ui` and the UI checks (18). Bullet 6 is partly done (README quick start, UI README, gate link); the user's manual browser checklist (§6), the remaining gaps below and preview packaging (npm tag, tarball or git URL) remain. D80–D87 are decided and logged.
 
-Closed after the merge: `/api/status` phases now carry the effective `limits` (parallel agents, retries, runtime) and the Board shows them; the SSE hook listens to `control_changed`. Track E part 1 persists individual ticket edits at a waiting tickets gate or before a dispatch ticket starts. Remaining gaps: task logs return only the latest run; task dependencies are only on task detail (the Board reads them per task); the Board still polls every 5 s because run-end events are per run, not per board.
+Closed after the merge: `/api/status` phases now carry the effective `limits` (parallel agents, retries, runtime) and the Board shows them; the SSE hook listens to `control_changed`. Track E closes the Phase 1 ticket-edit and per-run-log gaps: cards persist real edits at the tickets gate (or through the CLI before a dispatch ticket starts), and the Log tab selects every recorded run with bounded history. Remaining gaps: task dependencies are only on task detail (the Board reads them per task); the Board still polls every 5 s because run-end events are per run, not per board.
 
 ## 1. Goal
 
@@ -379,3 +379,45 @@ before packaging. Track B did not edit server sources to address it.
   UI typecheck, lint, static build and 19 client checks pass. Real Chromium with
   isolated CLI start verifies edit/blocker replacement/add/cancel/repair/approve
   and one request on double click, with DB assertions and zero agent runs.
+
+
+#### Part 2: logs of every run
+
+- `GET /api/tasks/:id/logs?run=<id>&tail=<bytes>` selects a task-owned run or
+  defaults to the latest, ordered by start time then rowid. Other tasks' run IDs
+  return 404. Tail defaults to 262144 bytes; valid range is 1–2097152 inclusive.
+  Response retains content/runId/logPath/exit metadata and adds `missing`,
+  `truncated`, and byte `offset`. A task with no runs returns empty content and
+  missing=false; a recorded run without a file has missing=true. Missing-file races return this shape too.
+- `server/api/logs.ts` uses an fd, fstat, bounded allocation and positional reads;
+  it never loads the whole file. Both lexical and canonical paths must remain
+  under the actual Crew home's logs directory; a symlinked logs root or a file
+  symlink escaping it is rejected. Non-files and permission failures have explicit
+  recovery. This is path validation, not an OS sandbox against a local process
+  concurrently replacing parent directories after validation.
+- Task detail retains all run metadata and adds only safe current agent identity
+  (`agent: { id, name } | null`), with deterministic chronological ordering.
+  `crew logs --run <id> --tail <kb>` has the same limits in KiB. Small latest logs
+  keep their old stdout; truncation is reported on stderr, missing files explicitly.
+- Proposal / CLI parity: `crew logs <task> --list` lists run IDs, times, adapter,
+  agent and exit results so terminal users can discover IDs before selecting them.
+  It uses the existing task-detail endpoint and cannot combine with read/follow flags.
+- The Log tab keeps an explicit historical selection as new runs arrive, displays
+  run identity/time/adapter/agent/exit summary, and keys the viewer by selected run.
+  Switching cancels the prior history/stream; only active selected runs stream.
+  History offers a larger 2 MiB tail and, at the cap, guidance to the complete local
+  .jsonl file. Missing files have a clear label and Reload recovery. Existing DOM,
+  parse bounds, reconnect, snapshot/live staging and follow/pause controls remain.
+- Existing Track C/D server-gap notes above are historical and superseded by Track E.
+  No new dependency, migration, paid-agent run or PRD Decision Log edit.
+- A real-browser regression exposed stale Board dependency arrows for two edits
+  within one SQLite timestamp second. The SSE hook now passes task/type hints;
+  Board detail-cache versions include an edit-event counter for that task.
+  Reconnect/manual refresh invalidates all cached details, while ordinary polling
+  and unrelated events keep the cache. In-flight reads retain their captured
+  version so a later edit cannot be hidden by a stale response.
+
+- Track E final clean root verification: 52 files / 337 tests (461.63s), after
+  removing dist; 20 client checks pass. Chromium against the isolated real built
+  server/export verifies all assigned flows plus cancelled-blocker repair and
+  same-second dependency invalidation. Full evidence/limits: reports/m6-gaps.md.

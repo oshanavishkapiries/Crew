@@ -124,3 +124,11 @@ Track E adds `test/harness/ticket-edit.test.ts` for pending-ticket API/CLI edits
 transactional dependency replacement, gate release, prompt content and dispatch
 races. `ui/components/gates/ticket-cards.tsx` persists gate ticket changes through
 those endpoints; `Tickets.edit` delegates readiness recomputation to Scheduler.
+
+`src/server/api/logs.ts` reads bounded per-run file tails with Crew-home path checks.
+`test/harness/run-logs.test.ts` exercises real API/CLI history selection, tail limits,
+missing files, unsafe paths and actual Runner ask/answer logs. The task Log tab's
+run selection and summary live in `ui/components/task/run-logs.tsx`; `log-viewer.tsx`
+loads that run's bounded history and streams only when it is active.
+The shared SSE hook supplies task/type invalidation hints to `ui/lib/board-data.ts`
+so pending-ticket edits refresh dependency arrows even within one timestamp second.

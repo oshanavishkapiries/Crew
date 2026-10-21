@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import ts from 'typescript';
 const source = await readFile(new URL('../lib/task-logic.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } });
-const { appendLog, parseHistory, renderEvent, splitDiff } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const { appendLog, parseHistory, renderEvent, splitDiff, selectLogRun, runLogPath } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 test('long runs bound both event count and individual payload size', () => {
   let state = [];
   for (let i = 0; i < 1200; i++) state = appendLog(state, { type: 'text', text: `${i} ${'x'.repeat(20000)}` });
@@ -48,4 +48,16 @@ test('a diff with thousands of tiny lines also has a bounded DOM', () => {
   const parsed = splitDiff('+x\n'.repeat(4000));
   assert.equal(parsed.truncated, true);
   assert.ok(parsed.files.reduce((total, file) => total + file.lines.length, 0) <= 3000);
+});
+
+test('run history selection stays on an older run while latest advances; request pins task/run/tail', () => {
+  const runs = [{id:'old'}, {id:'live'}];
+  assert.equal(selectLogRun(runs, 'latest').id, 'live');
+  assert.equal(selectLogRun([...runs, {id:'new'}], 'old').id, 'old');
+  assert.equal(selectLogRun(runs, 'missing'), undefined);
+  assert.equal(selectLogRun([], 'latest'), undefined);
+  const url = new URL(runLogPath('a/b', 'old / run', 262144), 'http://localhost');
+  assert.equal(url.pathname, '/api/tasks/a%2Fb/logs');
+  assert.equal(url.searchParams.get('run'), 'old / run');
+  assert.equal(url.searchParams.get('tail'), '262144');
 });

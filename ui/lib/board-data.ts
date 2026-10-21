@@ -9,7 +9,17 @@ import type { BoardsResponse } from './types';
 export function useBoardData(boardId: string) {
   const [data, setData] = useState<BoardData>({ dependencies: [], runStarts: {}, errors: {}, revision: 0 });
   const refresh = useRef<() => void>(() => {});
-  const invalidate = useCallback(() => refresh.current(), []);
+  const snapshotRevision = useRef({ all: 0, tasks: new Map<string, number>() });
+  const invalidate = useCallback((change?: { type: string; taskId?: string }) => {
+    // SQLite timestamps have second precision. An explicit edit event must
+    // invalidate detail even when its updatedAt is identical to the cache.
+    if (!change) snapshotRevision.current.all++;
+    else if (change.type === 'task_assignment_changed' && change.taskId) {
+      const versions = snapshotRevision.current.tasks;
+      versions.set(change.taskId, (versions.get(change.taskId) ?? 0) + 1);
+    }
+    refresh.current();
+  }, []);
   const connection = useBoardEvents(boardId, invalidate);
   useEffect(() => {
     const controller = new AbortController();
@@ -35,10 +45,11 @@ export function useBoardData(boardId: string) {
           for (let task = pending.shift(); task; task = pending.shift()) {
             if (controller.signal.aborted) return;
             const liveIds = status.status === 'fulfilled' ? status.value.liveRuns.filter(run => run.taskId === task.id).map(run => run.id) : [];
-            if (!needsTaskSnapshot(task.updatedAt, dependencyCache.get(task.id), liveIds)) continue;
+            const version = `${task.updatedAt}:${snapshotRevision.current.all}:${snapshotRevision.current.tasks.get(task.id) ?? 0}`;
+            if (!needsTaskSnapshot(version, dependencyCache.get(task.id), liveIds)) continue;
             try {
               const detail = await api<{ dependencies: Dependency[]; runs: { id: string; startedAt: string }[] }>(`/api/tasks/${encodeURIComponent(task.id)}`, options);
-              dependencyCache.set(task.id, { version: task.updatedAt, edges: detail.dependencies, runs: detail.runs });
+              dependencyCache.set(task.id, { version, edges: detail.dependencies, runs: detail.runs });
             } catch (error) { if (!controller.signal.aborted) errors.Dependencies = error instanceof Error ? error.message : String(error); }
           }
         }));
@@ -57,8 +68,7 @@ export function useBoardData(boardId: string) {
     });
     refresh.current = coalescer.invalidate;
     coalescer.invalidate();
-    // The shared hook does not subscribe to control_changed or run_ended.
-    // Refresh snapshots periodically for cross-tab Stop/Resume and run endings.
+    // Run endings are on run streams; polling also discovers new tasks.
     const poll = setInterval(coalescer.invalidate, 5000);
     return () => { clearInterval(poll); coalescer.dispose(); controller.abort(); refresh.current = () => {}; };
   }, [boardId]);

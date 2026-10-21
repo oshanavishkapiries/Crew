@@ -89,3 +89,17 @@ first connect, named board changes and reconnect. A session probe on stream
 failure handles 401 because EventSource does not expose HTTP status. One selected board owns a stream (use Connect to switch), preserving HTTP/1.1
 request capacity; unmount cancels it and its retry timer. The
 list coalesces invalidations during a pending fetch and also polls every 15 seconds to discover newly initialized boards.
+
+The tickets gate saves individual cards through human-only task PATCH, adds tickets
+through POST and removes them through confirmed cancellation. Save or discard each
+card before approving the displayed draft. Cancelled blockers stay visible on their
+dependents until cleared; server errors are shown on the affected card.
+
+The task Log tab selects latest or any recorded run, displays its summary and reads
+that run's bounded tail (256 KiB by default, expandable to 2 MiB). Active selected
+runs also stream; switching runs unmounts the previous viewer. Missing files and
+truncation are explicit. CLI equivalents: `crew ticket edit`, `crew logs --list`,
+`crew logs --run <id> --tail <kb>`.
+Task assignment/edit SSE events invalidate that task's detail cache even when
+SQLite's second-precision updatedAt has not changed. Reconnect and manual Refresh
+invalidate all task details; unrelated board events still reuse cached details.

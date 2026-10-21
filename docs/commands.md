@@ -123,7 +123,7 @@ crew tasks --status ready --role backend --board board-1
 
 ### `crew logs`
 
-Streams structured events and output logs for the specified task.
+Reads the latest run by default, or selects an earlier run with --run. Reads a bounded tail (default 256 KiB, maximum 2048 KiB), reports truncation and missing files, and follows a selected live run with --follow.
 
 **Arguments:**
 
@@ -132,6 +132,9 @@ Streams structured events and output logs for the specified task.
 **Options:**
 
 - `-f, --follow`: Follow log output in real time
+- `--list`: List this task’s run IDs, times, adapter, agent and exit results
+- `--run <id>`: Run ID belonging to this task (default: latest)
+- `--tail <kb>`: Tail size in KiB, from 1 to 2048 (default: 256)
 
 **Examples:**
 
@@ -513,8 +516,8 @@ Creates a work ticket with criteria and blockers. Requires a live Orchestrator p
 
 **Options:**
 
-- `--board <id>`: Board ID (required for humans; inferred for the Orchestrator)
-- `--phase <phase>`: Expected current phase (required for humans)
+- `--board <id>`: Board ID for create (required for humans; inferred for the Orchestrator)
+- `--phase <phase>`: Expected current phase for create (required for humans)
 - `--assignee <agent>`: Optional agent ID or exact name in this workspace
 - `--title <title>`: Task title
 - `--description <desc>`: Task description

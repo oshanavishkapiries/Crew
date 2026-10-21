@@ -12,7 +12,7 @@ const boardEvents = [
   'rate_limited', 'rate_limit_cleared', 'control_changed',
 ];
 
-export function useBoardEvents(boardId: string, onRefetch: () => void): ConnectionState {
+export function useBoardEvents(boardId: string, onRefetch: (change?: { type: string; taskId?: string }) => void): ConnectionState {
   const [state, setState] = useState<ConnectionState>('connecting');
   const refetch = useRef(onRefetch);
   useEffect(() => { refetch.current = onRefetch; }, [onRefetch]);
@@ -34,7 +34,15 @@ export function useBoardEvents(boardId: string, onRefetch: () => void): Connecti
         refetch.current();
         hasOpened = true;
       };
-      const changed = () => { if (!disposed) refetch.current(); };
+      const changed = (event: Event) => {
+        if (disposed) return;
+        let taskId: string | undefined;
+        try {
+          const data: unknown = JSON.parse((event as MessageEvent).data);
+          if (data && typeof data === 'object' && 'taskId' in data && typeof data.taskId === 'string') taskId = data.taskId;
+        } catch { /* Refetch still recovers malformed or payload-free events. */ }
+        refetch.current({ type: event.type, taskId });
+      };
       for (const event of boardEvents) source.addEventListener(event, changed);
       source.onerror = () => {
         source?.close(); // Own retry timer; disable EventSource's native retries.

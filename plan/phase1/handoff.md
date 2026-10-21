@@ -1,12 +1,18 @@
-Track E part 1 (`feat/m6-gaps`) implements human ticket edits, transactional
-blocker replacement and Scheduler readiness, plus gate cards that save/add/remove.
-The ticket-edit harness exercises real API/CLI, worker prompts and dispatch setup
-races. Per-run history remains part 2; no paid agents were run. See milestone-6.md
-§9 Track E for contract and proposals. Verification details will be in m6-gaps.md.
-
 # Handoff
 
-**Milestone 6 (Board UI): bullets 0–5 are merged on `feat/milestone-6-board`** (2026-10-21). Server prerequisites (Track A), UI scaffold (B), Board view and task detail (C), Inbox, gates, Team and Memory (D). Verified after the merge: `rm -r dist && npm test` 324 tests, `npm run build:ui`, `npm --prefix ui run check` 18 tests, and a real browser against a real `crew start` (login, board page, phase page, the other routes load). Fixed on the way: shutdown no longer hangs on an open SSE stream. Reports: `reports/m6-server.md`, `m6-ui.md`, `m6-board.md`, `m6-gates.md`. Afterwards `/api/status` gained per-board `limits` and the Board listens to `control_changed`. The user decided the two remaining gaps (ticket-edit persistence, per-run logs) belong in Phase 1: `agent-prompts/m6-track-e.md` (branch `feat/m6-gaps`). Remaining: the user's manual browser checklist (`milestone-6.md` §6), the known gaps listed in `milestone-6.md` (ticket-edit persistence, budget limits in `/api/status`, per-run logs, SSE control events), and preview packaging. The track prompts in `agent-prompts/m6-*.md` can be deleted once the milestone is merged to `main`.
+Track E (`feat/m6-gaps`) closes both assigned gaps: ticket cards persist edits,
+add and cancel work; Scheduler commits fields, dependencies and readiness atomically.
+The Log tab selects every recorded run, with summary, missing-file recovery and
+bounded tail expansion. CLI parity: `crew ticket edit`, `crew logs --run/--tail`
+and `crew logs --list` to discover run IDs. Log reads reject outside paths and
+symlink escapes. No paid agents, dependencies, migrations or PRD decisions added.
+Verified: clean root suite 52 files / 337 tests (461.63s), 20 client checks and
+real Chromium flows with isolated stopped dispatch. See `reports/m6-gaps.md` for
+exact verification and limitations, and milestone-6.md
+§9 Track E for contracts and proposals. The user's manual checklist and preview
+packaging remain; the other known gaps are dependency-detail reads and run-end polling.
+
+**Milestone 6 (Board UI): bullets 0–5 are merged on `feat/milestone-6-board`** (2026-10-21). Server prerequisites (Track A), UI scaffold (B), Board view and task detail (C), Inbox, gates, Team and Memory (D). Verified after the merge: `rm -r dist && npm test` 324 tests, `npm run build:ui`, `npm --prefix ui run check` 18 tests, and a real browser against a real `crew start` (login, board page, phase page, the other routes load). Fixed on the way: shutdown no longer hangs on an open SSE stream. Reports: `reports/m6-server.md`, `m6-ui.md`, `m6-board.md`, `m6-gates.md`. Afterwards `/api/status` gained per-board `limits` and the Board listens to `control_changed`. The user decided the two remaining gaps (ticket-edit persistence, per-run logs) belong in Phase 1: `agent-prompts/m6-track-e.md` (branch `feat/m6-gaps`). Remaining: the user's manual browser checklist (`milestone-6.md` §6), dependency-detail reads, run-end polling and preview packaging. Track E above closes ticket persistence and per-run logs; budget limits and control events were already closed after the merge. The track prompts in `agent-prompts/m6-*.md` can be deleted once the milestone is merged to `main`.
 
 # Milestone 5 final implementation handoff
 

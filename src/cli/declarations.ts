@@ -109,12 +109,15 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'logs',
     category: 'human',
     summary: 'Follow live agent logs for a task',
-    description: 'Streams structured events and output logs for the specified task.',
+    description: 'Reads the latest run by default, or selects an earlier run with --run. Reads a bounded tail (default 256 KiB, maximum 2048 KiB), reports truncation and missing files, and follows a selected live run with --follow.',
     args: [
       { name: 'task', description: 'Task ID or slug', required: true },
     ],
     options: [
       { flags: '-f, --follow', description: 'Follow log output in real time' },
+      { flags: '--list', description: 'List this task’s run IDs, times, adapter, agent and exit results' },
+      { flags: '--run <id>', description: 'Run ID belonging to this task (default: latest)' },
+      { flags: '--tail <kb>', description: 'Tail size in KiB, from 1 to 2048 (default: 256)' },
     ],
     examples: [
       { description: 'View logs for task-1', command: 'crew logs task-1' },
@@ -383,8 +386,8 @@ export const COMMANDS: CommandDefinition[] = [
       { name: 'task', description: 'Task ID (required for edit)', required: false },
     ],
     options: [
-      { flags: '--board <id>', description: 'Board ID (required for humans; inferred for the Orchestrator)' },
-      { flags: '--phase <phase>', description: 'Expected current phase (required for humans)' },
+      { flags: '--board <id>', description: 'Board ID for create (required for humans; inferred for the Orchestrator)' },
+      { flags: '--phase <phase>', description: 'Expected current phase for create (required for humans)' },
       { flags: '--assignee <agent>', description: 'Optional agent ID or exact name in this workspace' },
       { flags: '--title <title>', description: 'Task title' },
       { flags: '--description <desc>', description: 'Task description' },
