@@ -171,6 +171,38 @@ it.each(['before attempt', 'before checkout transaction'])('pauses for an ignore
   expect(fs.readFileSync(file, 'utf8')).toBe('task fixture\n');
 });
 
+it('pauses when an ignored file sits where an incoming directory would go, and ignores unrelated ignored files', async () => {
+  h = await createPipelineHarness({ startVerifier: true });
+  fs.writeFileSync(path.join(h.repoDir, '.gitignore'), 'vendor\nnode_modules/\n');
+  await git('add', '.gitignore');
+  await git('commit', '-m', 'Ignore vendor and modules');
+  await h.createTask({ id: 'nested', title: 'Track vendored file', description: 'Incoming path below an ignored name' });
+  await h.runTaskWithAgent('nested', [
+    { type: 'edit_file', filePath: 'vendor/lib.txt', content: 'task fixture\n' },
+    { type: 'git', args: ['add', '-f', 'vendor/lib.txt'] },
+    { type: 'done', result: 'Tracked vendored file' },
+  ]);
+  await h.waitForTaskStatus('nested', 'merge-queue');
+  // An unrelated ignored tree does not pause the queue; an ignored file in the incoming path does.
+  fs.mkdirSync(path.join(h.repoDir, 'node_modules', 'pkg'), { recursive: true });
+  fs.writeFileSync(path.join(h.repoDir, 'node_modules', 'pkg', 'index.js'), 'x\n');
+  const file = path.join(h.repoDir, 'vendor');
+  const bytes = Buffer.from([1, 2, 3]);
+  fs.writeFileSync(file, bytes);
+  const old = await git('rev-parse', 'main');
+  const paused = waitForMerge(h, 'nested', i => i.status === 'queued' && !!i.output?.includes('paused'));
+  h.server.mergeQueue.start();
+  await paused;
+  expect(fs.readFileSync(file)).toEqual(bytes);
+  expect(await git('rev-parse', 'main')).toBe(old);
+  fs.unlinkSync(file);
+  const done = waitForMerge(h, 'nested', i => i.status === 'merged');
+  h.server.mergeQueue.tick();
+  await done;
+  expect(fs.readFileSync(path.join(h.repoDir, 'vendor', 'lib.txt'), 'utf8')).toBe('task fixture\n');
+  expect(fs.existsSync(path.join(h.repoDir, 'node_modules', 'pkg', 'index.js'))).toBe(true);
+});
+
 it('rechecks a branch switch immediately before checkout update and lands only on the default branch', async () => {
   h = await createPipelineHarness({ startVerifier: true });
   await readyToMerge(h);
