@@ -188,9 +188,8 @@ terminal agent that launches real CLI children. No paid agents ran.
 Narrow windows/limits: serialization is in one Dispatcher/server (not cross-server
 coordination). Repeated polls with one token replay the same active run: they are
 one identity, not independent terminal leases. No extra persistent delivery cursor
-or background heartbeat is introduced. Idle waiting is capped at 85 seconds; once
-a task is selected, existing worktree/setup/provisioning may take longer than the
-idle wait. A disconnected client can retrieve that assignment on its next poll.
+or background heartbeat is introduced. Idle waiting is capped at 85 seconds; existing worktree/setup/provisioning (including a pass ahead in the shared queue)
+may take longer than the idle wait. A disconnected client can retrieve that assignment on its next poll.
 Pull connection means lastHeartbeatAt is recorded, not that Crew owns the terminal
 process. Permissions are advisory for that external process. Stop/cancel signals
 arrive on the next Crew call and cannot prevent subsequent terminal file edits;
@@ -202,3 +201,14 @@ and a post-body check for update, so late or duplicate calls cannot submit for a
 retired run. Notification selection prioritizes active owned/reviewer tasks before
 older terminal history. A real CLI concurrency test asserts one done result and
 one verifying transition outcome.
+
+Existing review-endpoint ordering is retained: it writes the verdict result before
+the asynchronous Scheduler transition. Interruption while that transition awaits
+worktree preparation can leave a verdict-result row even when the final transition
+is refused; the Pull run check protects the status change, not rollback of that
+pre-existing write. No general review transaction redesign was added here.
+
+First clean full suite: 54 files passed, one failed; 377 tests passed, one failed
+(513.71s). The only failure was the historical agent-commands expectation that join
+is unimplemented. It now asserts the implemented command rejects missing agent
+credentials instead. Production code was unchanged; a fresh clean full rerun follows.

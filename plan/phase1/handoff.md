@@ -7,7 +7,9 @@ and Q&A. Stop/cancel notices and answer reminders reach the next CLI call; old r
 IDs cannot mutate a new assignment. Logs/status and the startup reaper handle
 pid-less runs. Pull Reviewer and Orchestrator phase paths use existing endpoints.
 Targeted Pull/review/phase suite: 43 tests passed (69.49s); final expanded Pull and
-full clean suite are pending. See milestone-7.md §9 for narrow windows and advisory
+full clean suite are pending. The first full run passed 377 tests and failed only
+the old join-is-unimplemented assertion; it now checks the missing-token error,
+without weakening the failure exit code or auth requirement. See milestone-7.md §9 for narrow windows and advisory
 terminal permissions. No dependencies, migrations, UI or paid-agent work. Stop
 after bullet 3; bullets 4–6 are not started.
 

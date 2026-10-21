@@ -86,10 +86,11 @@ describe('Agent commands through the real CLI (D13)', () => {
     expect(harness.getTask('task-quoting')!.status).toBe('verifying');
   });
 
-  it('exits non-zero for commands that are not implemented yet', async () => {
+  it('join requires an agent token without falling back to human credentials', async () => {
     const result = await harness.runCrew(['join']);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('not implemented');
+    expect(result.stderr).toContain('CREW_AGENT_TOKEN');
+    expect(result.stderr).not.toContain('not implemented');
   });
 });
