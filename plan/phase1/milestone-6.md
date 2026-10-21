@@ -245,3 +245,49 @@ A graceful SIGTERM while the browser kept its SSE stream open left the isolated
 server waiting in `server.close`; the restart check therefore kills that
 throwaway server and starts it again. Track A should review stream shutdown
 before packaging. Track B did not edit server sources to address it.
+
+### Track D
+
+#### Bullet 4: Inbox and phase gates
+
+- Inbox now derives unanswered questions from blocked tasks and their ordered
+  messages. It shows the question's author, preserves answer text on failure,
+  removes an answer optimistically with rollback, and refetches after mutations,
+  on demand and every 15 seconds. Dependency blocks without an unanswered ask
+  are excluded. Its count is on the Inbox page; a nav badge needs a shared-shell
+  edit and is deferred under this round's ownership rules.
+- `/phase?board=<id>` reads the real snapshot, subscribes to that board's existing
+  SSE hook, refetches on reconnect/events and polls as a fallback. It renders
+  problem text, instructions, no-gate state, `crew retry` guidance for escalated
+  or cancelled phase runs, and feedback/rejection history from phase-task messages.
+  Gate decisions use the exact displayed draft ID and CLI-compatible body. A
+  synchronous guard plus disabled controls prevents duplicate in-flight decisions;
+  successful decisions remain disabled until the refreshed draft replaces them.
+  Stale/validation errors preserve the server message and refetch the snapshot.
+- The markdown textarea has a small safe rendered preview (headings, paragraphs,
+  bullets and fenced code; HTML and links stay literal). Ticket cards expose
+  title, description, acceptance criteria and blocker IDs, validate unknown/cyclic
+  blockers and the phase's configured quota (default 20). Earlier-phase and merged
+  blockers remain in the dependency graph but outside editable cards and quota.
+- **Server gap / proposal:** `Workflow.approve` accepts `edit` only as output text;
+  it never applies that text to persisted work tickets. There is no task-update
+  endpoint for title, description, acceptance criteria or dependencies. Therefore
+  edited ticket cards deliberately cannot be approved; the screen explains this
+  and offers rejection with a note to request changes. Original tickets and edited
+  output text can still be approved using the existing endpoint. Completing true
+  ticket editing needs a server-owned transactional ticket-edit contract that
+  checks the draft ID and graph before releasing tickets. No server code was
+  changed, and text edits are never presented as saved ticket edits.
+- `/phase` is reachable directly or via its board selector. Track C owns the
+  Board-header entry point; shared Boards list and shell files were not edited.
+- New response subsets and checks stay in Track D's `*-types.ts` / `*-logic.ts`
+  files. Existing API, SSE, types, shell and primitives remain unchanged; all
+  controls compose the checked-in shadcn components and theme tokens.
+- Verification: strict types, ESLint, static export and focused client checks pass.
+  Two initial client checks were observed failing (unknown blockers and role scope)
+  before fixes, plus a failing merged-blocker regression before its fix. Real
+  Chromium against an isolated copy of the built CLI/static export verifies an
+  answer, approval, edited spec saved to memory, ticket rejection/note history,
+  direct route reloads and a stale gate's real 409/refetch. Dispatch stays stopped;
+  all fixture adapter names are `fake` and no agent runs are started. Full root
+  suite output and final browser evidence are recorded in the Track D report.
