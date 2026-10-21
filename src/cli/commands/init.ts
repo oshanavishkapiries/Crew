@@ -6,7 +6,9 @@ import { eq } from 'drizzle-orm';
 import { createCrewDatabase } from '../../server/db/index.js';
 import * as schema from '../../server/db/schema.js';
 import { generateAgentToken, hashToken } from '../../server/api/security.js';
-import { CONFIG_TEMPLATE } from '../../server/project-config.js';
+import { CodexAdapter } from '../../adapters/codex.js';
+import { ClaudeCodeAdapter } from '../../adapters/claude-code.js';
+import { CONFIG_TEMPLATE, loadWorkspaceConfigs } from '../../server/project-config.js';
 import { BUILTIN_ROLES } from '../../roles/index.js';
 
 export async function handleInit(): Promise<void> {
@@ -47,6 +49,13 @@ export async function handleInit(): Promise<void> {
       }
       return db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, id)).get()!;
     })();
+    // Init preserves existing stored settings; only start replaces workspace config.
+    await loadWorkspaceConfigs(db, workspace.id, true);
+    const detected = await Promise.all([new ClaudeCodeAdapter(), new CodexAdapter()].map(async adapter => {
+      const result = await adapter.detect();
+      return `${adapter.id}: ${result.installed ? `${result.version || 'unknown version'} (${result.headless ? 'headless ready' : 'unsupported for headless runs'})` : 'not installed'}`;
+    }));
+    console.log(`Detected tools: ${detected.join('; ')}`);
     console.log(`Crew initialized: ${workspace.name} (${workspace.id}).\nConfig: ${file}\nUntracked crew.config.ts pauses the merge queue; review and commit it before merging.\nNext: review and commit crew.config.ts, then run crew start.`);
   } finally { db.close(); }
 }

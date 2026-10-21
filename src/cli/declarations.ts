@@ -52,7 +52,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'init',
     category: 'human',
     summary: 'Initialize Crew in the current repository',
-    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.',
+    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Detects Claude Code and Codex; optional config.team entries add named spawn agents with cliType claude-code or codex. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.',
     action: handleInit,
     examples: [
       { description: 'Initialize crew configuration', command: 'crew init' },

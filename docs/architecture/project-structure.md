@@ -138,3 +138,11 @@ run-local chunked JSONL parser and resume), `test/adapters/codex.test.ts`, and
 `test/fixtures/codex/` with real edit/resume/read-only output and explicitly
 synthetic rate-limit errors. `scripts/record-codex-fixtures.ts` is a manual paid
 recorder (three tiny turns; never invoked by tests).
+
+Milestone 7 bullet 1 registers Codex in Runner and exports it from the adapter
+barrel. `crew init` reports installed tools and provisions optional additive
+`crew.config.ts` team entries (`name`, `role`, `cliType: 'codex' | 'claude-code'`),
+as does real CLI startup. Existing named agents cannot silently change role/tool;
+omitting entries never deletes agents. Default Claude staffing stays unchanged.
+`test/harness/codex.test.ts` wraps the fake process to emit Codex JSONL consumed
+by the production parser while driving real CLI and worktree operations.

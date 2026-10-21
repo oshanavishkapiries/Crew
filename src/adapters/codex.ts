@@ -80,3 +80,16 @@ export class CodexAdapter implements AgentAdapter {
       (typeof error.message === 'string' && /rate[-_ ]?limit|usage limit|too many requests|\b429\b/i.test(error.message));
   }
 }
+
+/** These restrictions are advisory; Codex has no per-command tool allow/deny list. */
+export function codexPermissionInstructions(profile: PermissionProfile): string {
+  return [
+    'Crew permission rules: never git push, change remotes, use sudo, run destructive commands, write outside this worktree, or read Crew server.json, crew.db, logs or credentials.',
+    'Call crew done (or crew ask / crew review / crew phase done as appropriate) before ending. Codex turn completion alone does not complete the Crew task.',
+    profile.mode === 'read-only' ? 'Review only: do not edit files. Use read/search, git diff/log/show and crew review commands only.' : '',
+    profile.mode === 'orchestrator' ? `Plan only: use read/search, git diff/log/show/status and crew commands. Write only ${profile.phaseOutputPath || 'the designated phase output file'}.` : '',
+    profile.allowCommands?.length ? `Additional permitted command prefixes: ${profile.allowCommands.join(', ')}.` : '',
+    profile.denyCommands?.length ? `Forbidden command prefixes: ${profile.denyCommands.join(', ')}.` : '',
+    profile.allowNetwork ? 'Network access permitted by the profile.' : 'Do not access the network except the local Crew API needed for crew commands.',
+  ].filter(Boolean).join('\n');
+}

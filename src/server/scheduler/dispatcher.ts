@@ -1,4 +1,4 @@
-import { sql, eq, asc, desc } from 'drizzle-orm';
+import { sql, eq, asc, desc, and } from 'drizzle-orm';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { CrewDatabase } from '../db/index.js';
@@ -198,8 +198,13 @@ export class Dispatcher {
           .orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`))
           .get();
 
-        if (lastRun?.sessionId && lastRun?.exitReason === 'rate-limited') {
-          await this.runner.resumeTask(task.id, 'Resume task after rate limit pause');
+        if (lastRun?.sessionId && ['rate-limited', 'asked'].includes(lastRun.exitReason || '')) {
+          // Answer's doing event can race its explicit resume request. Both paths
+          // must choose the same session; Runner coalesces concurrent starts.
+          const answer = lastRun.exitReason === 'asked' ? this.db.db.select().from(schema.messages)
+            .where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'answer')))
+            .orderBy(desc(schema.messages.createdAt), desc(sql`${schema.messages}.rowid`)).get()?.body : undefined;
+          await this.runner.resumeTask(task.id, answer || 'Resume task after rate limit pause');
         } else {
           await this.runner.startRun({ taskId: task.id, agentId: agent.id });
         }

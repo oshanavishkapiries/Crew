@@ -264,3 +264,33 @@ describe('Config and init', () => {
     expect(received[1].mode).toBe('read-only'); expect(received[1].allowCommands).toEqual([]);
   });
 });
+
+describe('Codex team configuration', () => {
+  it('detects tools and creates configured Codex and custom-role agents idempotently through init/start', async () => {
+    const r = await repo();
+    fs.writeFileSync(r.config, `export default {
+      roles: { specialist: { defaultPrompt: 'Specialist', permissionProfile: { mode: 'standard', allowNetwork: true } } },
+      team: [{ name: 'Codex specialist', role: 'specialist', cliType: 'codex' }]
+    };`);
+    const initialized = await r.run(['init']); expect(initialized.exitCode).toBe(0);
+    expect(initialized.stdout).toContain('Detected tools:'); expect(initialized.stdout).toContain('codex:');
+    const db = open(r.home);
+    const codex = db.db.select().from(schema.agents).all().find(agent => agent.name === 'Codex specialist')!;
+    expect(codex.cliType).toBe('codex'); expect(codex.mode).toBe('spawn'); expect(codex.tokenHash).toBeTruthy();
+    expect(db.db.select().from(schema.roles).where(eq(schema.roles.id, codex.roleId)).get()?.permissionProfile).toMatchObject({ allowNetwork: true });
+    expect((await r.run(['init'])).exitCode).toBe(0);
+    await start(r.cwd, r.home);
+    expect(db.db.select().from(schema.agents).all().filter(agent => agent.name === 'Codex specialist')).toHaveLength(1);
+  });
+  it.each([
+    "team: [{ name: 'X', role: 'backend', cliType: 'unknown' }]",
+    "team: [{ name: 'X', role: 'missing', cliType: 'codex' }]",
+    "team: [{ name: 'X', role: 'backend', cliType: 'codex' }, { name: 'X', role: 'backend', cliType: 'codex' }]",
+    "roles: { backend: { permissionProfile: { allowNetwork: 'yes' } } }",
+  ])('rejects invalid team or network config without creating configured agents: %s', async content => {
+    const r = await repo(); expect((await r.run(['init'])).exitCode).toBe(0);
+    fs.writeFileSync(r.config, `export default { ${content} };`);
+    const failed = await r.run(['init']); expect(failed.exitCode).not.toBe(0);
+    expect(open(r.home).db.select().from(schema.agents).all()).toHaveLength(4);
+  });
+});

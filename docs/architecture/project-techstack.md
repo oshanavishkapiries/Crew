@@ -37,7 +37,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Tool | Headless command | Session resume | Status |
 | --- | --- | --- | --- |
 | Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestones 2 and 3: runner, resume, permissions, rate-limits, read-only review, stop hook; milestone 4 adds scoped conflict git permissions and noninteractive rebase editor) |
-| Codex | `codex exec --json` | `codex exec resume <id>` | Implemented adapter (milestone 7 bullet 0), minimum 0.163.0 |
+| Codex | `codex exec --json` | `codex exec resume <id>` | Implemented spawn/resume and CLI wiring (milestone 7 bullets 0–1), minimum 0.163.0 |
 | Antigravity | Unknown | — | Pull mode only (D17) |
 | Fake | Scripted `crew` calls and git argument arrays | Supported | Tests and demos, including multi-commit history and real rebase conflict resolution |
 
@@ -82,3 +82,14 @@ Real fixture recording on 2026-10-21 used Codex 0.163.0. The CLI reports token
 usage but no USD cost; no billing estimate is claimed. The read-only response
 reports denial and left no file, but contains no command event, so it does not
 prove an attempted syscall was denied. Rate-limit fixtures remain synthetic.
+
+Codex is registered by default in Runner. `config.team` adds named spawn agents
+with a built-in or configured role and `cliType: codex|claude-code`, on init/start;
+matching names are idempotent, mismatched role/tool is an error, and omission
+never deletes an existing agent. `init` preserves stored workspace settings;
+`start` remains the point that replaces them from the config file. Role profiles
+now accept boolean `allowNetwork`. Network-disabled Codex sandboxes can also block
+the localhost Crew API: the fake harness does not prove real sandbox HTTP
+connectivity. Workspace-write users can explicitly set `allowNetwork: true`;
+a network-disabled read-only Reviewer cannot use HTTP `crew review` without a
+future scoped local transport/network solution. No broad access is silently enabled.

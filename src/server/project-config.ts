@@ -1,3 +1,5 @@
+import * as crypto from 'node:crypto';
+import { generateAgentToken, hashToken } from './api/security.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createJiti } from 'jiti';
@@ -8,6 +10,8 @@ import type { CrewDatabase } from './db/index.js';
 import * as schema from './db/schema.js';
 
 export interface ProjectConfig {
+  /** Additive team entries; existing agents are never silently replaced. */
+  team?: { name: string; role: string; cliType: 'claude-code' | 'codex' }[];
   verifyCommands?: { name: string; command: string; cwd?: string; timeout?: number; paths?: string[] }[];
   worktreeSetup?: string;
   mergeStrategy?: 'squash' | 'rebase';
@@ -30,6 +34,7 @@ export default {
   verifyCommands: [
     // { name: 'test', command: 'npm test', timeout: 600000, paths: ['src/**', 'test/**'] },
   ],
+  // team: [{ name: 'Codex developer', role: 'backend', cliType: 'codex' }],
   // worktreeSetup: 'npm ci',
   mergeStrategy: 'squash',
   maxParallelAgents: 3,
@@ -66,15 +71,16 @@ function text(value: unknown, at: string) {
   if (typeof value !== 'string' || !value.trim()) throw new Error(`${at} must be non-empty text`);
 }
 function profile(value: unknown, at: string) {
-  object(value, at); keys(value, ['mode', 'allowCommands', 'denyCommands', 'stopHook'], at);
+  object(value, at); keys(value, ['mode', 'allowCommands', 'denyCommands', 'stopHook', 'allowNetwork'], at);
   if (value.mode !== undefined && !['standard', 'full', 'read-only'].includes(value.mode as string)) throw new Error(`${at}.mode must be standard, full or read-only`);
   for (const key of ['allowCommands', 'denyCommands']) if (value[key] !== undefined) strings(value[key], `${at}.${key}`);
   if (value.stopHook !== undefined && typeof value.stopHook !== 'boolean') throw new Error(`${at}.stopHook must be boolean`);
+  if (value.allowNetwork !== undefined && typeof value.allowNetwork !== 'boolean') throw new Error(`${at}.allowNetwork must be boolean`);
 }
 export function validateProjectConfig(value: unknown): ProjectConfig {
   object(value, 'config');
   const numbers = ['maxParallelAgents', 'maxParallelVerifications', 'maxRetries', 'maxDepth', 'maxRuntimeMs', 'noOutputTimeoutMs', 'maxTicketsPerPhase', 'memoryBudgetTokens'];
-  keys(value, [...numbers, 'verifyCommands', 'worktreeSetup', 'mergeStrategy', 'stopHook', 'permissions', 'workflow', 'roles'], 'config');
+  keys(value, [...numbers, 'verifyCommands', 'worktreeSetup', 'mergeStrategy', 'stopHook', 'permissions', 'workflow', 'roles', 'team'], 'config');
   for (const key of numbers) if (value[key] !== undefined) positive(value[key], key, ['maxRetries', 'maxDepth'].includes(key) ? 0 : 1);
   if (value.mergeStrategy !== undefined && !['squash', 'rebase'].includes(value.mergeStrategy as string)) throw new Error('mergeStrategy must be squash or rebase');
   if (value.worktreeSetup !== undefined) text(value.worktreeSetup, 'worktreeSetup');
@@ -112,6 +118,18 @@ export function validateProjectConfig(value: unknown): ProjectConfig {
       if (['orchestrator', 'reviewer'].includes(name) && role.permissionProfile !== undefined) throw new Error(`roles.${name}.permissionProfile is fixed; only its prompt may be changed`);
     }
   }
+  if (value.team !== undefined) {
+    if (!Array.isArray(value.team)) throw new Error('team must be a list');
+    const names = new Set<string>();
+    for (const member of value.team) {
+      object(member, 'team entry'); keys(member, ['name', 'role', 'cliType'], 'team entry');
+      text(member.name, 'team.name'); text(member.role, 'team.role');
+      if (!['claude-code', 'codex'].includes(member.cliType as string)) throw new Error('team.cliType must be claude-code or codex');
+      if (names.has(member.name as string)) throw new Error(`Duplicate team name ${member.name}`);
+      names.add(member.name as string);
+      if (!Object.hasOwn(BUILTIN_ROLES, member.role as string) && !Object.hasOwn(value.roles || {}, member.role as string)) throw new Error(`Unknown team role ${member.role}`);
+    }
+  }
   // Persist only JSON data, not loader proxies or executable functions.
   const serialized = JSON.stringify(value, (_key, item) => {
     if (typeof item === 'function' || typeof item === 'bigint' || typeof item === 'symbol' || item === undefined) throw new Error('Config values must be JSON data');
@@ -121,9 +139,10 @@ export function validateProjectConfig(value: unknown): ProjectConfig {
 }
 
 /** Only the CLI startup calls this: user config never executes during harness setup. */
-export async function loadWorkspaceConfigs(db: CrewDatabase): Promise<void> {
+export async function loadWorkspaceConfigs(db: CrewDatabase, onlyWorkspaceId?: string, provisionOnly = false): Promise<void> {
   const pending: { id: string; config: ProjectConfig }[] = [];
   for (const workspace of db.db.select().from(schema.workspaces).all()) {
+    if (onlyWorkspaceId && workspace.id !== onlyWorkspaceId) continue;
     const file = path.join(workspace.repoPath, 'crew.config.ts');
     if (!fs.existsSync(file)) continue; // Milestones 1–4 workspaces may have no config yet.
     try {
@@ -140,16 +159,25 @@ export async function loadWorkspaceConfigs(db: CrewDatabase): Promise<void> {
     for (const { id, config } of pending) {
       // Keep referenced role identities, but never retain removed configuration privileges.
       for (const role of db.db.select().from(schema.roles).all()) {
-        if (role.id === `configured-${id}-${role.name}` && !Object.hasOwn(config.roles || {}, role.name)) {
+        if (!provisionOnly && role.id === `configured-${id}-${role.name}` && !Object.hasOwn(config.roles || {}, role.name)) {
           db.db.update(schema.roles).set({ defaultPrompt: `You are a Crew ${role.name} agent. Follow the task acceptance criteria and repository conventions.`, permissionProfile: { mode: 'standard' } }).where(eq(schema.roles.id, role.id)).run();
         }
       }
-      db.db.update(schema.workspaces).set({ config: config as Record<string, unknown> }).where(eq(schema.workspaces.id, id)).run();
+      if (!provisionOnly) db.db.update(schema.workspaces).set({ config: config as Record<string, unknown> }).where(eq(schema.workspaces.id, id)).run();
       for (const [name, role] of Object.entries(config.roles || {})) {
         if (Object.hasOwn(BUILTIN_ROLES, name)) continue;
         const definition = { defaultPrompt: role.defaultPrompt || `You are a Crew ${name} agent. Follow the task acceptance criteria and repository conventions.`, permissionProfile: { ...(role.permissionProfile || { mode: 'standard' }) } };
         db.db.insert(schema.roles).values({ id: `configured-${id}-${name}`, name, ...definition, isBuiltin: false, createdAt: new Date() })
           .onConflictDoUpdate({ target: schema.roles.id, set: definition }).run();
+      }
+      for (const member of config.team || []) {
+        const roleId = Object.hasOwn(BUILTIN_ROLES, member.role) ? `builtin-${member.role}` : `configured-${id}-${member.role}`;
+        const existing = db.db.select().from(schema.agents).where(eq(schema.agents.workspaceId, id)).all().find(agent => agent.name === member.name);
+        if (existing) {
+          if (existing.cliType !== member.cliType || existing.roleId !== roleId) throw new Error(`Team member ${member.name} already exists with a different role or tool; choose a new name.`);
+          continue;
+        }
+        db.db.insert(schema.agents).values({ id: `agent-${crypto.randomUUID()}`, workspaceId: id, roleId, name: member.name, cliType: member.cliType, tokenHash: hashToken(generateAgentToken()), createdAt: new Date() }).run();
       }
     }
   })();
