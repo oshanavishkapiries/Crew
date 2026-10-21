@@ -13,12 +13,21 @@ Crew is a CLI tool that turns AI coding agents (Claude Code, Codex, Antigravity)
 
 ## Quick start (private preview)
 
-Requires Node 22+, git and Claude Code. From a git repository you want the team to work on:
+Crew is not published to npm yet, so `npx crew` does not work. Until the preview package exists, run it from a clone. Requires Node 22+, git and Claude Code.
 
 ```sh
-npx crew init     # registers the repo, writes crew.config.ts, creates the team
-npx crew start    # starts the server and prints the Board login URL
+git clone <this repo> && cd Crew
+npm install
+npm run build        # builds the CLI into dist/
+npm run build:ui     # builds the Board into dist/ui (run after the CLI build)
+npm link             # puts the `crew` command on your PATH
 ```
 
-Open the printed `http://127.0.0.1:<port>/#key=...` link. It is single use; if you lose it, run `npx crew open` for a fresh one. The Board shows the task board, live agent logs, the questions inbox, phase gates, the team and memory. Everything on the Board also works from the CLI (`crew status`, `crew approve`, `crew answer`, `crew stop-all`, see `docs/commands.md`).
+Then, from a git repository you want the team to work on:
 
+```sh
+crew init     # registers the repo, writes crew.config.ts, creates the team
+crew start    # starts the server and prints the Board login URL
+```
+
+Open the printed `http://127.0.0.1:<port>/#key=...` link. It is single use; if you lose it, run `crew open` for a fresh one. The Board shows the task board, live agent logs, the questions inbox, phase gates, the team and memory. Everything on the Board also works from the CLI (`crew status`, `crew approve`, `crew answer`, `crew stop-all`, see `docs/commands.md`).
