@@ -37,7 +37,7 @@ crew/
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
 │     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (done; smoke passed)
 │     ├─ milestone-6.md   # Milestone 6 plan: Board UI (Next.js static export + shadcn/ui)
-│     ├─ agent-prompts/   # The implementer prompt template and its lessons; milestone 6 track prompts (removed after the milestone merges)
+│     ├─ agent-prompts/   # The implementer prompt template and its lessons
 │     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
 ├─ src/

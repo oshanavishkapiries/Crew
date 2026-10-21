@@ -65,7 +65,7 @@ export function BoardsList() {
     </div>
     {error && <Alert variant="destructive"><AlertTitle>Cannot load boards</AlertTitle><AlertDescription><p>{error}</p><p>Check the Crew server, then use Refresh to retry.</p></AlertDescription></Alert>}
     <Card>
-      <CardHeader><CardTitle>Your workspaces</CardTitle><CardDescription>Board view arrives in bullet 2. Connect one board at a time for live updates. All phases refresh every 15 seconds.</CardDescription></CardHeader>
+      <CardHeader><CardTitle>Your workspaces</CardTitle><CardDescription>Open a board for the live view. All phases refresh every 15 seconds.</CardDescription></CardHeader>
       <CardContent>
         {boards === null ? (error ? <p className="text-sm text-muted-foreground">Boards unavailable.</p> : <Skeleton aria-label="Loading boards" className="h-28 w-full" />) : boards.length === 0 ? <p className="text-sm text-muted-foreground">No boards yet. Run <code>crew init</code> in your project, then refresh.</p> :
           <Table><TableHeader><TableRow><TableHead>Workspace</TableHead><TableHead>Board</TableHead><TableHead>Phase</TableHead><TableHead>Connection</TableHead></TableRow></TableHeader>
