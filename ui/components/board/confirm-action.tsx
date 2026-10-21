@@ -11,7 +11,8 @@ export function ConfirmAction({ label, description, onConfirm, destructive = fal
     <DialogTrigger asChild><Button variant={destructive ? 'destructive' : 'outline'} disabled={disabled}>{label}</Button></DialogTrigger>
     <DialogContent><DialogHeader><DialogTitle>{label}?</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-      <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>Go back</Button><Button variant={destructive ? 'destructive' : 'default'} disabled={busy} onClick={async () => {
+      <DialogFooter><Button variant="outline" disabled={busy} onClick={() => setOpen(false)}>Go back</Button><Button variant={destructive ? 'destructive' : 'default'} disabled={busy || disabled} onClick={async () => {
+        if (disabled) return;
         setBusy(true); setError('');
         try { await onConfirm(); setOpen(false); } catch (error) { setError(error instanceof Error ? error.message : String(error)); } finally { setBusy(false); }
       }}>{busy ? 'Working…' : `Confirm ${label.toLowerCase()}`}</Button></DialogFooter>

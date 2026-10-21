@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ConfirmAction } from './confirm-action';
 import { DependencyArrows } from './dependency-arrows';
 import { TaskCard } from './task-card';
+import { TaskPanel } from '@/components/task/task-panel';
 export function BoardView({ boardId }: { boardId: string }) {
   const { data, connection, refresh } = useBoardData(boardId);
   const router = useRouter(), params = useSearchParams();
@@ -43,5 +44,6 @@ export function BoardView({ boardId }: { boardId: string }) {
         <DependencyArrows container={container} dependencies={data.dependencies} revision={data.revision} />
       </div></div>
     </>}
+    {params.get('task') && <TaskPanel key={`${boardId}:${params.get('task')}`} boardId={boardId} taskId={params.get('task')!} revision={data.revision} stopped={data.status?.stopped ?? true} agents={data.status?.agents} refreshBoard={refresh} onClose={() => { const next = new URLSearchParams(params.toString()); next.delete('task'); router.push(`/board?${next}`, { scroll: false }); }} />}
   </>;
 }
