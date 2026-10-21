@@ -106,7 +106,7 @@ it.each(phases)('stops a live %s process tree and resumes without another task o
   expect(h.getTask(task.id)?.retries).toBe(0);
   expect(tasks().filter(t => t.creationPhase === phase)).toHaveLength(1);
 });
-it.each(phases)('cancels a live %s process tree and creates exactly one replacement on retry', async phase => {
+it.each([...phases, 'integrate'])('cancels a live %s process tree and creates exactly one replacement on retry', async phase => {
   const task = await setup(phase); const { run, childPid } = await hang(task.id);
   expect((await human(['cancel', task.id])).exitCode).toBe(0);
   await run.promise; dead(run.pid!); dead(childPid);
@@ -129,9 +129,14 @@ it.each(phases)('recovers an escalated %s task through the printed human retry c
   const draft = await complete(task.id); await approve(draft.id);
   expect(tasks().filter(t => t.creationPhase === phase)).toHaveLength(1);
 });
-it.each(phases)('rejects workers and absent tokens at every %s phase endpoint without mutation', async phase => {
+it.each([...phases, 'integrate'])('rejects workers, absent tokens and foreign workspace tokens at every %s phase endpoint without mutation', async phase => {
   const task = await setup(phase); const { run } = await hang(task.id);
-  for (const headers of [{}, { 'X-Crew-Agent-Token': h.agentToken }]) {
+  const foreignToken = h.addAgent('foreign-orch', 'interrupt-orch');
+  h.db.db.insert(schema.workspaces).values({ id: 'foreign-workspace', name: 'Foreign', repoPath: '/unused', defaultBranch: 'main', createdAt: new Date() }).run();
+  const { eq } = await import('drizzle-orm');
+  h.db.db.update(schema.agents).set({ workspaceId: 'foreign-workspace' }).where(eq(schema.agents.id, 'foreign-orch')).run();
+  const callers = [{}, { 'X-Crew-Agent-Token': h.agentToken }, { 'X-Crew-Agent-Token': foreignToken }];
+  for (const headers of callers) {
     for (const endpoint of [
       `/api/tasks/${task.id}/phase`, `/api/tasks/${task.id}/phase-done`,
       `/api/boards/${h.boardId}/phase`, `/api/boards/${h.boardId}/phase/approve`,
@@ -144,7 +149,7 @@ it.each(phases)('rejects workers and absent tokens at every %s phase endpoint wi
   expect(outputs()).toHaveLength(0); expect(tasks()).toHaveLength(1); expect(h.getTask(task.id)?.status).toBe('doing');
   const draft = await (async () => { expect((await human(['stop-all'])).exitCode).toBe(0); await run.promise; expect((await human(['resume'])).exitCode).toBe(0); return complete(task.id); })();
   // Repeat against a real pending draft, so approval denial cannot pass on a missing gate.
-  for (const headers of [{}, { 'X-Crew-Agent-Token': h.agentToken }]) {
+  for (const headers of callers) {
     const result = await fetch(`${h.server.url}/api/boards/${h.boardId}/phase/approve`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ draftId: draft.id }) });
     expect([401, 403]).toContain(result.status);
   }

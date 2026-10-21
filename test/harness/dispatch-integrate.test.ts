@@ -237,3 +237,72 @@ it('keeps completed dispatch intact without staff and recovers with human init t
   await human(['init']); await human(['resume']);
   expect(phase().board.currentPhase).toBe('integrate'); expect(integrates()).toHaveLength(1);
 });
+
+it('rejects ended and different-board integrate promotions, then allows human promotion', async () => {
+  await setup('integrate');
+  await human(['memory', 'add', '--workspace', h.workspaceId, '--layer', 'role', '--role', h.roleId, '--title', 'Learning', '--body', 'Keep edits tiny']);
+  const learning = h.db.db.select().from(schema.memory).get()!;
+  const ended = await runPhase();
+  const token = h.runner.getOrCreateAgentToken('orch');
+  const promote = (contextTaskId: string) => fetch(`${h.server.url}/api/memory/${learning.id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Crew-Agent-Token': token }, body: JSON.stringify({ promote: true, contextTaskId }),
+  });
+  expect([403, 409]).toContain((await promote(ended.id)).status);
+  h.db.db.insert(schema.boards).values({ id: 'other-board', workspaceId: h.workspaceId, currentPhase: 'integrate', createdAt: new Date() }).run();
+  await h.server.workflow.ensureBoard('other-board');
+  h.fakeAdapter.setScript([{ type: 'hang' }]);
+  await h.dispatcher.dispatchOnce();
+  const live = h.runner.getLiveRuns()[0]!; expect(live.taskId).not.toBe(ended.id);
+  // A live run on another board must not revive the ended board's context.
+  expect([403, 409]).toContain((await promote(ended.id)).status);
+  expect(h.db.db.select().from(schema.memory).all()).toHaveLength(1);
+  await human(['stop-all']); await live.promise;
+  await human(['memory', 'promote', learning.id]);
+  expect(h.db.db.select().from(schema.memory).all()).toHaveLength(2);
+  await human(['resume']);
+  expect((await approve()).exitCode).toBe(0); expect(phase().board.currentPhase).toBe('done');
+});
+
+it('rejects late ticket creation after ticket approval moved the board to dispatch', async () => {
+  await setup('tickets'); await held({ id: 'retained', title: 'Retained', description: '' });
+  const planning = await runPhase(); const token = h.runner.getOrCreateAgentToken('orch');
+  expect((await approve()).exitCode).toBe(0);
+  const result = await h.runCrew(['ticket', 'create', '--title', 'Late', '--role', 'backend'], { CREW_AGENT_TOKEN: token, CREW_TASK_ID: planning.id });
+  expect(result.exitCode).not.toBe(0); expect(tasks().filter(t => t.kind === 'work')).toHaveLength(1);
+  // Human can still move the retained plan forward.
+  await human(['cancel', 'retained']); await waitForPhase('integrate');
+  await runPhase(); expect((await approve()).exitCode).toBe(0);
+});
+
+it('stops two running dispatch workers and resumes to integrate exactly once', async () => {
+  await setup('tickets', { startVerifier: true, startMergeQueue: true });
+  h.addAgent('second-worker');
+  await held({ id: 'one', title: 'One', description: '' }); await held({ id: 'two', title: 'Two', description: '' });
+  await runPhase(); expect((await approve()).exitCode).toBe(0);
+  h.fakeAdapter.setScript([{ type: 'hang' }]);
+  const children: number[] = [];
+  let ready!: () => void;
+  const hung = new Promise<void>(resolve => { ready = resolve; });
+  const off = h.eventBus.subscribeRunEvents('*', e => {
+    const pid = (e.data as any)?.grandchildPid;
+    if (pid) { children.push(Number(pid)); if (children.length === 2) ready(); }
+  });
+  await h.dispatcher.dispatchOnce(); await hung; off();
+  const live = h.runner.getLiveRuns(); expect(live).toHaveLength(2);
+  await human(['stop-all']); await Promise.all(live.map(r => r.promise));
+  for (const pid of [...children, ...live.map(r => r.pid!)]) expect(() => process.kill(pid, 0)).toThrow();
+  expect(phase().board.currentPhase).toBe('dispatch'); expect(integrates()).toHaveLength(0);
+  h.fakeAdapter.setScript([{ type: 'edit_file', filePath: 'feature.txt', content: 'feature' }, { type: 'done' }]);
+  await human(['resume']);
+  // Independent edits avoid a conflict, while both interrupted tasks retain retries=0.
+  for (const id of ['one', 'two']) {
+    h.db.db.update(schema.workspaces).set({ config: { maxParallelAgents: 1 } }).run();
+    h.fakeAdapter.setScript([{ type: 'edit_file', filePath: `${id}.txt`, content: id }, { type: 'done' }]);
+    await h.dispatcher.dispatchOnce(); await h.waitForTaskStatus(id, 'merged'); await idle();
+    expect(h.getTask(id)?.retries).toBe(0);
+  }
+  await waitForPhase('integrate');
+  await Promise.all([h.server.workflow.ensureBoard(h.boardId), h.server.workflow.ensureBoard(h.boardId)]);
+  expect(integrates()).toHaveLength(1);
+  await runPhase(); expect((await approve()).exitCode).toBe(0);
+}, 60000);
