@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
@@ -15,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 function BoardRow({ board, connection, children }: { board: BoardSummary; connection: ConnectionState | 'Not selected'; children?: React.ReactNode }) {
   return <TableRow>
-    <TableCell><p className="font-medium">{board.workspace.name}</p><p className="text-xs text-muted-foreground">{board.workspace.repoPath}</p></TableCell>
+    <TableCell><Button asChild variant="link" className="h-auto p-0 font-medium"><Link href={`/board?id=${encodeURIComponent(board.id)}`}>{board.workspace.name}</Link></Button><p className="text-xs text-muted-foreground">{board.workspace.repoPath}</p></TableCell>
     <TableCell className="font-mono text-xs">{board.id}</TableCell>
     <TableCell><Badge variant="secondary">{board.currentPhase}</Badge>{board.stopped && <Badge variant="outline" className="ml-2">Stopped</Badge>}</TableCell>
     <TableCell aria-live="polite"><Badge variant={connection === 'live' ? 'default' : 'outline'}>{connection}</Badge>{children}</TableCell>
