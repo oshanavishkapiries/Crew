@@ -19,6 +19,18 @@ export interface PromptOptions {
 interface Entry { text: string; section: string; age: number; relevance: number; }
 const words = (text: string) => new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.filter(word => word.length > 2) ?? []);
 
+/**
+ * Real agents (smoke run, milestone 5) saw one denied compound command, concluded that Bash
+ * was off for the whole session, and never ran crew done / crew review. Say what a denial means.
+ */
+const TOOL_NOTES = [
+  'Tool use: Bash commands are checked one by one against an allow list.',
+  'Run exactly one simple command per Bash call: no &&, ;, |, redirects or subshells.',
+  'If a command is denied, only that command is not allowed; Bash still works for the commands you were told to use (crew ..., and the git or project commands your task names).',
+  'Use your file tools (Read, Write, Edit, Glob, Grep) instead of cat, echo, printf or xxd.',
+  'A denial is never a reason to skip crew done, crew review, crew ask or crew phase done: run that command on its own.',
+].join(' ');
+
 /** D62: all process prompts use this builder, including resumes and fresh-process fallbacks. */
 export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Promise<string> {
   const { task, agent } = options;
@@ -36,6 +48,7 @@ export async function buildPrompt(db: CrewDatabase, options: PromptOptions): Pro
     config.roles?.[role?.name ?? '']?.defaultPrompt || role?.defaultPrompt || '',
     agent.systemPrompt,
     agent.personality ? `Persona: ${agent.personality}` : '',
+    TOOL_NOTES,
   ].filter(Boolean);
   const taskContext = [
     `Task: ${task.title}`,

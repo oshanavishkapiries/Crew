@@ -23,14 +23,14 @@ async function run(id: string) {
 
 it('trims overflowing entries by relevance then age and keeps the complete prompt within the configured budget', async () => {
   h = await createPipelineHarness();
-  h.db.db.update(schema.workspaces).set({ config: { memoryBudgetTokens: 300 } }).run();
+  h.db.db.update(schema.workspaces).set({ config: { memoryBudgetTokens: 450 } }).run();
   await h.createTask({ id: 'budget', title: 'Database migration', description: 'Database migration' });
   memory('irrelevant-new', 'project', 'Gardening '.repeat(45), { createdAt: new Date(400000) });
   memory('relevant-oldest', 'project', 'Database migration '.repeat(25), { createdAt: new Date(100000) });
   memory('relevant-old', 'project', 'Database migration '.repeat(25), { createdAt: new Date(200000) });
   memory('relevant-new', 'project', 'Database migration '.repeat(25), { createdAt: new Date(300000) });
   const prompt = await run('budget');
-  expect(prompt.length / 4).toBeLessThanOrEqual(300);
+  expect(prompt.length / 4).toBeLessThanOrEqual(450);
   expect(prompt).toContain('relevant-new'); expect(prompt).toContain('relevant-old\n');
   expect(prompt).not.toContain('relevant-oldest'); expect(prompt).not.toContain('irrelevant-new');
 });
@@ -43,7 +43,7 @@ it('never drops persona, role, task, acceptance criteria or current feedback eve
   h.db.db.insert(schema.messages).values({ id: 'current', taskId: 'protected', type: 'feedback', body: 'CURRENT FEEDBACK '.repeat(40), createdAt: new Date() }).run();
   memory('optional', 'project', 'Optional memory');
   const prompt = await run('protected');
-  for (const text of ['Careful persona', 'Always explain tradeoffs.', 'You are a backend test agent.', 'Task: Protected task', 'Full description', 'All criteria survive', 'CURRENT FEEDBACK '.repeat(40)]) expect(prompt).toContain(text);
+  for (const text of ['Careful persona', 'Always explain tradeoffs.', 'You are a backend test agent.', 'Task: Protected task', 'Full description', 'All criteria survive', 'CURRENT FEEDBACK '.repeat(40), 'Tool use: Bash commands are checked one by one', 'A denial is never a reason to skip crew done']) expect(prompt).toContain(text);
   expect(prompt).not.toContain('Optional memory');
 });
 

@@ -119,7 +119,6 @@ console.log('contents verified');\n`);
       roles: {
         orchestrator: { defaultPrompt: brief },
         backend: { defaultPrompt: 'Implement only your requested tiny file. Call crew remember with a learning, run node verify.cjs, then crew done.' },
-        reviewer: { defaultPrompt: 'Read diff and acceptance criteria. If correct call crew review approve. Otherwise crew review changes --feedback with the issue. Never crew done. Keep Bash commands separate.' },
       },
     }, null, 2)};\n`);
     await git('add', '.'); await git('commit', '-m', 'Configure Crew smoke');
