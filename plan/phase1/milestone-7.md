@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented; final full-suite verification is pending. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
 
 ## 1. Goal
 
@@ -86,7 +86,9 @@ Harness first (PRD): Pull mode uses the fake adapter driven through the real CLI
 - Resolved for session 1: `scripts/record-codex-fixtures.ts` was run once as explicitly requested by the task prompt; see §9 and the report for real output and cost limitations.
 - Is 10 minutes the right stale window for slow human-driven Pull sessions? Default: yes, configurable.
 
-## 9. Implementation notes (session 1: bullets 0 and 1 only)
+## 9. Implementation notes
+
+### Session 1: bullets 0 and 1
 
 - Bullet 0: Codex adapter, minimum 0.163.0, explicit D88 sandbox mapping, stdin
   prompts, resume with exec-level sandbox/cwd options before the subcommand,
@@ -138,7 +140,7 @@ Final clean-build verification: `rm -r dist && npm test` passed **54 files /
 failures and targeted regression results are in the session report.
 
 Open questions about who runs the recorder are closed for session 1: it ran once
-as explicitly requested by the task prompt. Bullet 2–6: **not started**.
+as explicitly requested by the task prompt. At the end of session 1, bullets 2–6 were **not started**.
 
 ### Codex network default (D88 update, 2026-10-22)
 
@@ -159,8 +161,9 @@ returns retryIn when empty. Provisioning is serialized with spawn dispatch, incl
 worktree setup. Concurrent polls for one agent replay one run/assignment; they do
 not create two worktrees/runs. No token rotation, process or runtime timer for Pull.
 The same prompt/permission-context builder and main-checkout snapshot serve both modes.
-Initial targeted coverage: 11 Pull harness tests pass (21.48s); full clean suite pending.
-Bullet 3 completion/recovery coverage is in progress. Bullets 4–6 remain not started.
+Initial targeted coverage: 11 Pull harness tests passed (21.48s). Bullet 3 is also
+complete; the final clean suite passed 55 files / 378 tests (506.21s), including
+all 16 Pull cases. Bullets 4–6 remain not started.
 
 ### Session 2: completion (bullet 3)
 
@@ -188,8 +191,10 @@ terminal agent that launches real CLI children. No paid agents ran.
 Narrow windows/limits: serialization is in one Dispatcher/server (not cross-server
 coordination). Repeated polls with one token replay the same active run: they are
 one identity, not independent terminal leases. No extra persistent delivery cursor
-or background heartbeat is introduced. Idle waiting is capped at 85 seconds; existing worktree/setup/provisioning (including a pass ahead in the shared queue)
-may take longer than the idle wait. A disconnected client can retrieve that assignment on its next poll.
+or background heartbeat is introduced. Idle waiting is capped at 85 seconds; existing
+worktree/setup/provisioning (including a pass ahead in the shared queue) may take
+longer than the idle wait. A disconnected client can retrieve that assignment on
+its next poll.
 Pull connection means lastHeartbeatAt is recorded, not that Crew owns the terminal
 process. Permissions are advisory for that external process. Stop/cancel signals
 arrive on the next Crew call and cannot prevent subsequent terminal file edits;
@@ -211,4 +216,5 @@ pre-existing write. No general review transaction redesign was added here.
 First clean full suite: 54 files passed, one failed; 377 tests passed, one failed
 (513.71s). The only failure was the historical agent-commands expectation that join
 is unimplemented. It now asserts the implemented command rejects missing agent
-credentials instead. Production code was unchanged; a fresh clean full rerun follows.
+credentials instead. Production code was unchanged; the fresh clean full repeat passed **55 files /
+378 tests**, 506.21s. Exact output and all prior failures are in the session report.

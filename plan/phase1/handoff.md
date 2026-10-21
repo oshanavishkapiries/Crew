@@ -1,17 +1,28 @@
-# Milestone 7 session 2: bullets 2 and 3 implemented
+# Milestone 7 session 2: bullets 2 and 3 implemented and verified
 
-Branch feat/milestone-7-breadth. Pull join/next/heartbeat, own-agent token auth,
+Branch `feat/milestone-7-breadth`. Pull join/next/heartbeat, own-agent token auth,
 shared serialized provisioning/prompts and pid-less run lifecycle are implemented.
 Pull work passes existing verification/review/retry/merge; next carries feedback
-and Q&A. Stop/cancel notices and answer reminders reach the next CLI call; old run
-IDs cannot mutate a new assignment. Logs/status and the startup reaper handle
+and Q&A. Stop/cancel notices and answer reminders reach the next CLI call; active
+run IDs protect task submissions. Logs/status and the startup reaper handle
 pid-less runs. Pull Reviewer and Orchestrator phase paths use existing endpoints.
-Targeted Pull/review/phase suite: 43 tests passed (69.49s); final expanded Pull and
-full clean suite are pending. The first full run passed 377 tests and failed only
-the old join-is-unimplemented assertion; it now checks the missing-token error,
-without weakening the failure exit code or auth requirement. See milestone-7.md §9 for narrow windows and advisory
-terminal permissions. No dependencies, migrations, UI or paid-agent work. Stop
-after bullet 3; bullets 4–6 are not started.
+
+Final `rm -r dist && npm test`: **55 files / 378 tests passed**, **506.21s**, with
+typecheck and a fresh CLI build. Sixteen Pull harness cases include a fake terminal
+agent launching real CLI children, reviewed merge, failed gates/review changes,
+Q&A, concurrent polls/submissions, old-run rejection, stop/cancel and reaper behavior.
+The first full run passed 377 tests and failed only the obsolete join-is-unimplemented
+assertion; it now checks the implemented command's missing-agent-token error.
+Report: `reports/m7-bullet-2-3.md`, with exact output, failures and limitations.
+Commits: `3ac8121` (bullet 2), `c3e5b87` (bullet 3), `ef0f722` (late submission
+check), `1e28706` (legacy auth test). Final docs/report are committed separately.
+
+No dependencies, migrations, UI or paid agents. Stop after bullet 3; **bullets 4–6
+are not started**. Next is stale detection (4), not more breadth in this session.
+Milestone §9 records single-server serialization, shared-token replay, provisioning
+waits, advisory terminal permissions, repeated answer reminders and the existing
+review-result/transition interruption window. The unrelated whitespace-only edit
+in `src/server/scheduler/tickets.ts` is left out of these commits.
 
 # Handoff
 
@@ -314,8 +325,3 @@ The script will:
 
 - Milestones 1 to 3 are done and on `main`; both milestone 3 smoke runs are recorded above.
 - Milestone 4 (Merge): `plan/phase1/milestone-4.md` is approved and logged as D38–D46. Continue at tracer bullet 1 (happy path). D28 (the optional budget cap on the Claude Code adapter) is still open.
-
-Session 2 own-diff follow-up: Pull completion revalidates the run inside the
-Scheduler transaction; update rechecks after parsing. Notices include reviewer
-ownership and prefer active tasks. Duplicate real CLI done submissions produce
-one result; final full-suite result follows in the session report.

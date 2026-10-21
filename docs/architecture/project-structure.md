@@ -49,8 +49,8 @@ crew/
 │  │  ├─ project-config.ts # jiti loader, config validation/template and command prefix filtering (CLI startup only)
 │  │  ├─ api/             # REST + SSE endpoints, Host/token/cookie checks; sessions.ts keeps browser credentials in memory, static.ts serves package-relative dist/ui safely
 │  │  ├─ db/              # Drizzle schema and migrations (SQLite in ~/.crew, D12)
-│  │  ├─ scheduler/       # Task state machine/dependencies (index.ts), authorized ticket creation/quota/assignment (tickets.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
-│  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
+│  │  ├─ scheduler/       # Task state machine/dependencies (index.ts), authorized ticket creation/quota/assignment (tickets.ts), dispatcher with parallel capacity and serialized spawn/Pull provisioning (dispatcher.ts)
+│  │  ├─ runner/          # Child-process spawn/events/timeouts/kill/resume (D4, D5), shared prompt context and pid-less Pull run lifecycle
 │  │  ├─ worktree/        # Create, set up, transfer inactive conflict worktrees on human retry, clean up/gc; interrupt setup on stop/cancel
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
 │  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, protected checkout/ref transactions with recovery journals, cleanup, feedback, conflict sub-tasks and interruption/restart recovery (D38–D46)
