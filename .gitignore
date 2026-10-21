@@ -6,3 +6,6 @@ dist/
 crew.db*
 .env
 .env.*
+
+ui/out/
+ui/.next/

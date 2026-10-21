@@ -92,3 +92,90 @@ Proposed by Claude, awaiting approval:
 
 - Which theme/look does the user want first (tokens are easy to change later)? Default: shadcn "neutral" dark+light.
 - Should `crew start` open the browser automatically? Default: no, print the URL; `crew open` opens it.
+
+
+## 9. Proposed during implementation
+
+### Track B
+
+- Bullet 1 scaffold implemented on `feat/m6-ui`: static Next App Router package,
+  neutral light/dark/system CSS tokens in `ui/app/globals.css`, repository-owned
+  shadcn primitives, shell, login, board list, API client and reconnecting SSE.
+  Bullets 2–5 remain unimplemented; Inbox, Team and Memory are named placeholders.
+- **Pending Track A integration:** the shared base has no session or board-list
+  endpoints and does not serve static UI. `ui/lib/types.ts` copies the existing
+  phase/status and connected-event shapes from `src/server/api/app.ts`; the
+  actual board-list shape was read from Track A's sibling checkout and copied:
+  `{ boards: [{ id, workspaceId, currentPhase, createdAt,
+  workspace: { id, name, repoPath, defaultBranch }, stopped }] }`.
+  Confirm it against Track A's final merge; no response fields were guessed. No mock
+  data, browser secret header, mock endpoint or fixture mode ships in the app.
+- One selected board streams at a time on the list, with a Connect control to
+  switch; all boards refresh every 15 seconds. This avoids exhausting HTTP/1.1
+  browser connection slots when a project has six or more boards. Events during
+  a pending fetch coalesce into a follow-up fetch instead of cancelling it.
+  Keep one stream per open board when bullet 2 is implemented.
+- Login clears the fragment before sending the exchange. Strict Mode mounts share
+  the request; fresh fragment navigation starts a new exchange and aborts an old
+  session probe. Stream unmount cancels retries and session probes.
+- shadcn 4.22.1 was initialized with Radix Nova, neutral, CSS variables and lucide.
+  Its current `form` registry entry is replaced by `field`; the installed Form
+  pieces are Field/FieldGroup/FieldLabel/FieldDescription/FieldError plus Label.
+  Tokens are in `app/globals.css` (the task prompt overrides §4.2's older
+  `ui/styles/theme` location). System fonts keep builds independent of Google Fonts.
+- Root `build:ui` installs the separate lockfile with dev tools, checks types,
+  lints, exports and copies to `dist/ui`; `prepack` builds the CLI first (its
+  clean step removes `dist`) and then the UI. `npm test` stays independent of UI.
+  Next rewrites exist only during development, controlled by `CREW_SERVER_URL`
+  (default 127.0.0.1:4000, verified in the CLI).
+
+#### Exact dependency versions and reasons (for Track A's tech-stack doc)
+
+| Package | Version |
+| --- | --- |
+| `class-variance-authority` | 0.7.1 |
+| `clsx` | 2.1.1 |
+| `cn` | 0.5.0 |
+| `lucide-react` | 1.61.0 |
+| `next` | 16.4.2 |
+| `next-themes` | 0.4.6 |
+| `radix-ui` | 1.8.1 |
+| `react` | 19.3.1 |
+| `react-dom` | 19.3.1 |
+| `sonner` | 2.0.8 |
+| `tailwind-merge` | 3.7.0 |
+| `tw-animate-css` | 1.4.0 |
+| `@tailwindcss/postcss` | 4.3.3 |
+| `@types/node` | 26.6.5 |
+| `@types/react` | 19.3.0 |
+| `@types/react-dom` | 19.3.0 |
+| `eslint` | 9.39.5 |
+| `eslint-config-next` | 16.4.2 |
+| `shadcn` | 4.22.1 |
+| `tailwindcss` | 4.3.3 |
+| `typescript` | 6.0.3 |
+
+Reasons: Next/React/React DOM implement D80's static App Router shell; TypeScript
+and its Node/React types enforce strict checks. Tailwind and its PostCSS plugin
+compile token-based styles. shadcn provides the checked-in Radix components and
+shared Tailwind rules; radix-ui supplies accessible interaction primitives;
+lucide-react supplies icons. cn, clsx, tailwind-merge and class-variance-authority
+are shadcn's class/variant utilities; tw-animate-css supplies primitive animations.
+next-themes implements system/light/dark selection and Sonner supplies toasts.
+ESLint and the matching Next config check React and Next conventions (ESLint 9
+avoids the peer conflicts seen with 10 in this dependency set). All direct
+versions are exact and `ui/package-lock.json` pins the full graph.
+
+#### Doc handoff for Track A
+
+- `project-structure.md`: `ui/` now contains app routes, feature components,
+  `components/ui` primitives, lib clients/types, focused Node checks and its own
+  package/config/lockfile; `scripts/build-ui.mjs` builds and copies static assets.
+- `project-techstack.md`: replace the unpinned milestone-6 placeholder using the
+  exact versions above. The UI uses no runtime Next server or remote fonts.
+- `START_HERE.md`, `handoff.md` (and README status/table if necessary): record
+  bullet 1 implemented with Track A session/list/static integration still pending;
+  Board/task/inbox/team/memory screens and the full user smoke remain future work.
+- `docs/commands.md`: no CLI declarations changed; no regeneration needed here.
+- PRD: no edits; these are implementation notes/proposals for review, not newly
+  approved decisions. Track B intentionally leaves Track A-owned docs unchanged.
