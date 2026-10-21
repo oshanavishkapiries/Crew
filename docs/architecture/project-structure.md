@@ -132,3 +132,9 @@ run selection and summary live in `ui/components/task/run-logs.tsx`; `log-viewer
 loads that run's bounded history and streams only when it is active.
 The shared SSE hook supplies task/type invalidation hints to `ui/lib/board-data.ts`
 so pending-ticket edits refresh dependency arrows even within one timestamp second.
+
+Milestone 7 bullet 0 adds `src/adapters/codex.ts` (headless sandbox mapping,
+run-local chunked JSONL parser and resume), `test/adapters/codex.test.ts`, and
+`test/fixtures/codex/` with real edit/resume/read-only output and explicitly
+synthetic rate-limit errors. `scripts/record-codex-fixtures.ts` is a manual paid
+recorder (three tiny turns; never invoked by tests).

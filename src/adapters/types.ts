@@ -34,6 +34,8 @@ export interface AgentAdapter {
     settingsPath?: string;
     stopHook?: boolean;
   }): { command: string; args: string[]; env: Record<string, string> };
+  /** Optional run-local parser for stateful JSONL adapters. */
+  createOutputParser?(): (chunk: string) => AgentEvent[];
   parseOutput(chunk: string): AgentEvent[];
   isRateLimit(event: AgentEvent): boolean;
   buildResume?(opts: {

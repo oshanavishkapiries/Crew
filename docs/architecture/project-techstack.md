@@ -37,7 +37,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Tool | Headless command | Session resume | Status |
 | --- | --- | --- | --- |
 | Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestones 2 and 3: runner, resume, permissions, rate-limits, read-only review, stop hook; milestone 4 adds scoped conflict git permissions and noninteractive rebase editor) |
-| Codex | `codex exec --json` | `codex exec resume <id>` | Launch (milestone 7) |
+| Codex | `codex exec --json` | `codex exec resume <id>` | Implemented adapter (milestone 7 bullet 0), minimum 0.163.0 |
 | Antigravity | Unknown | — | Pull mode only (D17) |
 | Fake | Scripted `crew` calls and git argument arrays | Supported | Tests and demos, including multi-commit history and real rebase conflict resolution |
 
@@ -67,3 +67,18 @@ The manual milestone 5 smoke (`npm run smoke:m5`) uses real CLI init/start and t
 Milestone 6 bullet 0 uses Node crypto for random browser login/session credentials (hashes retained in server memory only), Hono cookie and MIME helpers, and Node realpath checks for `dist/ui`. Human header-secret authentication remains available; cookie mutations require `X-Crew-Board: 1`. `crew open` uses execa argument arrays to run macOS `open`, Linux/WSL `xdg-open`, or the executable named by `BROWSER`; if unavailable it prints paste-the-URL guidance. No new dependency or runtime version is required. The server build and test suite do not require a UI export; Track B owns `build:ui` and `prepack`.
 
 The Board package `ui/` pins every direct dependency exactly (Next 16.4.2, React and React DOM 19.3.1, Tailwind and `@tailwindcss/postcss` 4.3.3, shadcn 4.22.1, radix-ui 1.8.1, lucide-react 1.61.0, sonner 2.0.8, next-themes 0.4.6, class-variance-authority 0.7.1, clsx 2.1.1, tailwind-merge 3.7.0, tw-animate-css 1.4.0, ESLint 9.39.5 with eslint-config-next 16.4.2, TypeScript 6.0.3) and commits `ui/package-lock.json`. The full reasons are in `plan/phase1/milestone-6.md` §9 (Track B). `npm run build:ui` builds it into `dist/ui`; `npm test` does not.
+
+Codex 0.163.0 uses `exec --json -s <sandbox> -C <worktree>` with stdin prompts;
+resume options precede `resume --json <thread-id> -`. D88 maps read-only to
+`read-only`, standard/orchestrator to `workspace-write`, and only explicit full
+to `danger-full-access`. Workspace network follows `allowNetwork` (default false).
+Read-only has no network and full has unrestricted network: Codex cannot enforce
+a network restriction in full mode. User config and execpolicy rules are ignored
+so they cannot broaden these selected policies. `allowCommands`/`denyCommands`
+are advisory prompt rules on Codex, not executable command filters; full also has
+no OS filesystem containment. There is no Claude Stop hook.
+
+Real fixture recording on 2026-10-21 used Codex 0.163.0. The CLI reports token
+usage but no USD cost; no billing estimate is claimed. The read-only response
+reports denial and left no file, but contains no command event, so it does not
+prove an attempted syscall was denied. Rate-limit fixtures remain synthetic.

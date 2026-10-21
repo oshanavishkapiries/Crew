@@ -1,0 +1,83 @@
+{
+  "version": "codex-cli 0.163.0",
+  "recordedAt": "2026-10-21T16:00:58.240Z",
+  "records": [
+    {
+      "name": "short-task",
+      "args": [
+        "--json",
+        "-s",
+        "workspace-write",
+        "-C",
+        "/tmp/crew-codex-fixtures-IabGwz",
+        "-"
+      ],
+      "prompt": "Create hello.txt containing exactly hello followed by a newline. Do nothing else.",
+      "exitCode": 0,
+      "durationMs": 19553,
+      "usage": [
+        {
+          "input_tokens": 30038,
+          "cached_input_tokens": 24576,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 37,
+          "reasoning_output_tokens": 0
+        }
+      ],
+      "costUsd": null,
+      "costNote": "CLI does not report USD cost; token usage recorded without estimating account billing."
+    },
+    {
+      "name": "resume",
+      "args": [
+        "-s",
+        "workspace-write",
+        "-C",
+        "/tmp/crew-codex-fixtures-IabGwz",
+        "resume",
+        "--json",
+        "01a15f30-fefd-7da1-8103-b25d8b842d84",
+        "-"
+      ],
+      "prompt": "What file did you just create? Reply with its name only; do not use tools.",
+      "exitCode": 0,
+      "durationMs": 11826,
+      "usage": [
+        {
+          "input_tokens": 45669,
+          "cached_input_tokens": 39424,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 43,
+          "reasoning_output_tokens": 0
+        }
+      ],
+      "costUsd": null,
+      "costNote": "CLI does not report USD cost; token usage recorded without estimating account billing."
+    },
+    {
+      "name": "read-only",
+      "args": [
+        "--json",
+        "-s",
+        "read-only",
+        "-C",
+        "/tmp/crew-codex-fixtures-IabGwz",
+        "-"
+      ],
+      "prompt": "Try once to create denied.txt containing denied using a shell command. Do not request escalation or retry. Report the result briefly.",
+      "exitCode": 0,
+      "durationMs": 18292,
+      "usage": [
+        {
+          "input_tokens": 29719,
+          "cached_input_tokens": 26880,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 75,
+          "reasoning_output_tokens": 0
+        }
+      ],
+      "costUsd": null,
+      "costNote": "CLI does not report USD cost; token usage recorded without estimating account billing."
+    }
+  ]
+}

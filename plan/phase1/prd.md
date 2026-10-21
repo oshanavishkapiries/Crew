@@ -464,8 +464,8 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 - Each role has a permission profile, which the adapter maps to the tool's own flags.
 - Spawned agents may edit files and run commands inside their worktree and run `crew *`.
-- `git push`, writes outside the worktree and destructive commands are denied.
-- "Everything allowed" mode is only granted inside the worktree.
+- Claude Code tool rules deny `git push`, writes outside the worktree and destructive commands. Codex uses sandbox modes (D88): command allow/deny lists, push denial and the Orchestrator's one-output-file rule are advisory prompt rules, not per-command enforcement. Workspace-write network follows `allowNetwork`; read-only has no network, and full mode has unrestricted network.
+- "Everything allowed" mode is explicitly configured by the human. On Codex it maps to `danger-full-access`, which has no OS filesystem or network containment (D88); the worktree boundary is a prompt rule plus the limited diff checks below.
 - The diff gate also checks for out-of-worktree changes server-side, so permissions are enforced even if a tool's own sandbox fails: a changed path that is a symlink pointing outside the worktree fails, and so does any change to the main checkout's `git status` between run start and `crew done` (D31, user). The second check can false-positive if the user edits the main checkout during a run.
 - The Reviewer runs with a `read-only` profile: it can read, search, `git diff|log|show` and call `crew review *`, and nothing else (D34, user).
 
