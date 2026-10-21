@@ -312,3 +312,8 @@ The script will:
 
 - Milestones 1 to 3 are done and on `main`; both milestone 3 smoke runs are recorded above.
 - Milestone 4 (Merge): `plan/phase1/milestone-4.md` is approved and logged as D38–D46. Continue at tracer bullet 1 (happy path). D28 (the optional budget cap on the Claude Code adapter) is still open.
+
+Session 2 own-diff follow-up: Pull completion revalidates the run inside the
+Scheduler transaction; update rechecks after parsing. Notices include reviewer
+ownership and prefer active tasks. Duplicate real CLI done submissions produce
+one result; final full-suite result follows in the session report.

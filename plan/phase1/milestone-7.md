@@ -196,3 +196,9 @@ process. Permissions are advisory for that external process. Stop/cancel signals
 arrive on the next Crew call and cannot prevent subsequent terminal file edits;
 old task mutations are refused. No stale scanner/requeue, Antigravity/connect UI,
 status UI, smoke script or paid smoke is implemented: bullets 4–6 **not started**.
+
+The own-diff read added a final transaction-time Pull run check for done/ask/review
+and a post-body check for update, so late or duplicate calls cannot submit for a
+retired run. Notification selection prioritizes active owned/reviewer tasks before
+older terminal history. A real CLI concurrency test asserts one done result and
+one verifying transition outcome.

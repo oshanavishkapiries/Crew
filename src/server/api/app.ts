@@ -115,7 +115,8 @@ export function createApp(ctx: AppContext): Hono {
     const agent = token && ctx.db.db.select().from(schema.agents).where(eq(schema.agents.tokenHash, hashToken(token))).get();
     if (agent && agent.mode === 'pull') {
       ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date() }).where(eq(schema.agents.id, agent.id)).run();
-      const task = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, agent.id)).orderBy(desc(schema.tasks.updatedAt), desc(sql`${schema.tasks}.rowid`)).get();
+      const owned = ctx.db.db.select().from(schema.tasks).where(sql`${schema.tasks.assigneeAgentId} = ${agent.id} OR ${schema.tasks.reviewerAgentId} = ${agent.id}`).orderBy(desc(schema.tasks.updatedAt), desc(sql`${schema.tasks}.rowid`)).all();
+      const task = owned.find(task => ['doing', 'blocked', 'review'].includes(task.status)) ?? owned[0];
       const answer = task && ctx.db.db.select().from(schema.messages).where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'answer'))).orderBy(desc(sql`${schema.messages}.rowid`)).get();
       instruction = ctx.dispatcher?.isStopped() || agent.status === 'stopped' ? 'Crew is stopped. Stop working; wait for human crew resume, then call crew next.'
         : task?.status === 'cancelled' ? `Task ${task.id} is cancelled. Stop working on it. Clear context and run crew join again.`
@@ -491,6 +492,7 @@ export function createApp(ctx: AppContext): Hono {
     const { agent, task } = requireAssignedAgent(c, c.req.param('id'));
     const body = await c.req.json().catch(() => ({}));
     const message = body.message || 'Progress update';
+    if (agent.mode === 'pull') requireAssignedAgent(c, task.id);
 
     ctx.db.db
       .insert(schema.messages)
@@ -528,7 +530,7 @@ export function createApp(ctx: AppContext): Hono {
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'verifying', {
       reason: result,
       alongside: () => {
-        if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
+        if (agent.mode === 'pull') { requireAssignedAgent(c, task.id); ctx.runner?.endPullRun(task.id, 'done'); }
         ctx.db.db
           .insert(schema.messages)
           .values({
@@ -622,7 +624,7 @@ export function createApp(ctx: AppContext): Hono {
       const updatedTask = await ctx.scheduler.transitionTask(task.id, 'merge-queue', {
         reason: body.feedback || 'Review approved',
         alongside: () => {
-          if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
+          if (agent.mode === 'pull') { requireReviewerAgent(c, task.id); ctx.runner?.endPullRun(task.id, 'done'); }
           ctx.db.db
             .update(schema.tasks)
             .set({ reviewerAgentId: null })
@@ -665,7 +667,7 @@ export function createApp(ctx: AppContext): Hono {
       const updatedTask = await ctx.scheduler.transitionTask(task.id, 'doing', {
         reason: feedback,
         alongside: () => {
-          if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
+          if (agent.mode === 'pull') { requireReviewerAgent(c, task.id); ctx.runner?.endPullRun(task.id, 'done'); }
           ctx.db.db
             .insert(schema.messages)
             .values({
@@ -712,7 +714,7 @@ export function createApp(ctx: AppContext): Hono {
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'blocked', {
       reason: question,
       alongside: () => {
-        if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'asked');
+        if (agent.mode === 'pull') { requireAssignedAgent(c, task.id); ctx.runner?.endPullRun(task.id, 'asked'); }
         ctx.db.db
           .insert(schema.messages)
           .values({

@@ -335,3 +335,15 @@ it('concurrent Pull agents cannot claim the same unassigned task or cross worksp
   expect(h.getTask('foreign-work')?.status).toBe('ready');
   expect(h.getTask('unassigned')?.status).toBe('doing');
 });
+
+it('concurrent done calls submit one Pull result and cannot reopen or duplicate verification', async () => {
+  await pull();
+  await h.createTask({ id: 'once', title: 'Complete once', description: '' });
+  const work = await next();
+  const results = await Promise.all([1, 2].map(() => h.runCrew(['done'], { ...env(), CREW_TASK_ID: 'once', CREW_RUN_ID: work.runId })));
+  expect(results.filter(result => result.exitCode === 0)).toHaveLength(1);
+  expect(results.filter(result => result.exitCode === 1)).toHaveLength(1);
+  expect(h.getTask('once')?.status).toBe('verifying');
+  expect(h.getMessages('once').filter(message => message.type === 'result')).toHaveLength(1);
+  expect(runs()).toMatchObject([{ exitReason: 'done', pid: null }]);
+});
