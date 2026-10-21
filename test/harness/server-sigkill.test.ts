@@ -9,7 +9,7 @@ import * as schema from '../../src/server/db/schema.js';
 
 // This is deliberately an OS-process experiment: the real built CLI/server and
 // Claude adapter, with only the paid claude executable replaced by a local stub.
-it('records a surviving orphan and duplicate after server SIGKILL, then recovers with explicit process cleanup and human commands', async () => {
+it('reaps the surviving agent after server SIGKILL so a new start runs exactly one Orchestrator (D77)', async () => {
   const repo = fs.mkdtempSync('/tmp/crew-kill-repo-');
   const home = fs.mkdtempSync('/tmp/crew-kill-home-');
   const bin = path.join(home, 'stub-bin'); fs.mkdirSync(bin);
@@ -64,15 +64,17 @@ setInterval(() => {}, 60000);
     const secondReady = changed(() => fs.readdirSync(home).filter(f => f.startsWith('agent-')).length === 2);
     await start(); await secondReady;
     const newPid = Number(fs.readdirSync(home).find(f => f.startsWith('agent-') && f !== `agent-${oldPid}`)!.slice(6)); agents.push(newPid);
-    expect(alive(oldPid)).toBe(true); expect(alive(newPid)).toBe(true);
+    // The startup reaper killed the old agent group before the Dispatcher started a replacement.
+    await expect.poll(() => alive(oldPid)).toBe(false);
+    expect(alive(newPid)).toBe(true);
     expect(db.db.select().from(schema.tasks).all()).toHaveLength(1);
+    expect(db.db.select().from(schema.tasks).get()).toMatchObject({ status: 'doing', retries: 0 });
     expect(db.db.select().from(schema.boards).get()?.currentPhase).toBe('grill');
-    expect(db.db.select().from(schema.runs).all().filter(r => r.taskId === task.id && !r.endedAt)).toHaveLength(2);
-    // stop-all can only kill the new server's live run. Explicitly terminate the
-    // recorded old process group too; Crew has no durable orphan ownership check.
-    await human('stop-all'); expect(alive(newPid)).toBe(false); expect(alive(oldPid)).toBe(true);
-    process.kill(-oldPid, 'SIGTERM');
-    // Readiness on the replacement proves the explicit cleanup + resume path.
+    const runs = db.db.select().from(schema.runs).all().filter(r => r.taskId === task.id);
+    expect(runs.filter(r => !r.endedAt)).toHaveLength(1);
+    expect(runs.find(r => r.pid === oldPid)).toMatchObject({ exitReason: 'stopped' });
+    await human('stop-all'); await expect.poll(() => alive(newPid)).toBe(false);
+    // The replacement run is stopped; resume lets a recovered run produce its output.
     fs.writeFileSync(path.join(bin, 'claude'), `#!/usr/bin/env node
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
