@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–5 implemented and verified (257 tests across 43 files). Bullets 6–9 and the manual smoke remain. Milestone 5 is not done.
+**Status:** milestone 5 bullets 0–8 implemented; bullet 9 manual smoke script written and typechecked, not run. Hard server crash leaves an orphan/duplicate Orchestrator (milestone-5.md §9). The milestone is not done.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -21,7 +21,7 @@ crew/
 ├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
 ├─ drizzle.config.ts      # drizzle-kit config for generating migrations
 ├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
-├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts and smoke-milestone-4.ts (`npm run smoke:m3` / `smoke:m4`, manual)
+├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts, smoke-milestone-4.ts and smoke-milestone-5.ts (`npm run smoke:m3` / `smoke:m4` / `smoke:m5`, manual)
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -35,7 +35,7 @@ crew/
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
-│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–5 implemented; remaining bullets pending)
+│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–8 implemented; smoke script written, manual run pending)
 │     ├─ agent-prompts/   # Saved session instructions for implementing agents
 │     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
@@ -110,3 +110,5 @@ Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI 
 `test/harness/cli-status.test.ts` drives real CLI phase/gate/recovery output, dispatch ticket counts, combined task filters and help. The status API supplies per-board work-ticket counts and registered role IDs/names; task filtering and validation stay in `src/cli/commands/tasks.ts`, using that metadata and the existing task list.
 
 `test/harness/interruptions.test.ts` covers grill/spec/tickets live-run and pending-gate server restarts with fresh runtime components and a new database connection, stop/resume, concurrent cancel/retry replacement, escalation recovery and all phase-endpoint auth checks. Kill cases assert both agent and child PIDs are gone; restart coverage uses graceful server close, not a hard process crash.
+
+`test/harness/server-sigkill.test.ts` runs the built CLI/server as a real child, replaces only the paid Claude executable with a stub, SIGKILLs the server and records orphan/duplicate behavior after real CLI startup. It proves explicit old-process cleanup plus human stop/resume/approval recovery; no durable orphan fix is claimed. Dispatch/integrate and interruption tests cover the full board, promotion boundaries, auth matrix and worker process termination. `scripts/smoke-milestone-5.ts` uses real CLI init/start, a capped real-Claude launcher, scripted human commands and read-only database/log evidence; it is typechecked but never executed by the suite.

@@ -1,3 +1,19 @@
+# Milestone 5 final implementation handoff
+
+Status: bullets 0–8 implemented; bullet 9 smoke script written and typechecked, **not run**. Milestone 5 and the private preview are not marked done. No new dependency, migration, PRD Decision Log entry or D28 decision in the final session. Final verification, commits and the full base diff are in `reports/m5-final.md`.
+
+The merged tracks finish dispatch/integrate and CLI polish. Boards with all work merged/cancelled enter integrate once; escalated work remains actionable through retry or cancel. Approved integrate text is a sourced `Project summary` snapshot; Orchestrator access to other roles' learnings and agent promotion require a live integrate context. Status exposes phases, gates, recovery hints and work-ticket counts; task filters combine with AND. The reviewer narrowed Crew-home Read denial to sensitive state/logs, retaining readable worktrees, with a real 2.1.305 fixture; that accepted correction was not redone.
+
+Interruption inventory before this session: `dispatch-integrate.test.ts` already covered the complete three-ticket journey, zero/cancelled boards, last-ticket escalation via retry/cancel, merge/cancel race, dispatch reconciliation and final-gate restart, edited/concurrent final approval, rejected/ungated integration, crash/hang/stop-all and staff repair. `interruptions.test.ts` already covered live/gate graceful restart, stop/resume, cancel/retry, escalation/retry and worker/missing-token auth for grill/spec/tickets. Added only integrate cancel/replacement with dead PIDs; integrate auth plus foreign-workspace callers; ended/different-board promotion rejection; late ticket creation in dispatch; stop-all with two running workers then one integrate; and the real built-server SIGKILL experiment.
+
+Hard-crash finding: the server's SIGKILL leaves the detached agent alive, and a new real `crew start` launches a duplicate for the same grill task. `crew stop-all` in the new server cannot kill the old run. The test demonstrates stopping new runs, explicitly terminating the verified old process group, resuming, receiving a recovered draft, and approving into spec. No durable process-ownership infrastructure was added; this requires a user decision in §9. The experiment uses the real CLI/server and Claude adapter with only the paid executable stubbed, so actual Claude behavior remains unverified. Graceful restart is separately covered.
+
+`npm run smoke:m5` costs real money. It initializes an isolated `/tmp` repo/home through the real CLI, starts the real CLI server, uses real Claude Orchestrator/two workers/Reviewer, answers grill, rejects one tickets gate with a note and approves all gates. It asserts phase order, three reviewed merges and commits, sourced spec/integrate/promotion memory, no human-only Orchestrator command, no worktree Read denial and no agent process group left. Run cap: 11 expected + 1 rejection + 3 author retries + 3 extra review rounds + 6 Reviewer retries + 5 phase retries + 1 extra grill resume = 30; $0.50 per run, expected $1–$6, at most $15 in caps, 20-minute deadline. First-run risks: compound Bash permission denials, forbidden human commands, output budget and agent compliance. Artifacts are retained for diagnosis. The script was not executed.
+
+Next: user reviews deduplicated **unapproved** §9 proposals, chooses hard-crash handling, runs the real smoke, and decides preview packaging. Repeated gate rejection limits and D28 remain open. Architecture/onboarding docs reflect the merged state; README has no status/doc table to update. Commands declarations did not change in this final session; generated reference was checked by the suite. No commit or push to main.
+
+---
+
 # Milestone 5 bullet 5 handoff
 
 Status: bullets 0–5 implemented and verified (257 tests across 43 files). Stop after bullet 5 as requested. Bullets 6–9 are not started. Milestone 5 is not done; no milestone 5 smoke script was written or run.
