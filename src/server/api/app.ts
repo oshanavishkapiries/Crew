@@ -138,16 +138,16 @@ export function createApp(ctx: AppContext): Hono {
     const role = ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get()!;
     const workspace = ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId)).get()!;
     const configuredRole = (workspace.config?.roles as Record<string, { defaultPrompt?: string; permissionProfile?: unknown }> | undefined)?.[role.name];
-    const active = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, agent.id)).all().find(task => ['doing', 'blocked'].includes(task.status));
+    const active = ctx.db.db.select().from(schema.tasks).all().find(task => (task.assigneeAgentId === agent.id && ['doing', 'blocked'].includes(task.status)) || (task.reviewerAgentId === agent.id && task.status === 'review'));
     const stopped = ctx.dispatcher?.isStopped() || agent.status === 'stopped';
     // Connected is represented by a recorded heartbeat; scheduling status stays idle/busy/stopped.
-    ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date(), ...(!stopped ? { status: active ? 'busy' : 'idle' } : {}) }).where(eq(schema.agents.id, agent.id)).run();
+    ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date(), ...(!stopped && agent.status !== 'rate-limited' ? { status: active ? 'busy' : 'idle' } : {}) }).where(eq(schema.agents.id, agent.id)).run();
     const memory = ctx.db.db.select().from(schema.memory).where(and(eq(schema.memory.workspaceId, workspace.id), eq(schema.memory.layer, 'project'))).all();
     return c.json({ agentId: agent.id, name: agent.name, connected: true, role: role.name,
       persona: agent.personality, systemPrompt: agent.systemPrompt,
       rules: configuredRole?.defaultPrompt || role.defaultPrompt, permissions: configuredRole?.permissionProfile || role.permissionProfile,
       workDir: active?.worktreePath || workspace.repoPath, memory,
-      instruction: stopped ? 'Crew is stopped. Stop working and wait for human crew resume.' : 'Keep CREW_AGENT_TOKEN and CREW_SERVER_URL in your environment. Run crew next --wait 90. Work only in the returned workDir; set CREW_TASK_ID and CREW_RUN_ID from the response. Use crew update, ask, remember and done. After done clear context and run crew join again. Never print your token.' });
+      instruction: stopped ? 'Crew is stopped. Stop working and wait for human crew resume.' : 'Keep CREW_AGENT_TOKEN and CREW_SERVER_URL in your environment. Run crew next --wait 90. Work only in the returned workDir. Honor the returned permissions; Crew does not sandbox your terminal. Never git push, change remotes, run destructive commands, or read Crew credentials/state files. Set CREW_TASK_ID and CREW_RUN_ID from the response. Use crew update, ask, remember and done. After done clear context and run crew join again. Never print your token.' });
   });
 
   app.post('/api/agents/:id/heartbeat', c => {
@@ -261,8 +261,8 @@ export function createApp(ctx: AppContext): Hono {
     if (task.assigneeAgentId !== caller.agent.id) {
       throw forbidden(`task ${taskId} is not assigned to this agent`);
     }
-    if (caller.agent.mode === 'pull' && (task.status !== 'doing' || ctx.dispatcher?.isStopped() || caller.agent.status === 'stopped' || !ctx.runner?.getPullRuns().some(run => run.taskId === task.id && run.agentId === caller.agent.id))) {
-      throw new HTTPException(409, { res: Response.json({ error: `Task ${task.id} is ${task.status} or its Pull run is inactive. Stop working and call crew next for current instructions.` }, { status: 409 }) });
+    if (caller.agent.mode === 'pull' && (task.status !== 'doing' || ctx.dispatcher?.isStopped() || caller.agent.status === 'stopped' || !ctx.runner?.getPullRuns().some(run => run.taskId === task.id && run.agentId === caller.agent.id && run.id === c.req.header('X-Crew-Run-Id')))) {
+      throw new HTTPException(409, { res: Response.json({ error: `Task ${task.id} is ${task.status} or its Pull run is inactive. Stop working and call crew next for current instructions; set CREW_RUN_ID to the returned runId.` }, { status: 409 }) });
     }
     return { agent: caller.agent, task };
   };
@@ -275,6 +275,7 @@ export function createApp(ctx: AppContext): Hono {
     if (!task.reviewerAgentId || task.reviewerAgentId !== caller.agent.id) {
       throw forbidden(`agent is not the designated reviewer for task ${taskId}`);
     }
+    if (caller.agent.mode === 'pull' && (ctx.dispatcher?.isStopped() || !ctx.runner?.getPullRuns().some(run => run.taskId === task.id && run.agentId === caller.agent.id && run.kind === 'review' && run.id === c.req.header('X-Crew-Run-Id')))) throw forbidden('Pull review run is inactive; call crew next and set CREW_RUN_ID.');
     return { agent: caller.agent, task };
   };
 
@@ -288,8 +289,8 @@ export function createApp(ctx: AppContext): Hono {
     if (typeof body.taskId !== 'string') throw new TicketError('The Orchestrator must supply its current taskId.');
     const task = loadTask(body.taskId);
     if (task.assigneeAgentId !== caller.agent.id) throw forbidden('Orchestrator context is not assigned to this agent');
-    const run = ctx.runner?.getLiveRunByTaskId(task.id);
-    if (task.kind !== 'phase' || task.status !== 'doing' || !run || run.agentId !== caller.agent.id || run.exitReason || ctx.runner?.isCancelling(task.id) || ctx.dispatcher?.isStopped()) {
+    const run = ctx.runner?.getActiveTaskRun(task.id);
+    if (task.kind !== 'phase' || task.status !== 'doing' || !run || run.agentId !== caller.agent.id || (caller.agent.mode === 'pull' && run.id !== c.req.header('X-Crew-Run-Id')) || run.exitReason || ctx.runner?.isCancelling(task.id) || ctx.dispatcher?.isStopped()) {
       throw new TicketError('The Orchestrator phase run is no longer active; no ticket changes were made.', 409);
     }
     const board = tickets.board(task.boardId);
@@ -333,7 +334,7 @@ export function createApp(ctx: AppContext): Hono {
     const { agent, task } = requireAssignedAgent(c, taskId);
     const role = ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get();
     if (role?.name !== 'orchestrator' || task.kind !== 'phase') throw forbidden('only the assigned Orchestrator can complete a phase');
-    const run = ctx.runner?.getLiveRunByTaskId(taskId);
+    const run = ctx.runner?.getActiveTaskRun(taskId);
     if (!run || run.exitReason || task.status !== 'doing' || ctx.runner?.isCancelling(taskId) || ctx.dispatcher?.isStopped()) throw new WorkflowError('Phase run is no longer active.');
     return task;
   };
@@ -355,7 +356,7 @@ export function createApp(ctx: AppContext): Hono {
     if (layer && !['project', 'role', 'task'].includes(layer)) throw new MemoryError('Unknown memory layer.');
     // Integrate reviews workspace role learnings; ordinary runs retain role isolation.
     const integrating = caller.kind === 'agent' && ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, caller.agent.roleId)).get()?.name === 'orchestrator' && ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, caller.agent.id)).all().some(task => {
-      const live = ctx.runner?.getLiveRunByTaskId(task.id);
+      const live = ctx.runner?.getActiveTaskRun(task.id);
       const state = ctx.workflow?.snapshot(task.boardId);
       return task.kind === 'phase' && task.creationPhase === 'integrate' && task.status === 'doing' &&
         state?.board.workspaceId === workspaceId && state.board.currentPhase === 'integrate' &&
@@ -621,6 +622,7 @@ export function createApp(ctx: AppContext): Hono {
       const updatedTask = await ctx.scheduler.transitionTask(task.id, 'merge-queue', {
         reason: body.feedback || 'Review approved',
         alongside: () => {
+          if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
           ctx.db.db
             .update(schema.tasks)
             .set({ reviewerAgentId: null })
@@ -663,6 +665,7 @@ export function createApp(ctx: AppContext): Hono {
       const updatedTask = await ctx.scheduler.transitionTask(task.id, 'doing', {
         reason: feedback,
         alongside: () => {
+          if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
           ctx.db.db
             .insert(schema.messages)
             .values({

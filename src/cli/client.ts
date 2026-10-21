@@ -127,6 +127,7 @@ export async function postTaskAction<T>(command: string, action: string, body: u
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(process.env.CREW_RUN_ID ? { 'X-Crew-Run-Id': process.env.CREW_RUN_ID } : {}),
         [AGENT_TOKEN_HEADER]: token,
       },
       body: JSON.stringify(body),
@@ -152,10 +153,11 @@ export async function postWorkflowAction<T>(endpoint: string, body: Record<strin
   let res: Response;
   try {
     res = await fetch(`${url}${endpoint}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', [AGENT_TOKEN_HEADER]: token },
+      method: 'POST', headers: { 'Content-Type': 'application/json', [AGENT_TOKEN_HEADER]: token, ...(process.env.CREW_RUN_ID ? { 'X-Crew-Run-Id': process.env.CREW_RUN_ID } : {}) },
       body: JSON.stringify({ ...body, taskId: process.env.CREW_TASK_ID }),
     });
   } catch (error) { fail(`Failed to connect to Crew server at ${url}: ${(error as Error).message}`); }
+  printAgentInstruction(res);
   if (!res.ok) fail(`Request failed: ${res.status} ${await res.text()}`);
   return await res.json() as T;
 }

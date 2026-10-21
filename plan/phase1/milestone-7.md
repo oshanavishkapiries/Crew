@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullet 2 is implemented; bullet 3 completion coverage is in progress. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented; final full-suite verification is pending. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
 
 ## 1. Goal
 
@@ -161,3 +161,38 @@ not create two worktrees/runs. No token rotation, process or runtime timer for P
 The same prompt/permission-context builder and main-checkout snapshot serve both modes.
 Initial targeted coverage: 11 Pull harness tests pass (21.48s); full clean suite pending.
 Bullet 3 completion/recovery coverage is in progress. Bullets 4–6 remain not started.
+
+### Session 2: completion (bullet 3)
+
+Pull done closes its pid-less run before the verifying event and uses the existing
+Diff/command/Reviewer/merge queue path. A failed gate or review returns feedback
+in the next protected prompt and charges the existing retry policy. Done tells the
+agent to clear context, rejoin and poll. Ask closes the run as asked; human answer
+returns to doing without spawning/resuming a child. Next returns full Q&A; other
+authenticated calls receive a bounded answer reminder in X-Crew-Instruction.
+Stop/cancel notices use that header, including on error responses. Reminders may
+repeat. Updates append ordinary run-log events; status includes pid-less runs.
+Stop-all ends those runs as stopped, keeps the doing task/worktree and blocks task
+mutations until resume and a new next. Cancel ends them as cancelled, removes the
+worktree and rejects late task writes. Returned runId is required on Pull task,
+phase and review mutations (CREW_RUN_ID / X-Crew-Run-Id), refusing a prior run after
+stop/resume. Token authentication and task/reviewer ownership still apply.
+
+The shared review-context reader serves both spawn and Pull Reviewers. A selected
+Pull Reviewer is left pending until it polls; its verdict uses the existing review
+endpoint and retry/merge path. Pull Orchestrator phase completion uses the existing
+phase endpoint/gate and cleans its worktree after submission. No adapter is invoked
+for either kind of Pull run. Real CLI harness covers these paths, including a fake
+terminal agent that launches real CLI children. No paid agents ran.
+
+Narrow windows/limits: serialization is in one Dispatcher/server (not cross-server
+coordination). Repeated polls with one token replay the same active run: they are
+one identity, not independent terminal leases. No extra persistent delivery cursor
+or background heartbeat is introduced. Idle waiting is capped at 85 seconds; once
+a task is selected, existing worktree/setup/provisioning may take longer than the
+idle wait. A disconnected client can retrieve that assignment on its next poll.
+Pull connection means lastHeartbeatAt is recorded, not that Crew owns the terminal
+process. Permissions are advisory for that external process. Stop/cancel signals
+arrive on the next Crew call and cannot prevent subsequent terminal file edits;
+old task mutations are refused. No stale scanner/requeue, Antigravity/connect UI,
+status UI, smoke script or paid smoke is implemented: bullets 4–6 **not started**.

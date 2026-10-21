@@ -303,11 +303,11 @@ export class Dispatcher {
     if (!agent || agent.mode !== 'pull' || !agent.lastHeartbeatAt || ['stopped', 'rate-limited'].includes(agent.status)) return undefined;
     const tasks = this.db.db.select().from(schema.tasks).orderBy(asc(schema.tasks.createdAt), asc(sql`${schema.tasks}.rowid`)).all();
     // An outstanding assignment is replayed after a lost HTTP response; never assign a second task.
-    const owned = tasks.find(task => task.assigneeAgentId === agent.id && ['doing', 'blocked'].includes(task.status));
-    if (owned?.status === 'blocked') return { task: owned, blocked: true, instruction: 'Waiting for the human answer. Call crew next again.' };
+    const owned = tasks.find(task => (task.assigneeAgentId === agent.id && ['doing', 'blocked'].includes(task.status)) || (task.reviewerAgentId === agent.id && task.status === 'review'));
+    if (owned?.status === 'blocked') return { task: owned, blocked: true, retryIn: 5, instruction: 'Waiting for the human answer. Call crew next again.' };
     if (owned) {
       const live = this.runner.getPullRuns().find(run => run.agentId === agent.id && run.taskId === owned.id);
-      if (live) return { task: owned, runId: live.id, prompt: live.prompt!, workDir: owned.worktreePath! };
+      if (live) return this.runner.startPullRun(owned, agent);
     }
     const active = [...this.runner.getLiveRuns(), ...this.runner.getPullRuns()];
     const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId)).get();
@@ -320,6 +320,7 @@ export class Dispatcher {
     const task = owned ?? tasks.find(task => task.status === 'ready' && boards.some(board => board.id === task.boardId) &&
       (task.assigneeAgentId === agent.id || (!task.assigneeAgentId && (!task.roleId || task.roleId === agent.roleId))));
     if (!task || this.runner.isCancelling(task.id)) return undefined;
+    if (task.status === 'review') return this.runner.startPullRun(task, agent);
     // Reserve before awaiting setup so spawn dispatch cannot select this task.
     this.db.db.update(schema.tasks).set({ assigneeAgentId: agent.id }).where(eq(schema.tasks.id, task.id)).run();
     this.db.db.update(schema.agents).set({ status: 'busy' }).where(eq(schema.agents.id, agent.id)).run();

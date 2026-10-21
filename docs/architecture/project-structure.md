@@ -154,3 +154,15 @@ and reserves capacity for pid-less Pull runs. `test/harness/pull.test.ts` drives
 real CLI against the real database/server for context, long-poll, auth and activity.
 Pull lifecycle helpers in Runner record updates in ordinary run logs; the startup
 reaper leaves pid-less Pull rows alone. No stale scanner or UI changes are included.
+
+Milestone 7 bullet 3 uses existing verification, feedback/retry, review and merge
+paths for Pull work. `Runner.reviewContext` supplies the same diff/results to
+spawned and polling Reviewers. The Verifier leaves a Pull review pending for
+next instead of spawning; workflow phase guards also recognize pid-less runs.
+Task/phase/review CLI mutations send the returned runId in X-Crew-Run-Id, and
+Pull endpoints reject inactive/old run IDs. Activity responses carry bounded
+answer/stop/cancel notices in X-Crew-Instruction, printed by the CLI even on errors.
+Stop-all/cancel end Pull run rows without calling process kill. The Pull harness
+includes a fake terminal agent process driving real join/next/update/remember/done
+CLI children, reviewed merge, failed gates, Pull review changes/approval, phase
+completion, concurrent assignment, interruption and startup-reaper behavior.

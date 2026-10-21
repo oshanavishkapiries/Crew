@@ -430,7 +430,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/agents/join` | Pull-only token authentication; agentId, role, persona, rules, permissions, workDir and project memory; records connection/activity |
-| `GET /api/agents/:id/next-task?wait=90` | Own Pull agent only; wait capped at 85 seconds; task, runId, workDir and full shared prompt, or retryIn and call-again instructions |
+| `GET /api/agents/:id/next-task?wait=90` | Own Pull agent only; wait capped at 85 seconds; task, runId, workDir, effective permissions and full shared prompt, or retryIn and call-again instructions |
 | `POST /api/agents/:id/heartbeat` | Own Pull agent only; records lastHeartbeatAt, returns stopped state |
 | `POST /api/tasks` | Creates a task / ticket (with dependencies and criteria); Orchestrator or human only (D59, user) |
 | `POST /api/tasks/:id/report` | Progress |
@@ -451,6 +451,8 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | `GET /api/board/:id/events` | SSE, live UI updates |
 
 - Pull endpoints reject spawn tokens and human secrets/cookies. CLI join accepts --token or CREW_AGENT_TOKEN; subsequent calls require CREW_AGENT_TOKEN. No token is echoed or persisted. next resolves identity with join, returns task/run IDs for CREW_TASK_ID/CREW_RUN_ID, and instructs the agent to change to workDir.
+- Pull task/phase/review mutations send the returned runId in X-Crew-Run-Id (CLI: CREW_RUN_ID); an inactive/old run is rejected. Pull done ends its pid-less run, enters the existing verification pipeline and instructs context clearing and rejoin. Failed verification/review feedback is protected context in the next prompt. Pull ask ends its run and blocks the task; the saved answer is delivered on next, with a bounded reminder on subsequent agent calls through X-Crew-Instruction. Stop/cancel notices use that header too; CLI prints it on successful and failed calls. Repeated reminders are intentional; next supplies full Q&A.
+- Pull permissions are instructions for the developer's terminal agent; Crew does not configure or sandbox that external process.
 - The long-poll wait is always shorter than a typical agent Bash timeout (90 seconds default) and returns an explicit "no task, call again" response.
 - Every endpoint the Board uses is also used by a human CLI command (D2, user).
 - Every agent-facing response is plain, human-readable text suitable for an agent to act on, with structured data available for the Board.

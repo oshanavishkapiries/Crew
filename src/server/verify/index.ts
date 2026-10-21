@@ -500,27 +500,9 @@ export class Verifier {
       .where(eq(schema.tasks.id, task.id))
       .run();
 
-    let gitDiff = '';
-    try {
-      const baseBranch = workspace?.defaultBranch || 'main';
-      const mergeBaseRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'merge-base', baseBranch, 'HEAD'], {
-        cwd: worktreePath,
-        reject: false,
-      });
-      const mergeBase = mergeBaseRes.stdout.trim() || baseBranch;
-      const diffRes = await execa('git', ['-c', 'core.hooksPath=/dev/null', 'diff', `${mergeBase}...HEAD`], {
-        cwd: worktreePath,
-        reject: false,
-      });
-      gitDiff = diffRes.stdout || '';
-    } catch {}
-
-    const vrs = this.db.db
-      .select()
-      .from(schema.verificationResults)
-      .where(eq(schema.verificationResults.runId, lastRun.id))
-      .all();
-    const earlierResultsText = vrs.map((r) => `- ${r.step}: ${r.passed ? 'passed' : 'failed'}`).join('\n');
+    // Pull Reviewers receive the same context when they poll; never spawn their tool.
+    if (reviewer.mode === 'pull') return;
+    const reviewContext = await this.runner.reviewContext(task);
 
     // Reviewer run loop: up to 2 runs in total (D35)
     const MAX_REVIEW_RUNS = 2;
@@ -551,7 +533,7 @@ export class Verifier {
 
       const runResult = await this.runner.runTask(task.id, {
         agentId: reviewer.id,
-        reviewContext: { diff: gitDiff, baseBranch: workspace?.defaultBranch || 'main', results: earlierResultsText },
+        reviewContext,
         kind: 'review',
       });
 

@@ -1,10 +1,15 @@
-# Milestone 7 session 2 in progress
+# Milestone 7 session 2: bullets 2 and 3 implemented
 
-Bullet 2 is implemented on feat/milestone-7-breadth: token-only Pull join/next/heartbeat,
-serialized shared provisioning/prompt building, pid-less run records, real CLI and
-activity/auth harness coverage. Eleven targeted Pull tests pass; full clean suite is
-pending. Completion helpers are present; bullet 3 completion/recovery validation is
-still in progress. Bullets 4–6 remain not started. No paid tools or UI changes.
+Branch feat/milestone-7-breadth. Pull join/next/heartbeat, own-agent token auth,
+shared serialized provisioning/prompts and pid-less run lifecycle are implemented.
+Pull work passes existing verification/review/retry/merge; next carries feedback
+and Q&A. Stop/cancel notices and answer reminders reach the next CLI call; old run
+IDs cannot mutate a new assignment. Logs/status and the startup reaper handle
+pid-less runs. Pull Reviewer and Orchestrator phase paths use existing endpoints.
+Targeted Pull/review/phase suite: 43 tests passed (69.49s); final expanded Pull and
+full clean suite are pending. See milestone-7.md §9 for narrow windows and advisory
+terminal permissions. No dependencies, migrations, UI or paid-agent work. Stop
+after bullet 3; bullets 4–6 are not started.
 
 # Handoff
 

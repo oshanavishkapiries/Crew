@@ -17,7 +17,7 @@ async function pull(options: Parameters<typeof createPipelineHarness>[0] = {}) {
   return h;
 }
 const env = () => ({ CREW_AGENT_TOKEN: h.agentToken });
-const cli = (args: string[], taskId?: string) => h.runCrew(args, { ...env(), ...(taskId ? { CREW_TASK_ID: taskId } : {}) });
+const cli = (args: string[], taskId?: string) => h.runCrew(args, { ...env(), ...(taskId ? { CREW_TASK_ID: taskId, CREW_RUN_ID: h.runner.getPullRuns().find(run => run.taskId === taskId)?.id || 'inactive' } : {}) });
 const runs = () => h.db.db.select().from(schema.runs).all();
 async function api(endpoint: string, method = 'GET', headers: Record<string, string> = { [AGENT_TOKEN_HEADER]: h.agentToken }) {
   return fetch(h.server.url + endpoint, { method, headers });
@@ -39,6 +39,7 @@ it('real join returns persona, role, configured rules, workDir and only project 
   expect(joined.exitCode, joined.stderr).toBe(0);
   expect(joined.stdout).not.toContain(h.agentToken);
   const data = JSON.parse(joined.stdout);
+  expect(data.rules).toBe('Configured backend rules');
   expect(data).toMatchObject({ agentId: h.agentId, connected: true, persona: 'Exact and patient', systemPrompt: 'Keep edits small.', workDir: h.repoDir, memory: [{ title: 'Convention', body: 'Use ESM' }] });
   expect(h.db.db.select().from(schema.agents).where(eq(schema.agents.id, h.agentId)).get()?.lastHeartbeatAt).toBeInstanceOf(Date);
 });
@@ -162,11 +163,25 @@ it('Pull task runs real done → verifying → review → merge-queue → merged
     if (event.type === 'task_status_changed' && data.taskId === 'land' && data.to) states.push(data.to);
   });
   await h.createTask({ id: 'land', title: 'Land Pull feature', description: 'Add feature.txt' });
-  const assignment = await next();
-  fs.writeFileSync(path.join(assignment.workDir, 'feature.txt'), 'From Pull\n');
-  const done = await cli(['done', '--result', 'Feature ready'], 'land');
-  expect(done.exitCode, done.stderr).toBe(0);
-  expect(done.stdout).toContain('Clear your context and run crew join again');
+  // A fake terminal agent process drives real CLI children; Runner never spawns this author.
+  const child = await execa(process.execPath, ['--input-type=module', '-e', `
+    import { execFileSync } from 'node:child_process';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    const crew = (...args) => execFileSync(process.execPath, [process.env.PULL_TEST_CLI, ...args], { encoding: 'utf8', env: process.env });
+    console.log(crew('join'));
+    const output = crew('next', '--wait', '0');
+    const assignment = JSON.parse(output.slice(0, output.indexOf('\\nSet CREW_TASK_ID=')));
+    process.env.CREW_TASK_ID = assignment.task.id;
+    process.env.CREW_RUN_ID = assignment.runId;
+    process.chdir(assignment.workDir);
+    fs.writeFileSync(path.join(assignment.workDir, 'feature.txt'), 'From Pull\\n');
+    console.log(crew('update', 'Implemented the feature'));
+    console.log(crew('remember', 'Keep changes scoped'));
+    console.log(crew('done', '--result', 'Feature ready'));
+  `], { cwd: h.repoDir, env: { CREW_SERVER_URL: h.server.url, CREW_HOME: h.crewHomeDir, CREW_AGENT_TOKEN: h.agentToken, PULL_TEST_CLI: path.resolve('dist/cli.js'), PATH: process.env.PATH }, extendEnv: false, reject: false });
+  expect(child.exitCode, child.stderr).toBe(0);
+  expect(child.stdout).toContain('Clear your context and run crew join again');
   await h.waitForTaskStatus('land', 'merged');
   await h.waitForLiveRuns(0);
   expect(states).toEqual(['ready', 'doing', 'verifying', 'review', 'merge-queue', 'merged']);
@@ -237,4 +252,86 @@ it('cancel ends the Pull run, removes its worktree, refuses late writes and repo
   }
   expect((await cli(['remember', 'Keep a useful lesson'])).stdout).toContain('is cancelled. Stop working');
   expect((await next()).retryIn).toBe(1);
+});
+
+it('refuses an old run ID after stop/resume and a foreign token on task mutations', async () => {
+  await pull();
+  const otherToken = h.addAgent('foreign');
+  await h.createTask({ id: 'old', title: 'Old run', description: '' });
+  const first = await next();
+  await h.runCrew(['stop-all']); await h.runCrew(['resume']);
+  const current = await next();
+  expect(current.runId).not.toBe(first.runId);
+  const old = await h.runCrew(['done'], { ...env(), CREW_TASK_ID: 'old', CREW_RUN_ID: first.runId });
+  expect(old.exitCode).toBe(1); expect(old.stderr).toContain('inactive');
+  const foreign = await h.runCrew(['done'], { CREW_AGENT_TOKEN: otherToken, CREW_TASK_ID: 'old', CREW_RUN_ID: current.runId });
+  expect(foreign.exitCode).toBe(1); expect(foreign.stderr).toContain('403');
+  expect(h.getTask('old')?.status).toBe('doing');
+});
+
+it('hands a designated Pull Reviewer the shared review prompt and applies changes/approval without a spawn', async () => {
+  await pull({ startVerifier: true, startMergeQueue: true });
+  const reviewerRole = h.addRole('pull-review-role', 'reviewer');
+  const reviewerToken = h.addAgent('pull-reviewer', reviewerRole);
+  h.db.db.update(schema.agents).set({ mode: 'pull' }).where(eq(schema.agents.id, 'pull-reviewer')).run();
+  await h.createTask({ id: 'pull-review', title: 'Review me', description: 'Create a reviewed change' });
+  const work = await next();
+  fs.writeFileSync(path.join(work.workDir, 'reviewed.txt'), 'Review me\n');
+  await cli(['done'], 'pull-review');
+  await h.waitForTaskStatus('pull-review', 'review');
+  async function reviewNext() {
+    const response = await h.runCrew(['next', '--wait', '2'], { CREW_AGENT_TOKEN: reviewerToken });
+    expect(response.exitCode, response.stderr).toBe(0);
+    return JSON.parse(response.stdout.slice(0, response.stdout.indexOf('\nSet CREW_TASK_ID=')));
+  }
+  const first = await reviewNext();
+  expect(first.prompt).toContain('Review the changes against the acceptance criteria');
+  expect(first.prompt).toContain('reviewed.txt');
+  const verdict = (runId: string, args: string[]) => h.runCrew(['review', ...args], { CREW_AGENT_TOKEN: reviewerToken, CREW_TASK_ID: 'pull-review', CREW_RUN_ID: runId });
+  expect((await verdict(first.runId, ['changes', '--feedback', 'Say approved in the file'])).exitCode).toBe(0);
+  await h.waitForTaskStatus('pull-review', 'doing');
+  const retry = await next();
+  expect(retry.prompt).toContain('Say approved in the file');
+  fs.writeFileSync(path.join(retry.workDir, 'reviewed.txt'), 'approved\n');
+  expect((await cli(['done'], 'pull-review')).exitCode).toBe(0);
+  await h.waitForTaskStatus('pull-review', 'review');
+  const second = await reviewNext();
+  expect((await verdict(second.runId, ['approve'])).exitCode).toBe(0);
+  await h.waitForTaskStatus('pull-review', 'merged');
+  expect(h.runner.getLiveRuns()).toHaveLength(0);
+  expect(runs()).toHaveLength(4);
+  expect(runs().every(run => run.pid === null && run.endedAt !== null)).toBe(true);
+  expect(h.getTask('pull-review')?.retries).toBe(1);
+});
+
+it('a Pull Orchestrator uses the existing phase endpoint and gate with a pid-less run', async () => {
+  await pull();
+  const roleId = h.addRole('pull-orchestrator', 'orchestrator', { mode: 'orchestrator' });
+  h.db.db.update(schema.agents).set({ roleId }).where(eq(schema.agents.id, h.agentId)).run();
+  await h.server.workflow.ensureBoard(h.boardId);
+  const work = await next();
+  expect(work.task.kind).toBe('phase');
+  fs.writeFileSync(path.join(work.workDir, 'phase-output.md'), 'Pull phase requirements\n');
+  const done = await cli(['phase', 'done', '--output', path.join(work.workDir, 'phase-output.md')], work.task.id);
+  expect(done.exitCode, done.stderr).toBe(0);
+  expect(h.getTask(work.task.id)?.status).toBe('merged');
+  expect(h.db.db.select().from(schema.phaseOutputs).get()).toMatchObject({ body: 'Pull phase requirements\n', status: 'draft' });
+  expect(runs()[0]).toMatchObject({ pid: null, exitReason: 'done' });
+});
+
+it('concurrent Pull agents cannot claim the same unassigned task or cross workspace boundaries', async () => {
+  await pull();
+  const secondToken = h.addAgent('second-pull');
+  h.db.db.update(schema.agents).set({ mode: 'pull' }).where(eq(schema.agents.id, 'second-pull')).run();
+  h.db.db.insert(schema.workspaces).values({ id: 'foreign-ws', name: 'Foreign', repoPath: h.repoDir, createdAt: new Date() }).run();
+  h.db.db.insert(schema.boards).values({ id: 'foreign-board', workspaceId: 'foreign-ws', createdAt: new Date() }).run();
+  await h.scheduler.createTask({ id: 'foreign-work', boardId: 'foreign-board', title: 'Foreign', description: '', roleId: h.roleId });
+  await h.createTask({ id: 'unassigned', title: 'One task', description: '', assigneeAgentId: undefined });
+  const results = await Promise.all([cli(['next', '--wait', '0']), h.runCrew(['next', '--wait', '0'], { CREW_AGENT_TOKEN: secondToken })]);
+  expect(results.every(result => result.exitCode === 0)).toBe(true);
+  expect(results.filter(result => result.stdout.includes('Set CREW_TASK_ID='))).toHaveLength(1);
+  expect(results.filter(result => result.stdout.includes('"retryIn"'))).toHaveLength(1);
+  expect(runs()).toHaveLength(1);
+  expect(h.getTask('foreign-work')?.status).toBe('ready');
+  expect(h.getTask('unassigned')?.status).toBe('doing');
 });

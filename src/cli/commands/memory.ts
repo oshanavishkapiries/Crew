@@ -6,7 +6,7 @@ async function memoryRequest(method: string, suffix: string, body?: Record<strin
   const info = token ? { url: process.env.CREW_SERVER_URL, secret: '' } : getServerInfo();
   if (!info.url) throw new Error('CREW_SERVER_URL is required for agent memory commands.');
   const response = await fetch(`${info.url}/api/memory${suffix}`, {
-    method, headers: { 'Content-Type': 'application/json', ...(token ? { [AGENT_TOKEN_HEADER]: token } : { [SECRET_HEADER]: info.secret }) },
+    method, headers: { 'Content-Type': 'application/json', ...(process.env.CREW_RUN_ID ? { 'X-Crew-Run-Id': process.env.CREW_RUN_ID } : {}), ...(token ? { [AGENT_TOKEN_HEADER]: token } : { [SECRET_HEADER]: info.secret }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   printAgentInstruction(response);

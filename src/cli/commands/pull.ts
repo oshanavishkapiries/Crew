@@ -26,5 +26,5 @@ export async function handleNext(options: { wait?: string | number }) {
   const identity = await request<{ agentId: string }>('/api/agents/join', token, 'POST');
   const data = await request<{ runId?: string; task: { id: string }; workDir: string }>(`/api/agents/${encodeURIComponent(identity.agentId)}/next-task?wait=${Math.min(wait, 85)}`, token);
   console.log(JSON.stringify(data, null, 2));
-  if (data.runId) console.log(`Set CREW_TASK_ID=${data.task.id} and CREW_RUN_ID=${data.runId}. Change directory to ${JSON.stringify(data.workDir)}. Follow the prompt, then run crew done. After done clear context and run crew join again.`);
+  if (data.runId) console.log(`Set CREW_TASK_ID=${data.task.id} and CREW_RUN_ID=${data.runId}. Change directory to ${JSON.stringify(data.workDir)}. Follow the prompt and its completion command (crew done for work, crew review for review, crew phase done for a phase). After done clear context and run crew join again.`);
 }

@@ -63,14 +63,16 @@ export class Workflow {
     const state = this.snapshot(task.boardId);
     if (state.task?.id !== task.id || state.board.currentPhase !== task.creationPhase || state.draft) throw new WorkflowError('Phase has moved on or already has a draft.');
     if (typeof output !== 'string' || !output.trim()) throw new WorkflowError('Phase output must be non-empty text; fix the output file and submit again.', 400);
-    const live = this.runner.getLiveRunByTaskId(taskId);
+    const live = this.runner.getActiveTaskRun(taskId);
     if (!live || live.exitReason || this.runner.isCancelling(taskId)) throw new WorkflowError('Phase run is no longer active.');
     const id = randomUUID();
     await this.scheduler.transitionTask(taskId, 'merged', { reason: 'Phase output submitted', alongside: () => {
       this.db.db.insert(schema.phaseOutputs).values({ id, taskId, boardId: task.boardId, phase: task.creationPhase!, body: output, status: 'draft', createdAt: new Date() }).run();
     } });
     live.exitReason = 'done';
-    const cleanup = live.promise.then(() => this.worktrees.removeWorktree(task)).catch(error => console.error('Phase worktree cleanup:', error));
+    this.runner.endPullRun(taskId, 'done');
+    const exited = 'promise' in live ? live.promise : Promise.resolve();
+    const cleanup = exited.then(() => this.worktrees.removeWorktree(task)).catch(error => console.error('Phase worktree cleanup:', error));
     this.jobs.add(cleanup); void cleanup.finally(() => this.jobs.delete(cleanup));
     this.changed(task.boardId);
     if ((state.workspace.config?.workflow as { gates?: Record<string, boolean> } | undefined)?.gates?.[state.board.currentPhase] === false) await this.approve(task.boardId, id, {});

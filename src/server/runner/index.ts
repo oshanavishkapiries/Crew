@@ -754,33 +754,52 @@ export class Runner extends EventEmitter {
       .where(and(eq(schema.agents.mode, 'pull'), sql`${schema.runs.endedAt} IS NULL`, sql`${schema.runs.pid} IS NULL`)).all().map(row => row.run);
   }
 
+  getActiveTaskRun(taskId: string) {
+    return this.getLiveRunByTaskId(taskId) ?? this.getPullRuns().find(run => run.taskId === taskId);
+  }
+
+  async reviewContext(task: typeof schema.tasks.$inferSelect): Promise<ReviewContext> {
+    const board = this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()!;
+    const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()!;
+    const baseBranch = workspace.defaultBranch || 'main';
+    const cwd = task.worktreePath || workspace.repoPath;
+    const base = (await execa('git', ['-c', 'core.hooksPath=/dev/null', 'merge-base', baseBranch, 'HEAD'], { cwd, reject: false })).stdout.trim() || baseBranch;
+    const diff = (await execa('git', ['-c', 'core.hooksPath=/dev/null', 'diff', `${base}...HEAD`], { cwd, reject: false })).stdout || '';
+    const lastWork = this.db.db.select().from(schema.runs).where(and(eq(schema.runs.taskId, task.id), eq(schema.runs.kind, 'work'))).orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get();
+    const results = lastWork ? this.db.db.select().from(schema.verificationResults).where(eq(schema.verificationResults.runId, lastWork.id)).all().map(r => `- ${r.step}: ${r.passed ? 'passed' : 'failed'}`).join('\n') : '';
+    return { diff, baseBranch, results };
+  }
+
   /** No adapter, token rotation, child process, runtime timer or process kill for Pull. */
   async startPullRun(task: typeof schema.tasks.$inferSelect, agent: typeof schema.agents.$inferSelect) {
-    const context = await this.prepareContext({ taskId: task.id }, task, agent);
+    const review = task.status === 'review';
+    const options: StartRunOptions = { taskId: task.id, ...(review ? { kind: 'review', reviewContext: await this.reviewContext(task) } : {}) };
+    const context = await this.prepareContext(options, task, agent);
+    const assigned = (current: typeof task | undefined) => current?.status === (review ? 'review' : 'doing') && (review ? current.reviewerAgentId : current.assigneeAgentId) === agent.id;
     const current = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
-    if (current?.status !== 'doing' || current.assigneeAgentId !== agent.id || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) return undefined;
+    if (!assigned(current) || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) return undefined;
     const existing = this.getPullRuns().find(run => run.agentId === agent.id && run.taskId === task.id);
-    if (existing) return { task: current, runId: existing.id, prompt: existing.prompt!, workDir: context.workDir };
+    if (existing) return { task: current, runId: existing.id, prompt: existing.prompt!, workDir: context.workDir, permissions: context.permissionProfile };
     const runId = crypto.randomUUID();
     const board = this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()!;
     const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()!;
     await this.snapshotCheckout(runId, workspace.repoPath);
     // Snapshot awaits git: recheck interruption/assignment before publishing the run.
     const latest = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()!;
-    if (latest.status !== 'doing' || latest.assigneeAgentId !== agent.id || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) { this.clearMainCheckoutSnapshot(runId); return undefined; }
+    if (!assigned(latest) || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) { this.clearMainCheckoutSnapshot(runId); return undefined; }
     const logsDir = path.join(this.crewHome, 'logs');
     fs.mkdirSync(logsDir, { recursive: true });
     const logPath = path.join(logsDir, `${runId}.jsonl`);
     fs.writeFileSync(logPath, '');
-    this.db.db.insert(schema.runs).values({ id: runId, taskId: task.id, agentId: agent.id, adapter: agent.cliType, startedAt: this.now(), logPath, prompt: context.prompt }).run();
+    this.db.db.insert(schema.runs).values({ id: runId, taskId: task.id, agentId: agent.id, adapter: agent.cliType, startedAt: this.now(), kind: options.kind || 'work', logPath, prompt: context.prompt }).run();
     this.db.db.update(schema.agents).set({ status: 'busy' }).where(eq(schema.agents.id, agent.id)).run();
-    return { task: latest, runId, prompt: context.prompt, workDir: context.workDir };
+    return { task: latest, runId, prompt: context.prompt, workDir: context.workDir, permissions: context.permissionProfile };
   }
 
   endPullRun(taskId: string, reason: ExitReason) {
     for (const run of this.getPullRuns().filter(run => run.taskId === taskId)) {
       this.db.db.update(schema.runs).set({ endedAt: this.now(), exitReason: reason }).where(eq(schema.runs.id, run.id)).run();
-      if (reason !== 'done') this.clearMainCheckoutSnapshot(run.id);
+      if (reason !== 'done' || run.kind === 'review') this.clearMainCheckoutSnapshot(run.id);
       this.db.db.update(schema.agents).set({ status: reason === 'stopped' ? 'stopped' : 'idle' }).where(eq(schema.agents.id, run.agentId)).run();
       this.emit('run_ended', { runId: run.id, taskId, agentId: run.agentId, exitReason: reason });
     }
