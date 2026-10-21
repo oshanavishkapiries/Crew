@@ -20,7 +20,9 @@
     "smoke": "tsx scripts/smoke-milestone-2.ts",
     "smoke:m3": "tsx scripts/smoke-milestone-3.ts",
     "smoke:m4": "tsx scripts/smoke-milestone-4.ts",
-    "smoke:m5": "tsx scripts/smoke-milestone-5.ts"
+    "smoke:m5": "tsx scripts/smoke-milestone-5.ts",
+    "build:ui": "node scripts/build-ui.mjs",
+    "prepack": "npm run build && npm run build:ui"
   },
   "engines": {
     "node": ">=22.0.0"

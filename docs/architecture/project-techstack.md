@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D81). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D87). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 
@@ -26,7 +26,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Path matching | `picomatch` | 4.0.7 | Path filter glob matching for command gates (D37) |
 | Git | git CLI wrapper | — | Worktrees, rebase, squash and compare-and-swap ref updates. Crew worktree/verification/merge housekeeping disables hooks; merge Git subprocesses use detached process groups; stop-all/cancel kill and await rebase, while protected checkout publication finishes. Prepared ref transactions + private index protect checkout updates (verified Git 2.53.0; HEAD lock capability checked before writing); no libgit bindings |
 | Build / Dev runner | `tsup`, `tsx` | 9.0.0 / 4.23.15 | Bundling to `dist/cli.js` and running dev scripts |
-| UI | Next.js (App Router, static export) + TypeScript + Tailwind + shadcn/ui | pinned in milestone 6 | Board UI in `ui/`, built at package time (`output: 'export'`) and served as static files by the crew server; `next dev` proxies `/api` to the server during development (D80, D81) |
+| UI | Next.js (App Router, static export) + TypeScript + Tailwind + shadcn/ui | Next 16.4.2, React 19.3.1, Tailwind 4.3.3, shadcn 4.22.1, TypeScript 6.0.3 | Board UI in `ui/`, built at package time (`output: 'export'`) and served as static files by the crew server; `next dev` proxies `/api` to the server during development (D80, D81) |
 | Live updates | Server-Sent Events | — | No WebSockets |
 | Agent output view | Live log view of structured events | — | Replaces the design doc's xterm.js PTY terminal (D5) |
 
@@ -65,3 +65,5 @@ Every Claude Code profile (including full, Reviewer and Orchestrator), for spawn
 The manual milestone 5 smoke (`npm run smoke:m5`) uses real CLI init/start and the initialized Claude team in isolated `/tmp` folders. Its executable launcher forwards the existing $0.50 budget flag and reserves up to 30 run slots atomically; the script has a 20-minute deadline. Expected cost is $1–$6, with $15 in total per-run caps. It is typechecked only and has not been run. No dependency, migration or adapter implementation change was needed in the final session. The built-server SIGKILL test uses a local Claude executable stub, not real Claude: detached agents survive server death and startup can duplicate a run; see milestone-5.md §9 before preview use.
 
 Milestone 6 bullet 0 uses Node crypto for random browser login/session credentials (hashes retained in server memory only), Hono cookie and MIME helpers, and Node realpath checks for `dist/ui`. Human header-secret authentication remains available; cookie mutations require `X-Crew-Board: 1`. `crew open` uses execa argument arrays to run macOS `open`, Linux/WSL `xdg-open`, or the executable named by `BROWSER`; if unavailable it prints paste-the-URL guidance. No new dependency or runtime version is required. The server build and test suite do not require a UI export; Track B owns `build:ui` and `prepack`.
+
+The Board package `ui/` pins every direct dependency exactly (Next 16.4.2, React and React DOM 19.3.1, Tailwind and `@tailwindcss/postcss` 4.3.3, shadcn 4.22.1, radix-ui 1.8.1, lucide-react 1.61.0, sonner 2.0.8, next-themes 0.4.6, class-variance-authority 0.7.1, clsx 2.1.1, tailwind-merge 3.7.0, tw-animate-css 1.4.0, ESLint 9.39.5 with eslint-config-next 16.4.2, TypeScript 6.0.3) and commits `ui/package-lock.json`. The full reasons are in `plan/phase1/milestone-6.md` §9 (Track B). `npm run build:ui` builds it into `dist/ui`; `npm test` does not.

@@ -13,7 +13,7 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 3. [docs/architecture/project-structure.md](../../docs/architecture/project-structure.md): where code goes.
 4. [docs/architecture/project-techstack.md](../../docs/architecture/project-techstack.md): what to build it with.
    - Working on milestone 4? It is done; [milestone-4.md](milestone-4.md) records the design. Decisions D38–D55.
-   - Working on milestone 6 (Board UI)? Read [milestone-6.md](milestone-6.md): design, tracer bullets and proposed decisions D82–D87. D80–D81 (Next.js static export, shadcn/ui) are decided.
+   - Working on milestone 6 (Board UI)? Read [milestone-6.md](milestone-6.md): design, tracer bullets and decisions D82–D87. D80–D87 are decided.
    - Working on milestone 5? Read [milestone-5.md](milestone-5.md): the approved design and tracer bullets. Decisions D56–D65 (approved).
    - Working on milestone 3? Read [milestone-3.md](milestone-3.md): the design, tracer bullets and decisions D29–D37 (approved).
    - Working on milestone 2? Read [milestone-2.md](milestone-2.md) next: the design, the tracer bullets and decisions D21–D26.
@@ -22,9 +22,9 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 
 ## 3. Where things stand
 
-**Status:** milestones 1 to 5 are done: the engine, runner, verification, merge queue, config, memory and the whole grill → spec → tickets → dispatch → integrate workflow work from the CLI, and the manual smoke with real Claude Code passed (milestone 5, 2026-10-21). Milestone 6 bullet 0 (server prerequisites: static hosting, browser sessions, `crew open`, Board reads and SSE) is implemented. Next is the Board UI track and packaging for the private preview. Decisions are logged as D1–D81.
+**Status:** milestones 1 to 5 are done: the engine, runner, verification, merge queue, config, memory and the whole grill → spec → tickets → dispatch → integrate workflow work from the CLI, and the manual smoke with real Claude Code passed (milestone 5, 2026-10-21). Milestone 6 bullet 0 (server prerequisites: static hosting, browser sessions, `crew open`, Board reads and SSE) is implemented. Next is the Board UI track and packaging for the private preview. Decisions are logged as D1–D87.
 
-- Planning is done: PRD, decisions D1–D81, architecture docs and agent rules.
+- Planning is done: PRD, decisions D1–D87, architecture docs and agent rules.
 - **Milestones 1, 2, and 3 are implemented and verified:**
   - Milestone 1: SQLite schema with Drizzle, Hono server on 127.0.0.1 with Host-header DNS rebinding check, D13 auth tokens/secrets, task scheduler state machine, and in-process pipeline harness.
   - Milestone 2: Drizzle migrations baseline with `runs.exitReason`, git worktree manager on dispatch, child process runner with process group kill on timeouts, parallel dispatcher (max 3), `crew ask` / `crew answer` with session resume and git diff fallback, `crew stop-all` / `crew resume`, rate limit pause and backoff schedule, Claude Code adapter with contract tests and recorded fixtures, and human CLI (`status`, `tasks`, `diff`, `logs`, `cancel`, `worktree gc`, `answer`).

@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** bullet 0 (Track A server prerequisites) implemented (2026-10-21); Board UI and browser smoke remain. D80 and D81 are decided; D82–D87 (§7) are Claude's proposals awaiting the user's approval.
+**Status:** bullet 0 (Track A server prerequisites) implemented (2026-10-21); Board UI and browser smoke remain. D80 and D81 are decided; D82–D87 were approved and logged. Bullets 0 (server) and 1 (UI scaffold) are implemented and merged; bullets 2–6 remain.
 
 ## 1. Goal
 
@@ -79,7 +79,7 @@ Bullets 2 to 5 are independent after bullet 1 and can run on two agents in paral
 
 Decided by the user: **D80** (Next.js static export served by Hono; proxy only in dev), **D81** (shadcn/ui everywhere, theme tokens).
 
-Proposed by Claude, awaiting approval:
+Proposed by Claude, approved by the user on 2026-10-21 and logged as D82–D87:
 
 - **D82** Browser auth is a single-use login key in the URL fragment exchanged for an HttpOnly, SameSite=Strict session cookie; cookie requests that mutate must send `X-Crew-Board`. Resolves the PRD open question on SSE auth.
 - **D83** `ui/` is a separate package with pinned dependencies; `build:ui` is not part of `npm test`; `dist/ui` ships in the npm package.
@@ -144,3 +144,104 @@ Task commits contain the persisted merge-queue commit when available and current
 | Run | `run_ended` | `{ runId, exitCode, exitReason }` |
 
 No production `task_created` event is currently emitted; initial creation/status/phase consumers should refetch on the events above and after their own mutations. Run events are not sent over the board stream. No new decision was added to the PRD; these are implementation details/proposals under the assigned Track A contract.
+
+### Track B (UI scaffold)
+
+
+
+- Bullet 1 scaffold implemented on `feat/m6-ui`: static Next App Router package,
+  neutral light/dark/system CSS tokens in `ui/app/globals.css`, repository-owned
+  shadcn primitives, shell, login, board list, API client and reconnecting SSE.
+  Bullets 2–5 remain unimplemented; Inbox, Team and Memory are named placeholders.
+- **Pending Track A integration:** the shared base has no session or board-list
+  endpoints and does not serve static UI. `ui/lib/types.ts` copies the existing
+  phase/status and connected-event shapes from `src/server/api/app.ts`; the
+  actual board-list shape was read from Track A's sibling checkout and copied:
+  `{ boards: [{ id, workspaceId, currentPhase, createdAt,
+  workspace: { id, name, repoPath, defaultBranch }, stopped }] }`.
+  Confirm it against Track A's final merge; no response fields were guessed.
+  Browser integration also runs against a separately built copy of that source,
+  leaving both tracks' source ownership intact. No mock
+  data, browser secret header, mock endpoint or fixture mode ships in the app.
+- One selected board streams at a time on the list, with a Connect control to
+  switch; all boards refresh every 15 seconds. This avoids exhausting HTTP/1.1
+  browser connection slots when a project has six or more boards. Events during
+  a pending fetch coalesce into a follow-up fetch instead of cancelling it.
+  Keep one stream per open board when bullet 2 is implemented.
+- Login clears the fragment before sending the exchange. Strict Mode mounts share
+  the request; fresh fragment navigation starts a new exchange and aborts an old
+  session probe. Stream unmount cancels retries and session probes.
+- shadcn 4.22.1 was initialized with Radix Nova, neutral, CSS variables and lucide.
+  Its current `form` registry entry is replaced by `field`; the installed Form
+  pieces are Field/FieldGroup/FieldLabel/FieldDescription/FieldError plus Label.
+  Tokens are in `app/globals.css` (the task prompt overrides §4.2's older
+  `ui/styles/theme` location). System fonts keep builds independent of Google Fonts.
+- Root `build:ui` installs the separate lockfile with dev tools, checks types,
+  lints, exports and copies to `dist/ui`; `prepack` builds the CLI first (its
+  clean step removes `dist`) and then the UI. `npm test` stays independent of UI.
+  Next rewrites exist only during development, controlled by `CREW_SERVER_URL`
+  (default 127.0.0.1:4000, verified in the CLI).
+
+#### Exact dependency versions and reasons (for Track A's tech-stack doc)
+
+| Package | Version |
+| --- | --- |
+| `class-variance-authority` | 0.7.1 |
+| `clsx` | 2.1.1 |
+| `cn` | 0.5.0 |
+| `lucide-react` | 1.61.0 |
+| `next` | 16.4.2 |
+| `next-themes` | 0.4.6 |
+| `radix-ui` | 1.8.1 |
+| `react` | 19.3.1 |
+| `react-dom` | 19.3.1 |
+| `sonner` | 2.0.8 |
+| `tailwind-merge` | 3.7.0 |
+| `tw-animate-css` | 1.4.0 |
+| `@tailwindcss/postcss` | 4.3.3 |
+| `@types/node` | 26.6.5 |
+| `@types/react` | 19.3.0 |
+| `@types/react-dom` | 19.3.0 |
+| `eslint` | 9.39.5 |
+| `eslint-config-next` | 16.4.2 |
+| `shadcn` | 4.22.1 |
+| `tailwindcss` | 4.3.3 |
+| `typescript` | 6.0.3 |
+
+Reasons: Next/React/React DOM implement D80's static App Router shell; TypeScript
+and its Node/React types enforce strict checks. Tailwind and its PostCSS plugin
+compile token-based styles. shadcn provides the checked-in Radix components and
+shared Tailwind rules; radix-ui supplies accessible interaction primitives;
+lucide-react supplies icons. cn, clsx, tailwind-merge and class-variance-authority
+are shadcn's class/variant utilities; tw-animate-css supplies primitive animations.
+next-themes implements system/light/dark selection and Sonner supplies toasts.
+ESLint and the matching Next config check React and Next conventions (ESLint 9
+avoids the peer conflicts seen with 10 in this dependency set). All direct
+versions are exact and `ui/package-lock.json` pins the full graph.
+
+#### Doc handoff for Track A
+
+- `project-structure.md`: `ui/` now contains app routes, feature components,
+  `components/ui` primitives, lib clients/types, focused Node checks and its own
+  package/config/lockfile; `scripts/build-ui.mjs` builds and copies static assets.
+- `project-techstack.md`: replace the unpinned milestone-6 placeholder using the
+  exact versions above. The UI uses no runtime Next server or remote fonts.
+- `START_HERE.md`, `handoff.md` (and README status/table if necessary): record
+  bullet 1 implemented with Track A session/list/static integration still pending;
+  Board/task/inbox/team/memory screens and the full user smoke remain future work.
+- `docs/commands.md`: no CLI declarations changed; no regeneration needed here.
+- PRD: no edits; these are implementation notes/proposals for review, not newly
+  approved decisions. Track B intentionally leaves Track A-owned docs unchanged.
+
+#### Track B integration observations for Track A
+
+The final browser smoke uses an isolated build copied from Track A's current
+source, the real CLI in a throwaway git repository and a separate stopped
+CREW_HOME, plus this track's static export. No paid agents run. The report records
+the resulting login, real cookie/read/SSE, route and restart checks. This does
+not merge Track A code into Track B.
+
+A graceful SIGTERM while the browser kept its SSE stream open left the isolated
+server waiting in `server.close`; the restart check therefore kills that
+throwaway server and starts it again. Track A should review stream shutdown
+before packaging. Track B did not edit server sources to address it.
