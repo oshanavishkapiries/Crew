@@ -48,7 +48,7 @@ crew init
 
 ### `crew status`
 
-Prints a summary of active agents, tasks, and budget usage, including board phases, gates, phase recovery commands, merge pause warnings and the hint to commit an untracked crew.config.ts.
+Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agents, live runs, rate limits and merge pause warnings.
 
 **Examples:**
 
@@ -90,7 +90,14 @@ crew resume
 
 ### `crew tasks`
 
-Lists tasks in the workspace along with their status, assigned agent, and retries.
+Lists tasks across registered boards with status, assigned agent and retries. Filters combine with AND. Roles and assignees accept an ID or a unique exact name; boards accept an ID. A valid combination with no matches prints No tasks found.
+
+**Options:**
+
+- `--status <status>`: Task state: todo, ready, doing, verifying, review, merge-queue, merged, blocked, escalated, cancelled
+- `--role <role>`: Role ID or unique exact role name
+- `--board <id>`: Board ID (shown by crew status)
+- `--assignee <agent>`: Agent ID or unique exact agent name (shown by crew status)
 
 **Examples:**
 
@@ -98,6 +105,12 @@ List all tasks:
 
 ```bash
 crew tasks
+```
+
+Find ready backend tasks on a board:
+
+```bash
+crew tasks --status ready --role backend --board board-1
 ```
 
 ---
@@ -457,7 +470,7 @@ Commands used specifically by the Orchestrator agent to create tickets, manage p
 
 ### `crew phase`
 
-Checks current orchestrator phase instructions or submits phase output.
+Shows instructions and scoped memory for the live Orchestrator phase task. Use done --output with a non-empty Markdown file to store a draft and stop at the human gate. Crew supplies CREW_TASK_ID and CREW_AGENT_TOKEN; humans inspect gates with crew status and decide them with crew approve.
 
 **Arguments:**
 
@@ -478,7 +491,7 @@ crew phase
 Submit spec phase output:
 
 ```bash
-crew phase done --output spec.md
+crew phase done --output phase-output.md
 ```
 
 ---

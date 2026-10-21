@@ -810,7 +810,17 @@ export function createApp(ctx: AppContext): Hono {
     const queue = queueSnapshot();
     return c.json({
       stopped: isStopped,
-      phases: ctx.db.db.select().from(schema.boards).all().map(board => { const state = ctx.workflow!.snapshot(board.id); return { boardId: board.id, phase: board.currentPhase, draftId: state.draft?.id, taskId: state.task?.id, status: state.task?.status, problem: state.problem }; }),
+      phases: ctx.db.db.select().from(schema.boards).all().map(board => {
+        const state = ctx.workflow!.snapshot(board.id);
+        const ticketCounts: Record<string, number> = {};
+        if (board.currentPhase === 'dispatch') {
+          for (const task of tasks.filter(task => task.boardId === board.id && task.kind === 'work')) {
+            ticketCounts[task.status] = (ticketCounts[task.status] || 0) + 1;
+          }
+        }
+        return { boardId: board.id, phase: board.currentPhase, draftId: state.draft?.id, taskId: state.task?.id, status: state.task?.status, problem: state.problem, ticketCounts };
+      }),
+      roles: ctx.db.db.select({ id: schema.roles.id, name: schema.roles.name }).from(schema.roles).all(),
       mergeQueue: { pending: queue.items.filter(i => i.taskStatus === 'merge-queue').length, warnings: queue.warnings },
       agents: agents.map((a) => ({
         id: a.id,

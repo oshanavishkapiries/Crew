@@ -2,7 +2,7 @@ import { getHumanAction } from '../client.js';
 
 interface StatusResponse {
   stopped: boolean;
-  phases?: Array<{ boardId: string; phase: string; draftId?: string; taskId?: string; status?: string; problem?: string }>;
+  phases?: Array<{ boardId: string; phase: string; draftId?: string; taskId?: string; status?: string; problem?: string; ticketCounts?: Record<string, number> }>;
   mergeQueue?: { pending: number; warnings: Array<{ workspaceId: string; message: string }> };
   agents: Array<{ id: string; name: string; cliType: string; status: string }>;
   liveRuns: Array<{ id: string; taskId: string; agentId: string; sessionId?: string; pid?: number }>;
@@ -19,7 +19,23 @@ export async function handleStatus(): Promise<void> {
   console.log(`=== Crew Status ===`);
   console.log(`Dispatch: ${status.stopped ? 'PAUSED (stopped)' : 'ACTIVE'}`);
 
-  for (const phase of status.phases || []) console.log(`Board ${phase.boardId}: ${phase.phase}${phase.draftId ? ` gate ${phase.draftId}; crew approve --board ${phase.boardId} --draft ${phase.draftId}` : phase.taskId ? ` ${phase.taskId}: ${phase.status}${['escalated', 'cancelled'].includes(phase.status || '') ? `; crew retry ${phase.taskId}` : ''}` : phase.problem ? ` ${phase.problem}` : ''}`);
+  for (const phase of status.phases || []) {
+    console.log(`Board ${phase.boardId}: ${phase.phase}`);
+    if (phase.draftId) {
+      console.log(`  Pending ${phase.phase} gate: ${phase.draftId}`);
+      console.log(`  crew approve --board ${phase.boardId} --draft ${phase.draftId}`);
+    }
+    if (phase.taskId) {
+      console.log(`  Phase task ${phase.taskId}: ${phase.status}`);
+      if (['escalated', 'cancelled'].includes(phase.status || '')) console.log(`  Recovery: crew retry ${phase.taskId}`);
+    }
+    if (phase.problem) console.log(`  Attention: ${phase.problem}`);
+    if (phase.phase === 'dispatch') {
+      const counts = Object.entries(phase.ticketCounts || {});
+      const total = counts.reduce((sum, [, count]) => sum + count, 0);
+      console.log(`  Tickets (${total}): ${counts.map(([state, count]) => `${state}: ${count}`).join(', ') || 'none'}`);
+    }
+  }
 
   if (status.mergeQueue) {
     console.log(`Merge queue: ${status.mergeQueue.pending} pending`);

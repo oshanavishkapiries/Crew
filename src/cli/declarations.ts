@@ -53,8 +53,8 @@ export const COMMANDS: CommandDefinition[] = [
   {
     name: 'status',
     category: 'human',
-    summary: 'Show status of agents, tasks, and budget',
-    description: 'Prints a summary of active agents, tasks, and budget usage, including board phases, gates, phase recovery commands, merge pause warnings and the hint to commit an untracked crew.config.ts.',
+    summary: 'Show board phases, gates, agents and tasks',
+    description: 'Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agents, live runs, rate limits and merge pause warnings.',
     examples: [
       { description: 'View current project status', command: 'crew status' },
     ],
@@ -84,9 +84,16 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'tasks',
     category: 'human',
     summary: 'List tasks and their current states',
-    description: 'Lists tasks in the workspace along with their status, assigned agent, and retries.',
+    description: 'Lists tasks across registered boards with status, assigned agent and retries. Filters combine with AND. Roles and assignees accept an ID or a unique exact name; boards accept an ID. A valid combination with no matches prints No tasks found.',
+    options: [
+      { flags: '--status <status>', description: 'Task state: todo, ready, doing, verifying, review, merge-queue, merged, blocked, escalated, cancelled' },
+      { flags: '--role <role>', description: 'Role ID or unique exact role name' },
+      { flags: '--board <id>', description: 'Board ID (shown by crew status)' },
+      { flags: '--assignee <agent>', description: 'Agent ID or unique exact agent name (shown by crew status)' },
+    ],
     examples: [
       { description: 'List all tasks', command: 'crew tasks' },
+      { description: 'Find ready backend tasks on a board', command: 'crew tasks --status ready --role backend --board board-1' },
     ],
     action: handleTasks,
   },
@@ -346,7 +353,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'phase',
     category: 'orchestrator',
     summary: 'Inspect current phase or complete it',
-    description: 'Checks current orchestrator phase instructions or submits phase output.',
+    description: 'Shows instructions and scoped memory for the live Orchestrator phase task. Use done --output with a non-empty Markdown file to store a draft and stop at the human gate. Crew supplies CREW_TASK_ID and CREW_AGENT_TOKEN; humans inspect gates with crew status and decide them with crew approve.',
     args: [{ name: 'action', description: 'done to submit the phase output', required: false }],
     action: handlePhase,
     options: [
@@ -354,7 +361,7 @@ export const COMMANDS: CommandDefinition[] = [
     ],
     examples: [
       { description: 'Check phase instructions', command: 'crew phase' },
-      { description: 'Submit spec phase output', command: 'crew phase done --output spec.md' },
+      { description: 'Submit spec phase output', command: 'crew phase done --output phase-output.md' },
     ],
   },
   {

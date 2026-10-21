@@ -57,8 +57,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     disallowedTools: string[];
     permissionMode: string;
   } {
+    // Resolve at command build time: CREW_HOME may differ between server runs.
+    // These tool denials are defence in depth, not an OS sandbox.
+    const crewHome = getCrewHome();
+    const deniedTools = [...FIXED_DENIED_TOOLS, `Read(/${crewHome}/**)`, `Read(/${path.join(crewHome, 'server.json')})`];
     if (permissions.mode === 'orchestrator') {
-      return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)', ...(permissions.phaseOutputPath ? [`Edit(/${permissions.phaseOutputPath})`] : [])], disallowedTools: [...(permissions.phaseOutputPath ? [] : ['Edit']), ...FIXED_DENIED_TOOLS], permissionMode: 'dontAsk' };
+      return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)', ...(permissions.phaseOutputPath ? [`Edit(/${permissions.phaseOutputPath})`] : [])], disallowedTools: [...(permissions.phaseOutputPath ? [] : ['Edit']), ...deniedTools], permissionMode: 'dontAsk' };
     }
     if (permissions.mode === 'read-only') {
       const allowed = [
@@ -77,7 +81,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       const disallowed = [
         'Edit',
         'Write',
-        ...FIXED_DENIED_TOOLS,
+        ...deniedTools,
       ];
       return {
         allowedTools: Array.from(new Set(allowed)),
@@ -112,7 +116,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       allowed.push(...permissions.allowedTools);
     }
 
-    const disallowed = [...FIXED_DENIED_TOOLS];
+    const disallowed = [...deniedTools];
     if (permissions.denyCommands) {
       for (const cmd of permissions.denyCommands) {
         const pattern = cmd.includes(' ') || cmd.includes('*') ? `Bash(${cmd})` : `Bash(${cmd} *)`;
