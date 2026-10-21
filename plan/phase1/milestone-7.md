@@ -139,3 +139,7 @@ failures and targeted regression results are in the session report.
 
 Open questions about who runs the recorder are closed for session 1: it ran once
 as explicitly requested by the task prompt. Bullet 2–6: **not started**.
+
+### Codex network default (D88 update, 2026-10-22)
+
+A real probe showed a network-disabled `workspace-write` Codex sandbox cannot reach `127.0.0.1` (curl exit 7; a Unix socket also failed), so a Codex worker could not call `crew ask`/`crew done`. Crew now enables `sandbox_workspace_write.network_access` by default (`allowNetwork: false` turns it off). The cost: Codex workers can also reach external hosts, so the sandbox is a filesystem boundary, not a network one. Verified with real Codex 0.163.0 through the harness: a worker ran `crew done` and the task reached `verifying` (run exit `done`). Still open: a read-only Reviewer on Codex has no network and therefore cannot run `crew review` over HTTP; needs a scoped transport or running the Reviewer with workspace-write plus prompt rules.

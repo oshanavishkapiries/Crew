@@ -18,7 +18,7 @@ describe('Codex adapter contract (real 0.163.0 JSONL)', () => {
       expect(config.args[config.args.indexOf('-C') + 1]).toBe(options.workDir);
       expect(config.args).toContain('--json'); expect(config.args.at(-1)).toBe('-');
       expect(config.args).toContain('approval_policy="never"');
-      expect(config.args).toContain('sandbox_workspace_write.network_access=false');
+      expect(config.args).toContain('sandbox_workspace_write.network_access=true');
       expect(config.args).toContain('--ignore-user-config'); expect(config.args).toContain('--ignore-rules');
       expect(config.args.join(' ')).not.toContain(options.agentToken); expect(config.args.join(' ')).not.toContain(options.prompt);
       expect(config.env).toMatchObject({ CREW_TASK_ID: 'task', CREW_SERVER_URL: options.serverUrl, CREW_AGENT_TOKEN: options.agentToken });
@@ -27,8 +27,8 @@ describe('Codex adapter contract (real 0.163.0 JSONL)', () => {
     expect(resume.args.slice(-4)).toEqual(['resume', '--json', 'thread-id', '-']);
     expect(resume.env.CREW_SESSION_ID).toBe('thread-id');
   });
-  it('maps explicit network access', () => {
-    expect(new CodexAdapter().buildSpawn({ prompt: '', workDir: '/tmp', permissions: { allowNetwork: true } }).args).toContain('sandbox_workspace_write.network_access=true');
+  it('enables network by default so the sandbox can reach the local Crew API, and honours an explicit false', () => {
+    expect(new CodexAdapter().buildSpawn({ prompt: '', workDir: '/tmp', permissions: { allowNetwork: false } }).args).toContain('sandbox_workspace_write.network_access=false');
   });
   it('parses edit and resume fixtures, capturing the actual thread identity', () => {
     const events = new CodexAdapter().parseOutput(fixture('short-task'));

@@ -24,7 +24,7 @@ export class CodexAdapter implements AgentAdapter {
     const sandbox = permissions.mode === 'full' ? 'danger-full-access' : permissions.mode === 'read-only' ? 'read-only' : 'workspace-write';
     return ['--ignore-user-config', '--ignore-rules', '-s', sandbox, '-C', workDir,
       '-c', 'approval_policy="never"',
-      '-c', `sandbox_workspace_write.network_access=${permissions.allowNetwork === true}`,
+      '-c', `sandbox_workspace_write.network_access=${permissions.allowNetwork !== false}`,
       // Keep Crew's environment available to shell commands, including the task token.
       '-c', 'shell_environment_policy.inherit="all"'];
   }
@@ -90,6 +90,6 @@ export function codexPermissionInstructions(profile: PermissionProfile): string 
     profile.mode === 'orchestrator' ? `Plan only: use read/search, git diff/log/show/status and crew commands. Write only ${profile.phaseOutputPath || 'the designated phase output file'}.` : '',
     profile.allowCommands?.length ? `Additional permitted command prefixes: ${profile.allowCommands.join(', ')}.` : '',
     profile.denyCommands?.length ? `Forbidden command prefixes: ${profile.denyCommands.join(', ')}.` : '',
-    profile.allowNetwork ? 'Network access permitted by the profile.' : 'Do not access the network except the local Crew API needed for crew commands.',
+    profile.allowNetwork === false ? 'Do not access the network except the local Crew API needed for crew commands.' : 'Network access is enabled so crew commands can reach the local Crew API. Use it for nothing else unless the task requires it.',
   ].filter(Boolean).join('\n');
 }

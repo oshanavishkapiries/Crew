@@ -98,7 +98,7 @@ Decisions from the grilling session on 2026-10-18, plus later ones: D20 from mil
 | D85 | No SSE event replay: after a reconnect the UI refetches the affected resources. | user |
 | D86 | No browser end-to-end suite in Phase 1; the Board is checked by its REST/SSE harness tests, the UI build and a manual browser checklist (milestone-6.md §6). | user |
 | D87 | Dependency arrows and columns use plain SVG/CSS, no graph library. | user |
-| D88 | Codex sandbox mapping: `read-only` → `read-only`, `standard`/`orchestrator` → `workspace-write`, `full` → `danger-full-access` (only when the human configured `full`). Codex has no per-command allow/deny lists, so those are enforced by the sandbox and prompt rules; this limitation is documented. | user |
+| D88 | Codex sandbox mapping (workspace network is on by default, because a network-off sandbox cannot reach the local Crew API; `allowNetwork: false` disables it): `read-only` → `read-only`, `standard`/`orchestrator` → `workspace-write`, `full` → `danger-full-access` (only when the human configured `full`). Codex has no per-command allow/deny lists, so those are enforced by the sandbox and prompt rules; this limitation is documented. | user |
 | D89 | Pull assignment reuses the Dispatcher's worktree provisioning and prompt builder; the only difference is handing the task to the polling agent instead of spawning a process. | user |
 | D90 | Stale window default is 10 minutes (`staleAfterMs`, configurable); a stale Pull agent's task is re-queued without charging a retry and its branch is kept. | user |
 | D91 | Every `crew` call from a Pull agent is a heartbeat; no background heartbeat process is required. | user |
