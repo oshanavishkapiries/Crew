@@ -1,4 +1,4 @@
-# Milestone 7 session 3 in progress
+# Milestone 7 session 3: bullets 4 and 5 implemented and verified
 
 Bullet 4 is implemented: injected-clock scanner, atomic stale requeue without
 retry charge, preserved worktrees/branches, another-agent takeover, retired-run
@@ -8,7 +8,10 @@ connect token rotation/CLI, and Team/Board status. 35 targeted config/connect/de
 checks and actual Chromium/real CLI-server checks passed. The first full run passed
 all 400 tests but caught a timer from a replaced test server; cleanup now closes
 the current server and the regression checks its scanner/listener after shutdown.
-The final clean root repeat is pending.
+The final `rm -r dist && npm test` exited 0: 58 files / 400 tests passed
+in 582.29s without unhandled errors. The validated static export was restored after
+the root clean run. Implementation commits: f2876dd, 70a5908, 25e8600; full output,
+browser coverage and limits: [reports/m7-bullet-4-5.md](reports/m7-bullet-4-5.md).
 Bullet 6 remains not started. No paid agents. Unrelated tickets.ts
 whitespace is untouched. See milestone-7.md §9 for the grace and reviewer rules.
 

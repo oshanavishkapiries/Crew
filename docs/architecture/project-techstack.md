@@ -102,5 +102,5 @@ name changing role/tool/mode. Antigravity presence detection never executes the
 program or claims a version/headless interface; GUI installations without a PATH
 entry are not detected, but their terminal session can still use Pull transport.
 Team/Board status and connect UI compose existing shadcn primitives; no new UI
-dependency. Private connect prompts live only in the current dialog/clipboard,
+dependency. In the UI, private connect prompts live only in the current dialog/clipboard,
 never browser storage, server logs or database plaintext.

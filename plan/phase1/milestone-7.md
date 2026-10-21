@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4 and 5 are implemented; final clean suite/UI build/browser verification are pending. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4 and 5 are implemented and verified: 58 files / 400 tests, UI build, 22 client checks and real Chromium/CLI-server checks passed; see reports/m7-bullet-4-5.md. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
 
 ## 1. Goal
 
@@ -241,8 +241,8 @@ remain refused. The last stale author/reviewer cannot immediately reclaim the
 same task until a different agent has run it. Idle agents are only projected as
 disconnected, never requeued. Scanner passes cannot interleave with done's SQLite
 transaction; both success-before-expiry and stale-before-late-done are tested.
-Targeted stale + existing Pull suite: 2 files / 25 tests passed, 47.55s. Bullet 5
-in progress; bullet 6 not started. Full verification remains for this session.
+Targeted stale + existing Pull suite: 2 files / 25 tests passed, 47.55s.
+Final session verification is recorded below. Bullet 6 is not started.
 
 ### Session 3: Antigravity, connect prompt and status (bullet 5)
 
@@ -271,7 +271,7 @@ every 15 seconds; Refresh is available. Board also listens for stale/connect SSE
 
 Targeted config/connect/detection suite: 3 files / 35 tests passed (46.77s). UI
 typecheck/lint and 22 client checks passed. Final clean suite, UI build and real
-browser check still pending. No paid agents; bullet 6 remains not started.
+browser checks also passed (details below). No paid agents; bullet 6 remains not started.
 
 Limits: the last stale assignee/reviewer cannot immediately reclaim its own retired
 task; another eligible agent must run it first. A single-agent team can therefore
@@ -302,4 +302,7 @@ badge. Screenshots were taken only after clearing the private dialog. The initia
 Board wait used exact text on a span containing both name and status; diagnosis
 confirmed the badge rendered and the selector was corrected. A final UI pass spaces
 Team actions and includes Pull running in the Board staffing bar. No browser page
-errors or model processes. Final clean root repeat is pending.
+errors or model processes. The final `rm -r dist && npm test` exited 0: 58 files /
+400 tests passed in 582.29s, with no unhandled errors. The previously validated
+ui/out export was restored to dist/ui after the root clean run. Full output and
+precise browser coverage/limits: reports/m7-bullet-4-5.md. Bullet 6 is not started.
