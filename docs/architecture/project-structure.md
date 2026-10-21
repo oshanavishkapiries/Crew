@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestone 5 bullets 0–8 implemented; bullet 9 manual smoke script written and typechecked, not run. Hard server crash leaves an orphan/duplicate Orchestrator (milestone-5.md §9). The milestone is not done.
+**Status:** milestones 1 to 5 are done (smoke passed with real Claude Code, 2026-10-21). Milestone 6 (Board UI in `ui/`) is planned in `milestone-6.md`; `ui/` does not exist yet.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -35,8 +35,9 @@ crew/
 │     ├─ milestone-2.md   # Milestone 2 plan: runner and core safety (implemented)
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
-│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–8 implemented; smoke script written, manual run pending)
-│     ├─ agent-prompts/   # The implementer prompt template and its lessons (per-session prompts are removed after a milestone merges)
+│     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (done; smoke passed)
+│     ├─ milestone-6.md   # Milestone 6 plan: Board UI (Next.js static export + shadcn/ui)
+│     ├─ agent-prompts/   # The implementer prompt template and its lessons; milestone 6 track prompts (removed after the milestone merges)
 │     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
@@ -58,7 +59,7 @@ crew/
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
 │  └─ roles/              # Built-in role prompts and permission profiles; workspace overrides stay in config
-├─ ui/                    # Board UI (Vite + React), built and served by the server
+├─ ui/                    # Board UI (Next.js static export + Tailwind + shadcn/ui, D80/D81), built to dist/ui and served by the server
 └─ test/
    ├─ tsconfig.json       # Typecheck config for everything (npm run typecheck)
    ├─ global-setup.ts     # Builds dist/ so tests drive the current crew binary

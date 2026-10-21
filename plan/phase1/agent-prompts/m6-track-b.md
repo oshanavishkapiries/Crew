@@ -1,0 +1,15 @@
+# Milestone 6, Track B: UI scaffold (bullet 1)
+
+Branch: `feat/m6-ui` (off `feat/milestone-6-board`). Read `m6-common.md` first; it is part of this task.
+
+Build bullet 1 of `milestone-6.md` §4.2 and §5, and nothing else:
+1. `ui/` as its own package: Next.js App Router with `output: 'export'`, TypeScript strict, Tailwind, shadcn/ui (initialise it properly; components live in `ui/components/ui`), lucide-react, ESLint. Pin every version exactly and record them in `docs/architecture/project-techstack.md` via your report (Track A edits that file; list the exact versions and reasons under "Track B" in `milestone-6.md` §9). No Next.js server features (D80): no route handlers, no middleware, no server-side data fetching.
+2. **D81 is the main requirement:** theme tokens as CSS variables in one place (`ui/app/globals.css`), shadcn components for every control (Button, Input, Textarea, Select, Tabs, Dialog/Sheet, Badge, Card, Table, Tooltip, ScrollArea, Sonner/toast, Skeleton, Alert, Switch, Form pieces), and feature components that only compose them. Add a short `ui/README.md`: how to restyle (tokens, which files), how to add a shadcn component, how to run `next dev` against a running crew server.
+3. App shell: sidebar/top bar with Board, Inbox, Team, Memory links (pages can be empty placeholders that say which bullet fills them), connection indicator, theme toggle (light/dark/system, tokens only), toast area.
+4. `ui/lib/api.ts`: typed fetch wrapper (credentials same-origin, adds `X-Crew-Board: 1` on non-GET, one error type with the server's message, 401 → login screen). `ui/lib/sse.ts`: a hook that opens `/api/board/:id/events` with `EventSource`, reconnects with backoff, exposes connection state, and triggers a refetch on reconnect (D85). `ui/lib/types.ts`: response types copied from the real server responses (read `src/server/api/app.ts`; do not guess).
+5. **Login page:** reads `#key=...`, POSTs it to `/api/session`, clears the fragment, then shows the app; on failure shows what to do (`run crew open`). Never put the key in a URL query, local storage or logs.
+6. **Boards page:** lists boards from `GET /api/boards` and shows the live connection state and the current phase per board. That is the proof that the scaffold works end to end; the Board view itself is bullet 2.
+7. `next.config` rewrites `/api/*` to the crew server in dev only (URL from an env variable, default `http://127.0.0.1:4000` or whatever `crew start` prints; check the code). Root scripts: `build:ui` (type check, lint, `next build`, copy `ui/out` to `dist/ui`; fail loudly on any error) and `prepack` calling it. `ui/out`, `ui/.next` ignored by git. `npm test` must keep passing without building the UI.
+8. Verify in a real browser (the in-app browser or Playwright is fine to use manually; no e2e suite is added): start a real `crew start` on a throwaway repo, log in through the printed URL, see the boards page update. Paste what you checked. If Track A is not merged yet, say exactly which parts you checked against mocks.
+
+Stop after bullet 1. Do not build the Board, task, inbox, team or memory screens.

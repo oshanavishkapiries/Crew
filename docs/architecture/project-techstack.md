@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D79). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D81). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 
@@ -26,7 +26,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | Path matching | `picomatch` | 4.0.7 | Path filter glob matching for command gates (D37) |
 | Git | git CLI wrapper | — | Worktrees, rebase, squash and compare-and-swap ref updates. Crew worktree/verification/merge housekeeping disables hooks; merge Git subprocesses use detached process groups; stop-all/cancel kill and await rebase, while protected checkout publication finishes. Prepared ref transactions + private index protect checkout updates (verified Git 2.53.0; HEAD lock capability checked before writing); no libgit bindings |
 | Build / Dev runner | `tsup`, `tsx` | 9.0.0 / 4.23.15 | Bundling to `dist/cli.js` and running dev scripts |
-| UI | Vite + React | — | Board UI, built at package time and served by the crew server |
+| UI | Next.js (App Router, static export) + TypeScript + Tailwind + shadcn/ui | pinned in milestone 6 | Board UI in `ui/`, built at package time (`output: 'export'`) and served as static files by the crew server; `next dev` proxies `/api` to the server during development (D80, D81) |
 | Live updates | Server-Sent Events | — | No WebSockets |
 | Agent output view | Live log view of structured events | — | Replaces the design doc's xterm.js PTY terminal (D5) |
 

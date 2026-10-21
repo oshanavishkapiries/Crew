@@ -1,3 +1,7 @@
+# Handoff
+
+**Milestone 6 (Board UI) is planned** (2026-10-21): see `milestone-6.md`. D80 (Next.js static export, proxy in dev only) and D81 (shadcn/ui everywhere) are decided; D82–D87 await approval. Track prompts: `agent-prompts/m6-common.md`, `m6-track-a.md` (server), `m6-track-b.md` (UI scaffold). Nothing implemented yet.
+
 # Milestone 5 final implementation handoff
 
 Status: **milestone 5 is done** (2026-10-21). Bullets 0–9 are implemented, `npm run smoke:m5` passed live with real Claude Code, and the decisions are logged as D56–D79. The private preview still needs packaging (npm tag, tarball or git URL, README quick start). The details below describe the sessions that built it; the verification record is `reports/m5-final.md`.
