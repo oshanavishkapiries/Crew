@@ -52,12 +52,12 @@ function isProcessAlive(pid: number): boolean {
 /**
  * POST to one of the server's human endpoints, authenticated via X-Crew-Secret (D13, D25).
  */
-export async function postHumanAction<T>(endpoint: string, body?: unknown): Promise<T> {
+export async function postHumanAction<T>(endpoint: string, body?: unknown, method: 'POST' | 'PATCH' = 'POST'): Promise<T> {
   const { url, secret } = getServerInfo();
   let res: Response;
   try {
     res = await fetch(`${url}${endpoint}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         [SECRET_HEADER]: secret,

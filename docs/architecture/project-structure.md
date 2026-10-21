@@ -119,3 +119,8 @@ Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI 
 Milestone 6 bullet 0 adds `cli/commands/open.ts` (server.json discovery, fresh login URL and browser launcher), `server/api/sessions.ts` (single-use key exchange and revocable sessions) and `server/api/static.ts` (static export host, route fallback and safe asset caching). `test/harness/board-server.test.ts` covers browser authentication, CLI login recovery/restart, static exports and traversal, Board reads/personas, task detail and global SSE. The server works with no `ui/` build. `server.json` remains mode 0600 and contains only URL, secret and PID, never browser keys or cookies.
 
 The Board (`ui/`, its own package with its own lockfile) has these routes in `ui/app/`: `/` (boards), `/board` (Board view, `?id=`, task panel `?task=`), `/phase` (gates, `?board=`), `/inbox`, `/team`, `/memory`. Feature components live in `ui/components/{board,task,gates,inbox,team,memory}`; every control comes from the shadcn primitives in `ui/components/ui` and colors come from the tokens in `ui/app/globals.css` (D81). `ui/lib/` holds the cookie API client, SSE hook and per-feature data/logic modules; their pure logic is covered by `node --test` checks in `ui/checks/` (`npm --prefix ui run check`), not by the root suite. `npm run build:ui` exports the static site into `dist/ui`.
+
+Track E adds `test/harness/ticket-edit.test.ts` for pending-ticket API/CLI edits,
+transactional dependency replacement, gate release, prompt content and dispatch
+races. `ui/components/gates/ticket-cards.tsx` persists gate ticket changes through
+those endpoints; `Tickets.edit` delegates readiness recomputation to Scheduler.

@@ -27,6 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Choice, ErrorNotice, Notice, TextField } from "./controls";
+import { TicketCards } from "./ticket-cards";
 import { MarkdownPreview } from "./markdown-preview";
 
 export function PhaseScreen() {
@@ -105,6 +106,8 @@ function BoardPhase({ boardId }: { boardId: string }) {
             continue;
           target.push({
             id: task.id,
+            role: detail.task.roleId ?? "",
+            assignee: detail.task.assigneeAgentId ?? "",
             title: detail.task.title,
             description: detail.task.description,
             acceptanceCriteria: detail.task.acceptanceCriteria,
@@ -221,13 +224,14 @@ function GateEditor({
 }) {
   const draft = state.draft!;
   const [text, setText] = useState(draft.body);
-  const [tickets, setTickets] = useState(originalTickets);
+  const tickets = originalTickets;
+  const [ticketChanges, setTicketChanges] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [decided, setDecided] = useState(false);
   const guard = useRef(submissionGuard());
   const ticketPhase = state.board.currentPhase === "tickets";
-  const ticketChanges = hasEdits(originalTickets, tickets);
+
   const changed = hasEdits(draft.body, text);
   const validation = ticketPhase
     ? validateTickets(tickets, {
@@ -246,7 +250,7 @@ function GateEditor({
     }
     if (mode !== "reject" && ticketChanges) {
       onError(
-        "Ticket edits cannot be saved by this server. Reject with a note requesting these changes.",
+        "Save or discard ticket edits before approving.",
       );
       return;
     }
@@ -283,17 +287,6 @@ function GateEditor({
       setBusy(false);
     }
   }
-  function updateTicket(
-    index: number,
-    field: keyof TicketDraft,
-    value: string | string[],
-  ) {
-    setTickets((old) =>
-      old.map((ticket, i) =>
-        i === index ? { ...ticket, [field]: value } : ticket,
-      ),
-    );
-  }
   return (
     <Card>
       <CardHeader>
@@ -314,72 +307,9 @@ function GateEditor({
         <MarkdownPreview text={text} />
         {ticketPhase && (
           <>
-            <Notice>
-              The server approves persisted tickets. Its edit field changes only
-              this output text, not ticket records. Review edits below, then
-              reject with a note to request ticket changes; edited tickets
-              cannot be approved here.
-            </Notice>
-            {tickets.length === 0 && (
-              <Notice>No active work tickets on this board.</Notice>
-            )}
-            {tickets.map((ticket, index) => (
-              <Card key={ticket.id}>
-                <CardHeader>
-                  <CardTitle>Ticket {index + 1}</CardTitle>
-                  <CardDescription>{ticket.id}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <TextField
-                    label={`Ticket ${index + 1} title`}
-                    value={ticket.title}
-                    onChange={(v) => updateTicket(index, "title", v)}
-                    disabled={busy || decided}
-                  />
-                  <TextField
-                    label={`Ticket ${index + 1} description`}
-                    value={ticket.description}
-                    onChange={(v) => updateTicket(index, "description", v)}
-                    multiline
-                    disabled={busy || decided}
-                  />
-                  <TextField
-                    label={`Ticket ${index + 1} acceptance criteria`}
-                    value={ticket.acceptanceCriteria}
-                    onChange={(v) =>
-                      updateTicket(index, "acceptanceCriteria", v)
-                    }
-                    multiline
-                    disabled={busy || decided}
-                  />
-                  <TextField
-                    label={`Ticket ${index + 1} blockers (comma-separated IDs)`}
-                    value={ticket.blockedByIds.join(", ")}
-                    onChange={(v) =>
-                      updateTicket(
-                        index,
-                        "blockedByIds",
-                        v
-                          .split(",")
-                          .map((id) => id.trim())
-                          .filter(Boolean),
-                      )
-                    }
-                    disabled={busy || decided}
-                  />
-                </CardContent>
-              </Card>
-            ))}
+            <TicketCards tickets={tickets} blockers={blockers} boardId={state.board.id}
+              disabled={busy || decided} refresh={refresh} onDirty={setTicketChanges} />
             <ErrorNotice message={validation.join("\n")} />
-            {ticketChanges && (
-              <Button
-                variant="outline"
-                disabled={busy || decided}
-                onClick={() => setTickets(originalTickets)}
-              >
-                Discard ticket edits
-              </Button>
-            )}
           </>
         )}
         <div className="flex flex-wrap gap-2">

@@ -9,7 +9,7 @@ const source = await readFile(
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ESNext },
 });
-const { validateTickets, hasEdits, submissionGuard } = await import(
+const { validateTickets, hasEdits, submissionGuard, ticketFields } = await import(
   `data:text/javascript;base64,${Buffer.from(compiled.outputText).toString("base64")}`
 );
 const ticket = (id, blockedByIds = []) => ({
@@ -72,4 +72,10 @@ test("merged and earlier-phase blockers remain valid without consuming this phas
     }).join(" "),
     /cycle/,
   );
+});
+
+test("ticket saves send persisted editable fields only and replace blockers without duplicates", () => {
+  assert.deepEqual(ticketFields({ ...ticket("a", ["b", "b"]), role: "backend", status: "todo", boardId: "hidden" }), {
+    title: "a", description: "", acceptanceCriteria: "", role: "backend", assignee: "", blockedByIds: ["b"],
+  });
 });

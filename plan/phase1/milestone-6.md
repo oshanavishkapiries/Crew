@@ -4,7 +4,7 @@ The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *wha
 
 **Status:** bullets 0–5 implemented and merged on `feat/milestone-6-board` (2026-10-21): server prerequisites, UI scaffold, Board view, task detail, Inbox, phase gates, Team and Memory. The merged branch passes `rm -r dist && npm test` (324 tests), `npm run build:ui` and the UI checks (18). Bullet 6 is partly done (README quick start, UI README, gate link); the user's manual browser checklist (§6), a decision on the gaps below and the preview packaging (npm tag, tarball or git URL) remain. D80–D87 are decided and logged.
 
-Closed after the merge: `/api/status` phases now carry the effective `limits` (parallel agents, retries, runtime) and the Board shows them; the SSE hook listens to `control_changed`. Known gaps to decide: the tickets gate cannot persist edits to individual tickets (the server stores edited output text only); task logs return only the latest run; task dependencies are only on task detail (the Board reads them per task); the Board still polls every 5 s because run-end events are per run, not per board.
+Closed after the merge: `/api/status` phases now carry the effective `limits` (parallel agents, retries, runtime) and the Board shows them; the SSE hook listens to `control_changed`. Track E part 1 persists individual ticket edits at a waiting tickets gate or before a dispatch ticket starts. Remaining gaps: task logs return only the latest run; task dependencies are only on task detail (the Board reads them per task); the Board still polls every 5 s because run-end events are per run, not per board.
 
 ## 1. Goal
 
@@ -349,3 +349,33 @@ before packaging. Track B did not edit server sources to address it.
   when integrating Tracks C/D. No CLI declarations changed, so commands reference
   regeneration is unnecessary. Full evidence and remaining limitations are in
   `plan/phase1/reports/m6-gates.md`.
+
+
+### Track E
+
+#### Part 1: persisted ticket edits
+
+- Human-only `PATCH /api/tasks/:id` and `crew ticket edit <task>` accept title,
+  description, acceptance criteria, staffed role, compatible assignee and replacement
+  blockers. Only unstarted todo/ready work tickets at a waiting tickets gate or in
+  dispatch are editable. Other states return 409 with cancel/create/refresh recovery.
+- Scheduler owns atomic field/dependency/readiness writes. All validation and cycle
+  detection roll back together. An edit during worktree setup that adds an unfinished
+  blocker demotes the ticket to todo; the dispatch transition rechecks status and
+  cannot start it. Already-started tickets cannot be edited.
+- Reuses `task_assignment_changed` with its existing `{ taskId, assigneeAgentId,
+  roleId }` payload after every successful edit, including text/blocker-only edits,
+  so existing consumers refetch. No new event name or migration.
+- Ticket cards save through PATCH; Add uses POST and Remove confirms cancellation.
+  Blockers use a multi-select composed of shadcn Switch/Label. Unsaved changes block
+  approval, saved changes do not. Approval still validates the persisted graph and
+  pins the displayed draft ID. Cancelled tickets continue consuming creation quota.
+- Proposal: edits use last committed write wins (no optimistic version field).
+  Dispatch and edits serialize at the database transaction; a worktree may be set
+  up using the pre-edit title, but the worker prompt reads the persisted edited task.
+  No PRD Decision Log changes; this implements the user's Track E scope.
+
+- Part 1 verification: clean root suite 51 files / 330 tests (482.91s);
+  UI typecheck, lint, static build and 19 client checks pass. Real Chromium with
+  isolated CLI start verifies edit/blocker replacement/add/cancel/repair/approve
+  and one request on double click, with DB assertions and zero agent runs.

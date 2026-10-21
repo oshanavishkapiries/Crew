@@ -300,6 +300,28 @@ export class Scheduler {
     return task;
   }
 
+  /** Human pending-ticket edits commit fields, graph and readiness together. */
+  editPendingTask(taskId: string, blockedByIds: string[] | undefined, alongside: () => void): Task {
+    const pending: PendingEvent[] = [];
+    const task = this.inTransaction(() => {
+      const before = this.getTaskOrThrow(taskId);
+      alongside(); // Caller checks phase/status/run eligibility inside this transaction.
+      if (blockedByIds !== undefined) {
+        this.db.db.delete(schema.taskDependencies).where(eq(schema.taskDependencies.taskId, taskId)).run();
+        for (const id of new Set(blockedByIds)) this.insertDependency(taskId, id);
+      }
+      const status = !this.ticketHeld(before) && this.dependenciesMerged(taskId) ? 'ready' : 'todo';
+      // ready -> todo is a pending-ticket recomputation, not a worker transition.
+      this.db.db.update(schema.tasks).set({ status, updatedAt: new Date() }).where(eq(schema.tasks.id, taskId)).run();
+      if (status !== before.status) pending.push({ boardId: before.boardId, event: {
+        type: 'task_status_changed', data: { taskId, from: before.status, to: status, retries: before.retries, reason: 'Ticket dependencies edited' },
+      } });
+      return this.getTaskOrThrow(taskId);
+    });
+    this.publish(pending);
+    return task;
+  }
+
   private ticketHeld(task: Task): boolean {
     return task.kind === 'work' && task.creationPhase === 'tickets' &&
       this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()?.currentPhase === 'tickets';

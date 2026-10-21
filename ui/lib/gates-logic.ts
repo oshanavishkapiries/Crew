@@ -4,6 +4,8 @@ export interface TicketDraft {
   description: string;
   acceptanceCriteria: string;
   blockedByIds: string[];
+  role?: string;
+  assignee?: string;
 }
 export function validateTickets(
   tickets: TicketDraft[],
@@ -53,4 +55,10 @@ export function submissionGuard() {
       busy = false;
     },
   };
+}
+
+/** Only editable API fields leave a ticket card. */
+export function ticketFields(ticket: TicketDraft) {
+  return { title: ticket.title, description: ticket.description, acceptanceCriteria: ticket.acceptanceCriteria,
+    role: ticket.role, assignee: ticket.assignee ?? "", blockedByIds: [...new Set(ticket.blockedByIds)] };
 }

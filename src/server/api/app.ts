@@ -237,6 +237,13 @@ export function createApp(ctx: AppContext): Hono {
     return c.json({ task }, 201);
   });
 
+  app.patch('/api/tasks/:id', async c => {
+    const caller = identify(c);
+    if (!caller) throw unauthorized();
+    if (caller.kind !== 'human') throw forbidden('only humans can edit persisted tickets');
+    return c.json({ task: tickets.edit(c.req.param('id'), await ticketBody(c)) });
+  });
+
   app.post('/api/tasks/:id/assign', async c => {
     const body = await ticketBody(c);
     const actor = requireTicketCaller(c, body);

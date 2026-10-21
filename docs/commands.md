@@ -504,11 +504,12 @@ crew phase done --output phase-output.md
 
 ### `crew ticket`
 
-Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota.
+Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota. Human-only edit updates pending, unstarted tickets at a tickets gate or during dispatch, including replacement blockers; use --assignee "" or --blocked-by "" to clear them.
 
 **Arguments:**
 
-- `action` (required): Action to perform: create
+- `action` (required): Action to perform: create or edit
+- `task` (optional): Task ID (required for edit)
 
 **Options:**
 

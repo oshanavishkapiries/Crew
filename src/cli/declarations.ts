@@ -375,11 +375,12 @@ export const COMMANDS: CommandDefinition[] = [
   {
     name: 'ticket',
     category: 'orchestrator',
-    summary: 'Create a task ticket',
-    description: 'Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota.',
+    summary: 'Create or edit a task ticket',
+    description: 'Creates a work ticket with criteria and blockers. Requires a live Orchestrator phase run or the human secret; humans supply --board and --phase. Failed validation consumes no phase quota. Human-only edit updates pending, unstarted tickets at a tickets gate or during dispatch, including replacement blockers; use --assignee "" or --blocked-by "" to clear them.',
     action: handleTicket,
     args: [
-      { name: 'action', description: 'Action to perform: create', required: true },
+      { name: 'action', description: 'Action to perform: create or edit', required: true },
+      { name: 'task', description: 'Task ID (required for edit)', required: false },
     ],
     options: [
       { flags: '--board <id>', description: 'Board ID (required for humans; inferred for the Orchestrator)' },

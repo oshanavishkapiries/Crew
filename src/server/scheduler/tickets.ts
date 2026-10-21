@@ -77,6 +77,46 @@ export class Tickets {
     });
   }
 
+  edit(taskId: string, fields: Record<string, unknown>): Task {
+    const task = this.scheduler.editPendingTask(taskId, fields.blockedByIds as string[] | undefined, () => {
+      const current = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get()!;
+      const board = this.board(current.boardId);
+      const draft = this.db.db.select().from(schema.phaseOutputs).where(and(eq(schema.phaseOutputs.boardId, board.id), eq(schema.phaseOutputs.phase, 'tickets'), eq(schema.phaseOutputs.status, 'draft'))).get();
+      const runs = this.db.db.select().from(schema.runs).where(eq(schema.runs.taskId, taskId)).all();
+      const reason = current.kind !== 'work' ? 'Only work tickets can be edited' :
+        !['todo', 'ready'].includes(current.status) ? `Ticket is ${current.status}` :
+        runs.length ? 'Ticket has already started a run' :
+        !(board.currentPhase === 'dispatch' || (board.currentPhase === 'tickets' && draft)) ? `Board is in ${board.currentPhase} without an editable tickets gate` : undefined;
+      if (reason) throw new TicketError(`${reason}. Use crew cancel ${taskId} and create a new ticket, or refresh crew phase/status.`, 409);
+      const allowed = ['title', 'description', 'acceptanceCriteria', 'role', 'assignee', 'blockedByIds'];
+      for (const key of Object.keys(fields)) if (!allowed.includes(key)) throw new TicketError(`Unknown ticket field: ${key}`);
+      if (!Object.keys(fields).length) throw new TicketError('Supply at least one ticket field to edit.');
+      for (const key of allowed.filter(key => key !== 'blockedByIds')) if (fields[key] !== undefined && typeof fields[key] !== 'string') throw new TicketError(`${key} must be text.`);
+      if (fields.title !== undefined && !(fields.title as string).trim()) throw new TicketError('A non-empty title is required.');
+      if (fields.blockedByIds !== undefined && (!Array.isArray(fields.blockedByIds) || fields.blockedByIds.some(id => typeof id !== 'string'))) throw new TicketError('blockedByIds must be an array of task IDs.');
+      const role = this.role(board.workspaceId, fields.role as string ?? current.roleId ?? '');
+      const agents = this.db.db.select().from(schema.agents).where(and(eq(schema.agents.workspaceId, board.workspaceId), eq(schema.agents.roleId, role.id))).all();
+      if (!agents.length) throw new TicketError(`No agent has role ${role.name}; choose a staffed role.`);
+      const assigneeId = fields.assignee !== undefined ? fields.assignee : current.assigneeAgentId;
+      const assignee = assigneeId ? this.assignee(board.workspaceId, assigneeId as string) : undefined;
+      if (assignee && assignee.roleId !== role.id) throw new TicketError('The assignee must have the ticket role. Change --assignee too, or clear it with --assignee "".');
+      for (const id of fields.blockedByIds as string[] ?? []) {
+        const blocker = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, id)).get();
+        if (!blocker) throw new TicketError(`Blocker not found: ${id}. Correct --blocked-by and edit again.`, 404);
+        if (blocker.boardId !== board.id || blocker.kind !== 'work') throw new TicketError('Blockers must be work tickets on the same board.');
+        if (['cancelled', 'escalated'].includes(blocker.status)) throw new TicketError(`Blocker ${id} is ${blocker.status}; recover it or choose another blocker.`);
+      }
+      this.db.db.update(schema.tasks).set({
+        ...(fields.title !== undefined ? { title: (fields.title as string).trim() } : {}),
+        ...(fields.description !== undefined ? { description: fields.description as string } : {}),
+        ...(fields.acceptanceCriteria !== undefined ? { acceptanceCriteria: fields.acceptanceCriteria as string } : {}),
+        roleId: role.id, assigneeAgentId: assignee?.id ?? null,
+      }).where(eq(schema.tasks.id, taskId)).run();
+    });
+    this.events.publishBoardEvent(task.boardId, { type: 'task_assignment_changed', data: { taskId: task.id, assigneeAgentId: task.assigneeAgentId, roleId: task.roleId } });
+    return task;
+  }
+
   assign(taskId: string, target: string): Task {
     const task = this.db.sqlite.transaction(() => {
       const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
