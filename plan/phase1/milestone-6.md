@@ -2,7 +2,9 @@
 
 The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** bullet 0 (Track A server prerequisites) implemented (2026-10-21); Board UI and browser smoke remain. D80 and D81 are decided; D82–D87 were approved and logged. Bullets 0 (server) and 1 (UI scaffold) are implemented and merged; bullets 2–6 remain.
+**Status:** bullets 0–5 implemented and merged on `feat/milestone-6-board` (2026-10-21): server prerequisites, UI scaffold, Board view, task detail, Inbox, phase gates, Team and Memory. The merged branch passes `rm -r dist && npm test` (324 tests), `npm run build:ui` and the UI checks (18). Bullet 6 is partly done (README quick start, UI README, gate link); the user's manual browser checklist (§6), a decision on the gaps below and the preview packaging (npm tag, tarball or git URL) remain. D80–D87 are decided and logged.
+
+Known gaps to decide (from the track reports): the tickets gate cannot persist edits to individual tickets (server stores edited output text only); `/api/status` exposes no configured budget limits or run start times, so the budget bar shows activity, not capacity; task logs return only the latest run; task dependencies are only on task detail; the shared SSE hook omits `control_changed` and run-end events (the Board polls every 5 s as a fallback).
 
 ## 1. Goal
 

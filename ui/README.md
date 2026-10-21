@@ -1,8 +1,9 @@
-# Crew Board scaffold
+# Crew Board
 
-Milestone 6, bullet 1 only. `/` lists boards and their SSE connection state;
-Inbox (bullet 4), Team and Memory (bullet 5) are placeholders. Board view and
-task detail belong to bullets 2 and 3.
+The Board is a Next.js static export (D80) built from shadcn/ui components (D81).
+Routes: `/` boards, `/board?id=<board>` Board view with the task panel (`&task=<id>`),
+`/phase?board=<board>` phase gates, `/inbox` questions, `/team` agents and personas,
+`/memory` the three memory layers. There are no dynamic routes: static export uses query strings.
 
 ## Run locally
 
@@ -29,12 +30,8 @@ SSE and session cookies. Use `127.0.0.1` consistently; the cookie belongs to
 the browser hostname. `CREW_SERVER_URL` is a development-only setting, not
 an exposed `NEXT_PUBLIC_*` variable. Restart `next dev` after changing it.
 
-**Integration TODO (Track A):** The shared base lacks `/api/session`,
-`GET /api/boards`, and static serving. Until those land, real login and the
-board list cannot work end to end. `lib/types.ts` copies the actual boards response read from Track A's sibling
-checkout; confirm that shape against the final Track A merge. There
-are no mock routes or secret-header fallbacks in the shipped app. Browser
-checks using temporary mocks and the isolated Track A server are recorded in `../plan/phase1/reports/m6-ui.md`.
+The shipped app has no mock routes and no secret-header fallback; it logs in with the
+HttpOnly session cookie (D82). Verification records are in `../plan/phase1/reports/m6-*.md`.
 
 ## Build and check
 
