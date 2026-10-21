@@ -1,3 +1,6 @@
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { BrowserSessions } from './sessions.js';
+import { serveBoard } from './static.js';
 import { WorkflowError, type Workflow } from '../workflow/index.js';
 import * as fs from 'node:fs';
 import { sql, eq, inArray, desc, asc, and } from 'drizzle-orm';
@@ -35,6 +38,7 @@ export interface AppContext {
   eventBus: EventBus;
   scheduler: Scheduler;
   perStartSecret: string;
+  browserSessions?: BrowserSessions;
   worktreeManager?: WorktreeManager;
   runner?: Runner;
   dispatcher?: Dispatcher;
@@ -53,6 +57,7 @@ function newMessageId(): string {
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
+  const sessions = ctx.browserSessions ?? new BrowserSessions();
 
   // D13: Host-header validation middleware on all routes
   app.use('*', hostHeaderMiddleware());
@@ -75,6 +80,12 @@ export function createApp(ctx: AppContext): Hono {
     if (secretsMatch(c.req.header(SECRET_HEADER), ctx.perStartSecret)) {
       return { kind: 'human' };
     }
+    if (sessions.valid(getCookie(c, 'crew_session'))) {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && c.req.header('X-Crew-Board') !== '1') {
+        throw forbidden('cookie mutations require X-Crew-Board: 1');
+      }
+      return { kind: 'human' };
+    }
     const token = c.req.header(AGENT_TOKEN_HEADER);
     if (!token) return null;
     const agent = ctx.db.db
@@ -87,7 +98,7 @@ export function createApp(ctx: AppContext): Hono {
 
   const unauthorized = () =>
     new HTTPException(401, {
-      res: Response.json({ error: 'Unauthorized: missing or invalid credentials (D13)' }, { status: 401 }),
+      res: Response.json({ error: 'Unauthorized: missing or invalid credentials. Run crew open to sign in again (D13)' }, { status: 401 }),
     });
 
   const forbidden = (message: string) =>
@@ -96,6 +107,72 @@ export function createApp(ctx: AppContext): Hono {
   const requireHuman = (c: Context): void => {
     if (identify(c)?.kind !== 'human') throw unauthorized();
   };
+
+  const requireBoardHuman = (c: Context): void => {
+    if (c.req.header(AGENT_TOKEN_HEADER)) throw forbidden('agents cannot use browser sessions or edit personas');
+    requireHuman(c);
+  };
+
+  app.use('/api/session*', async (c, next) => {
+    c.header('Cache-Control', 'no-store');
+    if (c.req.header(AGENT_TOKEN_HEADER)) throw forbidden('agents cannot use browser sessions');
+    await next();
+  });
+  // CLI-only minting: the browser never receives the per-start secret.
+  app.post('/api/session/key', c => {
+    if (!secretsMatch(c.req.header(SECRET_HEADER), ctx.perStartSecret)) throw unauthorized();
+    return c.json({ key: sessions.issueKey() });
+  });
+  app.post('/api/session', async c => {
+    const body = await c.req.json().catch(() => null);
+    const session = sessions.exchange(body?.key);
+    if (!session) throw unauthorized();
+    setCookie(c, 'crew_session', session, { httpOnly: true, sameSite: 'Strict', path: '/' });
+    return c.body(null, 204);
+  });
+  app.get('/api/session', c => {
+    if (!sessions.valid(getCookie(c, 'crew_session'))) throw unauthorized();
+    return c.body(null, 204);
+  });
+  app.delete('/api/session', c => {
+    requireBoardHuman(c);
+    sessions.revoke(getCookie(c, 'crew_session'));
+    deleteCookie(c, 'crew_session', { path: '/', httpOnly: true, sameSite: 'Strict' });
+    return c.body(null, 204);
+  });
+
+  const publicAgent = ({ tokenHash: _tokenHash, ...agent }: Agent) => agent;
+  app.get('/api/boards', c => {
+    requireBoardHuman(c);
+    const workspaces = new Map(ctx.db.db.select().from(schema.workspaces).all().map(w => [w.id, w]));
+    return c.json({ boards: ctx.db.db.select().from(schema.boards).all().map(board => {
+      const workspace = workspaces.get(board.workspaceId)!;
+      return { ...board, workspace: { id: workspace.id, name: workspace.name, repoPath: workspace.repoPath, defaultBranch: workspace.defaultBranch }, stopped: ctx.dispatcher?.isStopped() ?? false };
+    }) });
+  });
+  app.get('/api/agents', c => {
+    requireBoardHuman(c);
+    return c.json({ agents: ctx.db.db.select().from(schema.agents).all().map(publicAgent) });
+  });
+  app.get('/api/agents/:id', c => {
+    requireBoardHuman(c);
+    const agent = ctx.db.db.select().from(schema.agents).where(eq(schema.agents.id, c.req.param('id'))).get();
+    return agent ? c.json({ agent: publicAgent(agent) }) : c.json({ error: 'Agent not found' }, 404);
+  });
+  app.get('/api/roles', c => {
+    requireBoardHuman(c);
+    return c.json({ roles: ctx.db.db.select().from(schema.roles).all() });
+  });
+  app.patch('/api/agents/:id', async c => {
+    requireBoardHuman(c);
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body) || !Object.keys(body).length ||
+      Object.entries(body).some(([key, value]) => !['name', 'personality', 'systemPrompt'].includes(key) || typeof value !== 'string' || (key === 'name' && !value.trim()))) {
+      return c.json({ error: 'Provide name (nonblank), personality or systemPrompt as strings; no other fields may be edited.' }, 400);
+    }
+    const agent = ctx.db.db.update(schema.agents).set(body).where(eq(schema.agents.id, c.req.param('id'))).returning().get();
+    return agent ? c.json({ agent: publicAgent(agent) }) : c.json({ error: 'Agent not found; refresh the team list.' }, 404);
+  });
 
   const loadTask = (taskId: string): Task => {
     const task = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, taskId)).get();
@@ -597,7 +674,20 @@ export function createApp(ctx: AppContext): Hono {
             .all()
         : [];
 
-    return c.json({ success: true, task, messages, runs, verificationResults });
+    const dependencies = ctx.db.db.select().from(schema.taskDependencies).where(eq(schema.taskDependencies.taskId, taskId)).all();
+    const commits: { sha: string; subject?: string; source: 'branch' | 'merge' }[] = [];
+    const merge = ctx.db.db.select().from(schema.mergeQueueItems).where(eq(schema.mergeQueueItems.taskId, taskId)).get();
+    if (merge?.commitSha) commits.push({ sha: merge.commitSha, source: 'merge' });
+    if (task.worktreePath && fs.existsSync(task.worktreePath)) {
+      const board = ctx.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()!;
+      const workspace = ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()!;
+      const log = await execa('git', ['log', '--format=%H%x00%s', `${workspace.defaultBranch}..HEAD`, '--'], { cwd: task.worktreePath, reject: false });
+      if (log.exitCode === 0) for (const line of log.stdout.split('\n').filter(Boolean)) {
+        const [sha, subject] = line.split('\0');
+        commits.push({ sha, subject, source: 'branch' });
+      }
+    }
+    return c.json({ success: true, task, messages, runs, verificationResults, dependencies, commits });
   });
 
   // PRD line 370: POST /api/tasks/:id/answer (human secret)
@@ -740,6 +830,7 @@ export function createApp(ctx: AppContext): Hono {
       .where(inArray(schema.agents.status, ['idle', 'busy']))
       .run();
 
+    ctx.eventBus.publishBoardEvent('*', { type: 'control_changed', data: { stopped: true } });
     return c.json({
       success: true,
       stoppedRuns,
@@ -771,6 +862,7 @@ export function createApp(ctx: AppContext): Hono {
     // 4. Trigger immediate dispatch pass
     ctx.dispatcher?.scheduleDispatch();
 
+    ctx.eventBus.publishBoardEvent('*', { type: 'control_changed', data: { stopped: false } });
     return c.json({
       success: true,
       message: 'Dispatch resumed and stopped agents restored to idle',
@@ -918,6 +1010,11 @@ export function createApp(ctx: AppContext): Hono {
       exitReason: lastRun.exitReason,
       exitCode: lastRun.exitCode,
     });
+  });
+
+  app.get('*', c => {
+    if (c.req.path === '/api' || c.req.path.startsWith('/api/')) return c.notFound();
+    return serveBoard(c);
   });
 
   return app;

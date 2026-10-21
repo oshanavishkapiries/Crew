@@ -1,6 +1,8 @@
 # Handoff
 
-**Milestone 6 (Board UI) is planned** (2026-10-21): see `milestone-6.md`. D80 (Next.js static export, proxy in dev only) and D81 (shadcn/ui everywhere) are decided; D82–D87 await approval. Track prompts: `agent-prompts/m6-common.md`, `m6-track-a.md` (server), `m6-track-b.md` (UI scaffold). Nothing implemented yet.
+**Milestone 6 bullet 0 (Track A server prerequisites) is implemented** (2026-10-21) on `feat/m6-server`. See `reports/m6-server.md` for verification and delivery; `milestone-6.md` §9 Track A records exact API/SSE payloads, implementation proposals and integration notes. Static serving handles missing exports, client routes, traversal/symlinks and content types/cache policy; sessions add single-use fragment login, cookie CSRF checks and logout/restart invalidation; `crew open` repairs used keys and lost cookies. New human Board reads/persona updates and additive task dependencies/commits are available. Global rate-limit and stop/resume events reach board SSE once.
+
+Clean-build verification (`rm -r dist && npm test`) passed typecheck/build and all 323 tests across 50 files (660.58s). No UI files were touched; stop after bullet 0. Track B owns UI scaffold and root build hooks. No new dependencies/migrations and no PRD Decision Log edits. Next: merge the independent tracks, then UI bullets 2–5 and browser smoke/packaging. D80–D81 remain decided; implementation follows the explicitly assigned D82/D84 contract without changing their Decision Log status. Existing SSE connections are not actively revoked on logout (close them in the client); pre-integration author commit history is not persisted after worktree cleanup. The full milestone is not done.
 
 # Milestone 5 final implementation handoff
 

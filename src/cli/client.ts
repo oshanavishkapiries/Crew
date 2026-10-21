@@ -14,9 +14,9 @@ export interface ServerInfo {
   pid?: number;
 }
 
-export function getServerInfo(): ServerInfo {
+export function getServerInfo(fromFile = false): ServerInfo {
   if (process.env.CREW_AGENT_TOKEN) fail('This is a human command; agents cannot use human authentication.');
-  if (process.env.CREW_SERVER_URL && process.env.CREW_SECRET) {
+  if (!fromFile && process.env.CREW_SERVER_URL && process.env.CREW_SECRET) {
     return {
       url: process.env.CREW_SERVER_URL,
       secret: process.env.CREW_SECRET,

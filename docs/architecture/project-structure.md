@@ -2,7 +2,7 @@
 
 The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
 
-**Status:** milestones 1 to 5 are done (smoke passed with real Claude Code, 2026-10-21). Milestone 6 (Board UI in `ui/`) is planned in `milestone-6.md`; `ui/` does not exist yet.
+**Status:** milestones 1 to 5 are done (smoke passed with real Claude Code, 2026-10-21). Milestone 6 bullet 0 (server prerequisites) is implemented; Board UI in `ui/` is a separate track planned in `milestone-6.md`.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -42,12 +42,12 @@ crew/
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
-│  │                      # Human commands: start, init, status, stop-all, resume (D23), worktree gc,
+│  │                      # Human commands: start, open, init, status, stop-all, resume (D23), worktree gc,
 │  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16), results, queue, retry (D44)
 │  │                      # Command declarations here are the single source for --help and docs/commands.md (D3)
 │  ├─ server/
 │  │  ├─ project-config.ts # jiti loader, config validation/template and command prefix filtering (CLI startup only)
-│  │  ├─ api/             # REST + SSE endpoints, Host-header and token checks (D13)
+│  │  ├─ api/             # REST + SSE endpoints, Host/token/cookie checks; sessions.ts keeps browser credentials in memory, static.ts serves package-relative dist/ui safely
 │  │  ├─ db/              # Drizzle schema and migrations (SQLite in ~/.crew, D12)
 │  │  ├─ scheduler/       # Task state machine/dependencies (index.ts), authorized ticket creation/quota/assignment (tickets.ts), dispatcher with the parallel-agent limit (dispatcher.ts)
 │  │  ├─ runner/          # Child-process spawn with structured events, timeouts, kill, resume (D4, D5)
@@ -115,3 +115,5 @@ Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI 
 `test/harness/interruptions.test.ts` covers grill/spec/tickets live-run and pending-gate server restarts with fresh runtime components and a new database connection, stop/resume, concurrent cancel/retry replacement, escalation recovery and all phase-endpoint auth checks. Kill cases assert both agent and child PIDs are gone; restart coverage uses graceful server close, not a hard process crash.
 
 `test/harness/server-sigkill.test.ts` runs the built CLI/server as a real child, replaces only the paid Claude executable with a stub, SIGKILLs the server and records orphan/duplicate behavior after real CLI startup. It proves explicit old-process cleanup plus human stop/resume/approval recovery; no durable orphan fix is claimed. Dispatch/integrate and interruption tests cover the full board, promotion boundaries, auth matrix and worker process termination. `scripts/smoke-milestone-5.ts` uses real CLI init/start, a capped real-Claude launcher, scripted human commands and read-only database/log evidence; it is typechecked but never executed by the suite.
+
+Milestone 6 bullet 0 adds `cli/commands/open.ts` (server.json discovery, fresh login URL and browser launcher), `server/api/sessions.ts` (single-use key exchange and revocable sessions) and `server/api/static.ts` (static export host, route fallback and safe asset caching). `test/harness/board-server.test.ts` covers browser authentication, CLI login recovery/restart, static exports and traversal, Board reads/personas, task detail and global SSE. The server works with no `ui/` build; Track B owns UI packaging hooks. `server.json` remains mode 0600 and contains only URL, secret and PID, never browser keys or cookies.

@@ -1,3 +1,4 @@
+import { BrowserSessions } from './api/sessions.js';
 import { Workflow } from './workflow/index.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -38,6 +39,7 @@ export interface RunningServer {
   host: string;
   url: string;
   perStartSecret: string;
+  loginUrl: string;
   db: CrewDatabase;
   eventBus: EventBus;
   scheduler: Scheduler;
@@ -58,6 +60,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const worktreeManager = options.worktreeManager || new WorktreeManager(db);
   const scheduler = options.scheduler || new Scheduler(db, eventBus, { worktreeManager });
   const perStartSecret = generatePerStartSecret();
+  const browserSessions = new BrowserSessions();
 
   const runner =
     options.runner ||
@@ -103,6 +106,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     verifier,
     mergeQueue,
     perStartSecret,
+    browserSessions,
   });
 
   return new Promise((resolve, reject) => {
@@ -130,6 +134,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
               JSON.stringify({ url, secret: perStartSecret, pid: process.pid }, null, 2),
               { mode: 0o600 },
             );
+            fs.chmodSync(serverJsonPath, 0o600);
           } catch {
             // ignore
           }
@@ -151,6 +156,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             host,
             url,
             perStartSecret,
+            loginUrl: `${url}/#key=${browserSessions.issueKey()}`,
             db,
             eventBus,
             scheduler,

@@ -7,6 +7,12 @@
 
 Commands used by developers to manage workspaces, start the server, inspect agents, and approve workflow gates.
 
+### `crew open`
+
+Reads server.json and opens the Board in your browser. Run this again if a login key was used or the browser lost its session. If opening fails, paste the printed URL into a browser.
+
+---
+
 ### `crew start`
 
 Loads each workspace crew.config.ts before starting the local server on 127.0.0.1. Fix config errors and run start again; the file replaces stored settings on every start.

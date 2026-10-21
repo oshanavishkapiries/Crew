@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** planned (2026-10-21). Nothing is built yet. D80 and D81 are decided; D82–D87 (§7) are Claude's proposals awaiting the user's approval.
+**Status:** bullet 0 (Track A server prerequisites) implemented (2026-10-21); Board UI and browser smoke remain. D80 and D81 are decided; D82–D87 (§7) are Claude's proposals awaiting the user's approval.
 
 ## 1. Goal
 
@@ -92,3 +92,55 @@ Proposed by Claude, awaiting approval:
 
 - Which theme/look does the user want first (tokens are easy to change later)? Default: shadcn "neutral" dark+light.
 - Should `crew start` open the browser automatically? Default: no, print the URL; `crew open` opens it.
+
+
+## 9. Implementation notes
+
+### Track A
+
+Bullet 0 provides the static host, browser sessions, `crew open`, Board reads/persona updates, task-detail additions and global SSE forwarding. No UI files, dependencies or migrations were changed. Root `build:ui`/`prepack` hooks belong to Track B; the server build already works without an export and needs no hook.
+
+#### Browser and CLI contract
+
+- `crew start` prints `http://127.0.0.1:<port>/#key=<key>`. Keys and sessions are random, verified against in-memory hashes, and invalid after restart; a key is consumed atomically once. Unused keys remain valid until restart, including earlier URLs printed by `crew open`.
+- `POST /api/session` accepts `{ key }`, returns 204 and `crew_session` with `HttpOnly; SameSite=Strict; Path=/`. Wrong, reused or old-server keys return 401 with a `crew open` recovery hint. `GET /api/session` checks the cookie (204/401); `DELETE` revokes it and clears it (204). Mutations authenticated by cookie, including logout, need `X-Crew-Board: 1` (403 otherwise). Header-secret CLI requests keep their existing behavior.
+- Added **CLI-only** `POST /api/session/key`: requires `X-Crew-Secret`, returns `{ key }` with `Cache-Control: no-store`. This is how `crew open` mints a fresh URL after reading `server.json`; cookies cannot mint keys. Any agent-token header gets 403 on session endpoints and persona edits, including requests that also supply human credentials.
+- `crew open` prints the URL, then calls `open` on macOS or `xdg-open` on Linux/WSL; `BROWSER` can name another executable (no shell expressions or arguments). On browser failure it exits successfully with paste-the-URL guidance. Missing/stale server discovery says to run `crew start`; connection failure says to start and retry. Keys and cookies are never written to `server.json`, logs or the report; printing a login URL is limited to the requested CLI output.
+- The Board host uses package-relative `dist/ui`, independent of the managed repository's cwd. Missing export: build-and-reload page. HTML and ordinary assets revalidate; only non-HTML `_next/static` assets whose filenames contain a hexadecimal content hash (at least eight digits) get immutable caching. Exported routes resolve `<route>.html` or `<route>/index.html` before the root `index.html` fallback; missing assets and unknown `/api/*` routes return 404. Traversal and export symlinks outside the export return 403. An export without an index returns 503 with rebuild guidance.
+
+#### Response shapes (additive)
+
+All new read endpoints require human authentication (secret or cookie); missing credentials return 401 and agent-token callers return 403. Persona editing uses the same boundary and cookie CSRF guard. These endpoints are Board-only, as allowed by §4.1 / proposed D84; no extra list/persona CLI commands were added.
+
+| Endpoint | JSON response |
+| --- | --- |
+| `GET /api/boards` | `{ boards: [{ id, workspaceId, currentPhase, createdAt, stopped, workspace: { id, name, repoPath, defaultBranch } }] }` |
+| `GET /api/agents` | `{ agents: [agent] }`; all persisted agent fields **except tokenHash** |
+| `GET /api/agents/:id` | `{ agent }`, same redaction; 404 if absent |
+| `GET /api/roles` | `{ roles: [role] }`; id, name, defaultPrompt, permissionProfile, isBuiltin, createdAt |
+| `PATCH /api/agents/:id` | `{ agent }`; accepts a nonempty object containing only string `name`, `personality`, `systemPrompt`; name must be nonblank. Invalid bodies return 400 with field guidance; absent agent returns 404 with refresh guidance. |
+| `GET /api/tasks/:id` | Existing `{ success, task, messages, runs, verificationResults }` plus `dependencies: [{ taskId, blockedByTaskId }]` and `commits: [{ sha, subject?, source: 'branch' | 'merge' }]`. Dates serialize as ISO strings or null. |
+
+Task commits contain the persisted merge-queue commit when available and current worktree commits from `<defaultBranch>..HEAD`. After worktree cleanup only the persisted integration commit is available; a complete historical list of pre-integration author commits is not persisted. Empty/no-worktree tasks return empty commit/dependency arrays as appropriate. No task-status writer was added.
+
+#### SSE contract for Track B
+
+`GET /api/board/:id/events` and `GET /api/runs/:id/stream` accept the cookie without a custom header (native EventSource works). Event `data` is JSON except `ping`. Each board receives its own events plus global `*` events once; events from other concrete boards are excluded. Refetch after reconnect; there is no replay or event ID contract. Auth is checked on connection; logging out invalidates new requests, but does not forcibly close an already-open stream (close EventSource on logout).
+
+| Stream | Event | Payload |
+| --- | --- | --- |
+| Both | `connected` | `{ boardId, timestamp }` or `{ runId, timestamp }` |
+| Both | `ping` | Literal `keep-alive` (not JSON), every 15s |
+| Board | `task_status_changed` | `{ taskId, from, to, retries, reason? }` |
+| Board | `task_assignment_changed` | `{ taskId, assigneeAgentId, roleId }` (nullable IDs) |
+| Board | `task_progress` | `{ taskId, message }` |
+| Board | `phase_changed` | `{ boardId, board, workspace, task?, draft?, memory, problem?, instructions }` (workflow snapshot; refetch phase) |
+| Board | `verification_step` | `{ taskId, step, passed }`; step is `diff`, a command name, `review`, or `merge:<command>` |
+| Board | `merge_item_changed` | Full merge queue row: `{ id, taskId, position, status, conflictTaskId, commitSha, output, createdAt }` |
+| Board, global | `rate_limited` | `{ cliType, delayMs, resetTime }` (resetTime is epoch milliseconds) |
+| Board, global | `rate_limit_cleared` | `{ cliType }` |
+| Board, global | `control_changed` | `{ stopped: boolean }` after successful stop-all/resume |
+| Run | Adapter event name | Adapter's structured JSON object (Claude event types such as `system`, `assistant`, `user`, `result`, `stream_event`); payload depends on the adapter. Treat as log data. |
+| Run | `run_ended` | `{ runId, exitCode, exitReason }` |
+
+No production `task_created` event is currently emitted; initial creation/status/phase consumers should refetch on the events above and after their own mutations. Run events are not sent over the board stream. No new decision was added to the PRD; these are implementation details/proposals under the assigned Track A contract.

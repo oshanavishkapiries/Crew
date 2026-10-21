@@ -19,14 +19,20 @@ export class EventBus {
       timestamp: new Date().toISOString(),
     };
     this.emitter.emit(`board:${boardId}`, fullEvent);
-    this.emitter.emit('board:*', { boardId, ...fullEvent });
+    if (boardId !== '*') this.emitter.emit('board:*', { boardId, ...fullEvent });
   }
 
   subscribeBoardEvents(boardId: string, listener: (event: CrewEvent) => void): () => void {
     const channel = `board:${boardId}`;
     this.emitter.on(channel, listener);
+    // Global events go to each board, while aggregate '*' subscribers get each event once.
+    const global = (event: CrewEvent & { boardId?: string }) => {
+      if (event.boardId === undefined) listener(event);
+    };
+    if (boardId !== '*') this.emitter.on('board:*', global);
     return () => {
       this.emitter.off(channel, listener);
+      if (boardId !== '*') this.emitter.off('board:*', global);
     };
   }
 

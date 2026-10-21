@@ -15,6 +15,7 @@ import { handleRetry } from './commands/retry.js';
 import { handleResults } from './commands/results.js';
 import { handleResume } from './commands/resume.js';
 import { handleReview } from './commands/review.js';
+import { handleOpen } from './commands/open.js';
 import { handleStart } from './commands/start.js';
 import { handleStatus } from './commands/status.js';
 import { handleStopAll } from './commands/stop-all.js';
@@ -24,6 +25,13 @@ import { handleWorktree } from './commands/worktree.js';
 import type { CommandDefinition } from './types.js';
 
 export const COMMANDS: CommandDefinition[] = [
+  {
+    name: 'open',
+    category: 'human',
+    summary: 'Open the Task Board with a fresh one-time login URL',
+    description: 'Reads server.json and opens the Board in your browser. Run this again if a login key was used or the browser lost its session. If opening fails, paste the printed URL into a browser.',
+    action: handleOpen,
+  },
   // Setup & Human commands
   {
     name: 'start',
