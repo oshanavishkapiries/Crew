@@ -21,7 +21,7 @@ Crew is a CLI tool (`npx crew`) that turns AI coding agents like Claude Code and
 
 ## 3. Where things stand
 
-**Status:** milestone 5 bullets 0–8 implemented; bullet 9 smoke script written and typechecked, **not run**. Milestone 5 is not done. A server SIGKILL used to leave an orphan Orchestrator and let startup duplicate it; the D77 startup reaper now ends it. The real smoke and the merge to `main` remain. The §9 proposals are logged as D66–D78.
+**Status:** milestones 1 to 5 are done: the engine, runner, verification, merge queue, config, memory and the whole grill → spec → tickets → dispatch → integrate workflow work from the CLI, and the manual smoke with real Claude Code passed (milestone 5, 2026-10-21). Next is milestone 6, the Board UI, and packaging for the private preview. Decisions are logged as D1–D79.
 
 - Planning is done: PRD, decisions D1–D79, architecture docs and agent rules.
 - **Milestones 1, 2, and 3 are implemented and verified:**

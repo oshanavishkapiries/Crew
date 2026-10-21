@@ -36,7 +36,7 @@ crew/
 │     ├─ milestone-3.md   # Milestone 3 plan: verification gates, retries, Reviewer, Stop hook (implemented)
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
 │     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (bullets 0–8 implemented; smoke script written, manual run pending)
-│     ├─ agent-prompts/   # Saved session instructions for implementing agents
+│     ├─ agent-prompts/   # The implementer prompt template and its lessons (per-session prompts are removed after a milestone merges)
 │     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
 ├─ src/
