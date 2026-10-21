@@ -80,7 +80,7 @@ it.each(phases)('restarts during a live %s run, kills its process tree and compl
   const draft = await complete(task.id); expect(outputs()).toHaveLength(1);
   await approve(draft.id);
   expect(outputs()[0].status).toBe('approved');
-  expect(tasks()).toHaveLength(phase === 'tickets' ? 1 : 2);
+  expect(tasks()).toHaveLength(2); // tickets: zero-ticket dispatch now creates the integrate task (bullet 6)
   expect(tasks().filter(t => t.creationPhase === phase)).toHaveLength(1);
   expect(h.db.db.select().from(schema.runs).all().filter(r => r.taskId === task.id)).toHaveLength(2);
 });
@@ -92,7 +92,7 @@ it.each(phases)('preserves a pending %s gate over restart and accepts human appr
   await approve(draft.id);
   expect((await human(['approve', '--board', h.boardId, '--draft', draft.id])).exitCode).not.toBe(0);
   expect(outputs()[0]).toMatchObject({ id: draft.id, body: draft.body, status: 'approved' });
-  expect(tasks()).toHaveLength(phase === 'tickets' ? 1 : 2);
+  expect(tasks()).toHaveLength(2); // tickets: zero-ticket dispatch now creates the integrate task (bullet 6)
   expect(tasks().filter(t => t.creationPhase === phase)).toHaveLength(1);
 });
 it.each(phases)('stops a live %s process tree and resumes without another task or charged retry', async phase => {
