@@ -418,6 +418,17 @@ export class MergeQueue {
     return !this.isStopped() && !this.cancelling.has(task.id) && !this.context.getStore()?.interrupted && this.options.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status === 'merge-queue';
   }
 
+  /** True when the path, or a parent of it, already exists in the checkout as something a new file cannot replace. */
+  private occupied(repo: string, target: string): boolean {
+    const parts = target.split('/');
+    for (let i = 1; i <= parts.length; i++) {
+      let stat: fs.Stats;
+      try { stat = fs.lstatSync(path.join(repo, ...parts.slice(0, i))); } catch { return false; }
+      if (i === parts.length || !stat.isDirectory()) return true;
+    }
+    return false;
+  }
+
   private async checkoutBlocked(workspace: Workspace, candidate?: string | null): Promise<boolean> {
     const branch = await this.git(workspace.repoPath, 'rev-parse', '--abbrev-ref', 'HEAD');
     const status = branch === workspace.defaultBranch ? await this.git(workspace.repoPath, 'status', '--porcelain=v1', '--untracked-files=all') : '';
@@ -428,9 +439,11 @@ export class MergeQueue {
       return true;
     }
     if (branch === workspace.defaultBranch && candidate) {
-      const changed = (await this.git(workspace.repoPath, 'diff', '--name-only', '--diff-filter=ACMRT', '-z', `${workspace.defaultBranch}..${candidate}`)).split('\0').filter(Boolean);
-      const ignored = (await this.git(workspace.repoPath, 'ls-files', '--others', '--ignored', '--exclude-standard', '-z')).split('\0').filter(Boolean);
-      if (ignored.some(file => changed.some(target => file === target || file.startsWith(target + '/') || target.startsWith(file + '/')))) {
+      // The checkout has no untracked files (status above ignores ignored ones), so any path an
+      // incoming file would create that already exists on disk is an ignored file or directory.
+      // Checking only those paths avoids listing every ignored file (node_modules, build output).
+      const created = (await this.git(workspace.repoPath, 'diff', '--name-only', '--diff-filter=ACR', '-z', `${workspace.defaultBranch}..${candidate}`)).split('\0').filter(Boolean);
+      if (created.some(target => this.occupied(workspace.repoPath, target))) {
         this.warnings.set(workspace.id, `Merge queue paused: ${workspace.defaultBranch} checkout has ignored files that incoming work would overwrite`);
         return true;
       }
