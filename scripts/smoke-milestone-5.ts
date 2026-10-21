@@ -63,7 +63,102 @@ async function smoke() {
       }
     }
   }
+  let team: (typeof schema.agents.$inferSelect)[] = [];
+  async function assertNoAgentProcesses(db: CrewDatabase) {
+    if (readOnlyAttempts.size) console.log(`FINDING: the Orchestrator tried human read-only command(s) that its agent token cannot use: ${[...readOnlyAttempts].join(' | ')}`);
+    // Check process groups too: the cap launcher is a parent of real Claude.
+    const runs = db.db.select().from(schema.runs).all();
+    const processes = (await execa('ps', ['-eo', 'pid=,pgid=,stat='], { timeout: 10000 })).stdout.split('\n').map(line => line.trim().split(/\s+/));
+    for (const run of runs) if (run.pid) assert.ok(!processes.some(([pid, pgid, stat]) => (Number(pid) === run.pid || Number(pgid) === run.pid) && !stat.startsWith('Z')), `Agent process group remains: ${run.pid}`);
+  }
+  // Everything the run must have produced. Also reachable offline (SMOKE5_VERIFY) against retained artifacts.
+  const readOnlyAttempts = new Set<string>();
+  async function verifyOutcome(base: string, db: CrewDatabase) {
+      const tasks = db.db.select().from(schema.tasks).all();
+      const work = tasks.filter(t => t.kind === 'work');
+      assert.equal(work.length, 3); assert.ok(work.every(t => t.status === 'merged'));
+      const dependencies = db.db.select().from(schema.taskDependencies).all(); assert.equal(dependencies.length, 1);
+      const runs = db.db.select().from(schema.runs).all();
+      const roles = db.db.select().from(schema.roles).all();
+      const orchestrators = team.filter(a => roles.find(r => r.id === a.roleId)?.name === 'orchestrator');
+      const reviewers = team.filter(a => roles.find(r => r.id === a.roleId)?.name === 'reviewer');
+      assert.equal(reviewers.length, 1);
+      for (const phase of ['grill', 'spec', 'tickets', 'integrate']) {
+        assert.ok(tasks.some(t => t.kind === 'phase' && t.creationPhase === phase && runs.some(r => r.taskId === t.id && r.adapter === 'claude-code' && r.exitReason === 'done' && r.endedAt)), `No completed real ${phase} Orchestrator run`);
+      }
+      const results = db.db.select().from(schema.verificationResults).all();
+      assert.equal(new Set(work.flatMap(t => runs.filter(r => r.taskId === t.id && r.kind === 'work').map(r => r.agentId))).size, 2, 'Both real workers must run');
+      for (const task of work) {
+        assert.ok(runs.some(r => r.taskId === task.id && r.kind === 'review' && r.agentId === reviewers[0].id && r.adapter === 'claude-code' && r.exitReason === 'done' && results.some(v => v.runId === r.id && v.step === 'review' && v.passed && !/^skipped/i.test(v.output ?? ''))), `No real Reviewer verdict: ${task.id}`);
+        assert.ok(!results.some(v => runs.some(r => r.id === v.runId && r.taskId === task.id) && v.step === 'review' && /^skipped/i.test(v.output ?? '')), `Review skipped: ${task.id}`);
+        const merge: typeof schema.mergeQueueItems.$inferSelect = db.db.select().from(schema.mergeQueueItems).all().find(i => i.taskId === task.id)!;
+        assert.ok(merge?.commitSha); await git('merge-base', '--is-ancestor', merge.commitSha, 'main');
+        assert.ok((await git('show', '-s', '--format=%B', merge.commitSha)).includes(`Crew-Task: ${task.id}`));
+      }
+      for (const name of ['alpha', 'beta', 'gamma']) assert.equal(await git('show', `main:${name}.txt`), name);
+      assert.equal(await git('rev-list', '--count', `${base}..main`), '3');
+      const memory = db.db.select().from(schema.memory).all();
+      assert.ok(memory.some(m => m.layer === 'project' && m.source?.startsWith('phase:spec:')));
+      assert.ok(memory.some(m => m.layer === 'project' && m.title === 'Project summary' && m.source?.startsWith('phase:integrate:')));
+      assert.ok(memory.some(m => m.layer === 'project' && m.promotedAt && m.source?.startsWith('promotion:') && memory.some(original => original.layer === 'role' && original.promotedAt && m.source === `promotion:${original.id}:${original.source}`)));
+      // Inspect structured tool inputs and permission_denials, not just exit codes.
+      for (const run of runs) {
+        // A resume-failed row only records a refused session resume; no process ran and no log exists.
+        if (run.exitReason === 'resume-failed') continue;
+        assert.ok(run.logPath && fs.existsSync(run.logPath), `Missing run log ${run.id}`);
+        const text = fs.readFileSync(run.logPath, 'utf8');
+        const events = text.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+        let tools = 0;
+        const toolInputs = new Map<string, Record<string, any>>();
+        const worktree = tasks.find(t => t.id === run.taskId)?.worktreePath;
+        const inWorktree = (file: string) => !!file && path.resolve(worktree ?? repo, file).startsWith(path.join(home, 'worktrees') + path.sep);
+        function inspect(value: unknown): void {
+          if (!value || typeof value !== 'object') return;
+          const item = value as Record<string, any>;
+          if (item.type === 'tool_use' || item.tool_name) {
+            tools++;
+            const tool = item.name ?? item.tool_name;
+            const input = item.input ?? item.tool_input ?? {};
+            if (item.id) toolInputs.set(item.id, { tool, input });
+            if (orchestrators.some(a => a.id === run.agentId) && tool === 'Bash') {
+              // Mutating human commands must never be used. Read-only human commands fail for an agent
+            // token anyway; report them as a finding instead of failing the whole run.
+            assert.ok(!/\bcrew\s+(?:approve|answer|cancel|retry|stop-all|resume|init|start|memory\s+(?:delete|edit))\b/.test(input.command ?? ''), `Orchestrator attempted human command: ${input.command}`);
+            if (/\bcrew\s+(?:status|tasks|diff|logs|results|queue|worktree)\b/.test(input.command ?? '')) readOnlyAttempts.add(String(input.command));
+            }
+            if (tool === 'Read' && item.tool_name) {
+              const file = input.file_path ?? input.path ?? '';
+              assert.ok(!inWorktree(file), `Agent denied reading its own worktree: ${file}`);
+            }
+          }
+          const call = toolInputs.get(item.tool_use_id);
+          if (item.is_error && call?.tool === 'Read' && /(?:denied|permission|not allowed)/i.test(JSON.stringify(item))) {
+            assert.ok(!inWorktree(call.input.file_path ?? call.input.path ?? ''), `Read denied inside worktree: ${JSON.stringify(call.input)}`);
+          }
+          // Tool-error messages also catch denials absent from permission_denials.
+          if ((item.is_error || item.type === 'permission_denial') && /(?:denied|permission|not allowed)/i.test(JSON.stringify(item))) {
+            assert.ok(!JSON.stringify(item).includes(path.join(home, 'worktrees')), `Worktree permission error: ${JSON.stringify(item)}`);
+          }
+          for (const nested of Object.values(item)) {
+            if (Array.isArray(nested)) nested.forEach(inspect); else if (typeof nested === 'object') inspect(nested);
+          }
+        }
+        events.forEach(inspect);
+        assert.ok(tools > 0, `No tool evidence in log ${run.id}; cannot assert command/Read permissions`);
+      }
+  }
   try {
+    if (process.env.SMOKE5_VERIFY) {
+      // Offline: SMOKE5_VERIFY=<repo>:<home> re-checks retained artifacts of an earlier run (free).
+      [repo, home] = process.env.SMOKE5_VERIFY.split(':');
+      db = createCrewDatabase({ dbPath: path.join(home, 'crew.db') });
+      team = db.db.select().from(schema.agents).all();
+      await verifyOutcome(await git('log', '--format=%H', '--grep=Configure Crew smoke', '-1'), db);
+      await assertNoAgentProcesses(db);
+      succeeded = true;
+      console.log('Milestone 5 smoke artifacts verified offline (no agent was run).');
+      return;
+    }
     console.log(`Milestone 5 PAID smoke: expected $1–$6 for 11–12 small runs; worst-case run caps total $${MAX_RUNS * BUDGET_USD}. ${MAX_RUNS} runs maximum, $${BUDGET_USD}/run, 20 minute deadline.`);
     await execa('npm', ['run', 'build'], { cwd: root, timeout: 60000, cancelSignal: signal });
     const actualClaude = (process.env.PATH ?? '').split(path.delimiter).map(dir => path.resolve(dir, 'claude')).find(file => {
@@ -127,7 +222,7 @@ console.log('contents verified');\n`);
     db = createCrewDatabase({ dbPath: path.join(home, 'crew.db') });
     const workspace = db.db.select().from(schema.workspaces).get()!;
     const board = db.db.select().from(schema.boards).get()!;
-    const team = db.db.select().from(schema.agents).all();
+    team = db.db.select().from(schema.agents).all();
     assert.equal(team.length, 4, 'init must create Orchestrator, two workers and Reviewer');
     server = spawn(process.execPath, [cli, 'start', '--port', '0'], { cwd: repo, env, stdio: ['ignore', 'pipe', 'pipe'] });
     server.stdout!.on('data', data => process.stdout.write(data)); server.stderr!.on('data', data => process.stderr.write(data));
@@ -183,77 +278,9 @@ console.log('contents verified');\n`);
       await delay(250, undefined, { signal });
     }
     assert.deepEqual(reached, ordered); assert.ok(rejected); assert.ok(answered.size >= 1, 'Grill never asked the human');
-    const tasks = db.db.select().from(schema.tasks).all();
-    const work = tasks.filter(t => t.kind === 'work');
-    assert.equal(work.length, 3); assert.ok(work.every(t => t.status === 'merged'));
-    const dependencies = db.db.select().from(schema.taskDependencies).all(); assert.equal(dependencies.length, 1);
-    const runs = db.db.select().from(schema.runs).all();
-    const roles = db.db.select().from(schema.roles).all();
-    const orchestrators = team.filter(a => roles.find(r => r.id === a.roleId)?.name === 'orchestrator');
-    const reviewers = team.filter(a => roles.find(r => r.id === a.roleId)?.name === 'reviewer');
-    assert.equal(reviewers.length, 1);
-    for (const phase of ['grill', 'spec', 'tickets', 'integrate']) {
-      assert.ok(tasks.some(t => t.kind === 'phase' && t.creationPhase === phase && runs.some(r => r.taskId === t.id && r.adapter === 'claude-code' && r.exitReason === 'done' && r.endedAt)), `No completed real ${phase} Orchestrator run`);
-    }
-    const results = db.db.select().from(schema.verificationResults).all();
-    assert.equal(new Set(work.flatMap(t => runs.filter(r => r.taskId === t.id && r.kind === 'work').map(r => r.agentId))).size, 2, 'Both real workers must run');
-    for (const task of work) {
-      assert.ok(runs.some(r => r.taskId === task.id && r.kind === 'review' && r.agentId === reviewers[0].id && r.adapter === 'claude-code' && r.exitReason === 'done' && results.some(v => v.runId === r.id && v.step === 'review' && v.passed && !/^skipped/i.test(v.output ?? ''))), `No real Reviewer verdict: ${task.id}`);
-      assert.ok(!results.some(v => runs.some(r => r.id === v.runId && r.taskId === task.id) && v.step === 'review' && /^skipped/i.test(v.output ?? '')), `Review skipped: ${task.id}`);
-      const merge: typeof schema.mergeQueueItems.$inferSelect = db.db.select().from(schema.mergeQueueItems).all().find(i => i.taskId === task.id)!;
-      assert.ok(merge?.commitSha); await git('merge-base', '--is-ancestor', merge.commitSha, 'main');
-      assert.ok((await git('show', '-s', '--format=%B', merge.commitSha)).includes(`Crew-Task: ${task.id}`));
-    }
-    for (const name of ['alpha', 'beta', 'gamma']) assert.equal(await git('show', `main:${name}.txt`), name);
-    assert.equal(await git('rev-list', '--count', `${base}..main`), '3');
-    const memory = db.db.select().from(schema.memory).all();
-    assert.ok(memory.some(m => m.layer === 'project' && m.source?.startsWith('phase:spec:')));
-    assert.ok(memory.some(m => m.layer === 'project' && m.title === 'Project summary' && m.source?.startsWith('phase:integrate:')));
-    assert.ok(memory.some(m => m.layer === 'project' && m.promotedAt && m.source?.startsWith('promotion:') && memory.some(original => original.layer === 'role' && original.promotedAt && m.source === `promotion:${original.id}:${original.source}`)));
-    // Inspect structured tool inputs and permission_denials, not just exit codes.
-    for (const run of runs) {
-      assert.ok(run.logPath && fs.existsSync(run.logPath), `Missing run log ${run.id}`);
-      const text = fs.readFileSync(run.logPath, 'utf8');
-      const events = text.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
-      let tools = 0;
-      const toolInputs = new Map<string, Record<string, any>>();
-      const worktree = tasks.find(t => t.id === run.taskId)?.worktreePath;
-      const inWorktree = (file: string) => !!file && path.resolve(worktree ?? repo, file).startsWith(path.join(home, 'worktrees') + path.sep);
-      function inspect(value: unknown): void {
-        if (!value || typeof value !== 'object') return;
-        const item = value as Record<string, any>;
-        if (item.type === 'tool_use' || item.tool_name) {
-          tools++;
-          const tool = item.name ?? item.tool_name;
-          const input = item.input ?? item.tool_input ?? {};
-          if (item.id) toolInputs.set(item.id, { tool, input });
-          if (orchestrators.some(a => a.id === run.agentId) && tool === 'Bash') {
-            assert.ok(!/\bcrew\s+(?:approve|answer|cancel|retry|stop-all|resume|init|start|status|tasks|diff|logs|results|queue|worktree|memory\s+(?:delete|edit))\b/.test(input.command ?? ''), `Orchestrator attempted human command: ${input.command}`);
-          }
-          if (tool === 'Read' && item.tool_name) {
-            const file = input.file_path ?? input.path ?? '';
-            assert.ok(!inWorktree(file), `Agent denied reading its own worktree: ${file}`);
-          }
-        }
-        const call = toolInputs.get(item.tool_use_id);
-        if (item.is_error && call?.tool === 'Read' && /(?:denied|permission|not allowed)/i.test(JSON.stringify(item))) {
-          assert.ok(!inWorktree(call.input.file_path ?? call.input.path ?? ''), `Read denied inside worktree: ${JSON.stringify(call.input)}`);
-        }
-        // Tool-error messages also catch denials absent from permission_denials.
-        if ((item.is_error || item.type === 'permission_denial') && /(?:denied|permission|not allowed)/i.test(JSON.stringify(item))) {
-          assert.ok(!JSON.stringify(item).includes(path.join(home, 'worktrees')), `Worktree permission error: ${JSON.stringify(item)}`);
-        }
-        for (const nested of Object.values(item)) {
-          if (Array.isArray(nested)) nested.forEach(inspect); else if (typeof nested === 'object') inspect(nested);
-        }
-      }
-      events.forEach(inspect);
-      assert.ok(tools > 0, `No tool evidence in log ${run.id}; cannot assert command/Read permissions`);
-    }
+    await verifyOutcome(base, db);
     await human('stop-all');
-    // Check process groups too: the cap launcher is a parent of real Claude.
-    const processes = (await execa('ps', ['-eo', 'pid=,pgid=,stat='], { timeout: 10000 })).stdout.split('\n').map(line => line.trim().split(/\s+/));
-    for (const run of runs) if (run.pid) assert.ok(!processes.some(([pid, pgid, stat]) => (Number(pid) === run.pid || Number(pgid) === run.pid) && !stat.startsWith('Z')), `Agent process group remains: ${run.pid}`);
+    await assertNoAgentProcesses(db);
     assert.equal(await git('status', '--porcelain'), '');
     await diagnostics(); succeeded = true;
   } finally {
