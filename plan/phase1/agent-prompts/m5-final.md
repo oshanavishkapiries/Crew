@@ -8,13 +8,11 @@ The shared background (lessons, gotchas, smoke script rules, rules, the final re
 
 You are on branch `feat/milestone-5-workflow`, which now contains bullets 0 to 6 and 8, and bullet 7 part 1 (the two parallel tracks were merged and reviewed; `rm -r dist && npm test` passes 303 tests across 47 files). Run `git pull` first. Do not rework accepted code unless a test proves a bug.
 
-Four commits, in this order. Stop after the fourth.
+Three commits (2, 3 and 4), in this order. Stop after the fourth item.
 
-### Commit 1: `fix(m5): narrow the Crew-home Read denial`
+### Commit 1: already done by the reviewer (skip it)
 
-Track B denies `Read(//<crewHome>/**)` for every Claude Code profile. But Crew's worktrees live in `<crewHome>/worktrees` (`src/server/config.ts`), so that rule also denies agents reading **their own working tree**. A real agent cannot edit files it cannot read, so this would break every real run (the unit tests use the fake adapter and the probe read a file outside the fake home, so nothing caught it).
-
-Fix it: deny only the secret and state files inside the Crew home (`server.json`, the SQLite database and its `-wal`/`-shm` files, `claude-settings.json`, and the logs directory if reading logs is not needed by agents), never the `worktrees` subtree. Keep `CREW_HOME` resolved at spawn time. Update the adapter contract tests so they fail for the old whole-home rule. **Re-record the real probe** on the installed Claude Code (2.1.300, `dontAsk`, cap $0.50): a denied read of a fake `server.json`, an allowed read of a file under a fake `<crewHome>/worktrees/<id>/` directory, and an allowed read of a file outside the home. Store it as a fixture and replace the old fixture. Assert on tool results and `permission_denials`, not only the exit code. Say plainly in the report that this is defence in depth, not a sandbox.
+The Crew-home Read denial was narrowed by the reviewer: `Read` is denied only for `server.json`, `crew.db` (+ `-wal`/`-shm`), `claude-settings.json` and `logs/**` in the Crew home, never for `worktrees/`. A real probe on Claude Code 2.1.305 (`test/fixtures/claude-code/crew-home-read-dontask.json`) shows the secret file denied and a worktree file readable. Do not redo it. Your commits below are numbered 2 to 4 and the "Four commits" instruction becomes **three commits**.
 
 ### Commit 2: `test(m5): dispatch and integrate interruptions` (bullet 7, part 2)
 
@@ -33,7 +31,7 @@ Write `scripts/smoke-milestone-5.ts` and the `npm run smoke:m5` entry. **Do not 
 - real Claude Code Orchestrator for grill, spec, tickets and integrate; two real workers; a real Reviewer; scripted human answers and approvals; at least one gate rejection with a note;
 - it must assert and fail if missing: every phase reached in order, tickets merged, memory rows with their sources (`phase:spec:*`, `phase:integrate:*`, a promotion), the Orchestrator never using a human-only command, the final `git log` holding all tickets, board `done`, and no agent processes left;
 - the run cap is computed as expected runs plus every legitimate retry (per-ticket Reviewer retry, gate rejection run, Orchestrator retry), with the arithmetic in a comment, plus a wall-clock deadline and a per-run cost cap; print the expected cost range;
-- since the Read-deny rule applies to real agents, the script must also check from the run logs that no agent was denied reading its own worktree.
+- the script must also check from the run logs that no agent was denied reading its own worktree (the Read-deny rule applies to real agents).
 Check the script with a dry run mode or `tsc` only (no real agent). Note the real risks you expect to see on the first real run (permission denials of compound commands, the Orchestrator trying a human-only command) in the report so the reviewer knows what to look for.
 
 ### Commit 4: `docs(m5): milestone 5 status and merged proposals`
@@ -46,7 +44,7 @@ Nobody else is working in this repo during this session. Do not touch `main`. No
 
 ## How to deliver (the reviewer cannot see your chat)
 
-1. Make the four commits above; `rm -r dist && npm test` must pass before each.
+1. Make the three commits above; `rm -r dist && npm test` must pass before each.
 2. Write the report, in the "Final report" format at the end of `m5-bullet-5.md`, to **`plan/phase1/reports/m5-final.md`**. Cover bullets 0 to 9. Paste the real `npm test` summary and the real `git diff --stat main...HEAD` output. Make the commit list and the diff stat accurate for the final HEAD. State every claim you did not verify. State clearly that the smoke script was written and **not run**.
 3. Commit the report as its own commit `docs(m5): final report`, then `git push origin feat/milestone-5-workflow` (a normal push, never force, never `main`, never print credentials or remote URLs).
 4. If the push fails, say so at the top of the report, still commit it, and stop.

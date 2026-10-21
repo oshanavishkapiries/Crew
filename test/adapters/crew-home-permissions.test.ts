@@ -16,16 +16,19 @@ it.each(['standard', 'full', 'read-only', 'orchestrator'] as const)('denies Crew
     const resolved = home ? path.resolve(home) : path.join(os.homedir(), '.crew');
     for (const command of [adapter.buildSpawn(options), adapter.buildResume({ ...options, sessionId: 'session' })]) {
       const deny = command.args[command.args.indexOf('--disallowedTools') + 1];
-      expect(deny).toContain(`Read(/${resolved}/**)`);
-      expect(deny).toContain(`Read(/${resolved}/server.json)`);
+      for (const name of ['server.json', 'crew.db', 'crew.db-wal', 'crew.db-shm', 'claude-settings.json']) expect(deny).toContain(`Read(/${resolved}/${name})`);
+      expect(deny).toContain(`Read(/${resolved}/logs/**)`);
+      // Worktrees live under the home; agents must be able to read their own.
+      expect(deny).not.toContain(`Read(/${resolved}/**)`);
+      expect(deny).not.toContain('worktrees');
       expect(command.args[command.args.indexOf('--allowedTools') + 1]).toContain('Read');
     }
   }
 });
 
-it('records a real dontAsk Read denial and an allowed normal read within the probe budget', () => {
+it('records a real dontAsk probe: Crew state denied, own worktree and normal files readable', () => {
   const fixture = JSON.parse(fs.readFileSync(new URL('../fixtures/claude-code/crew-home-read-dontask.json', import.meta.url), 'utf8'));
-  expect(fixture.version).toBe('2.1.300');
+  expect(fixture.version).toMatch(/^2\.1\./);
   expect(fixture.timedOut).toBe(false);
   expect(fixture.total_cost_usd).toBeLessThanOrEqual(0.50);
   expect(fixture.args[fixture.args.indexOf('--permission-mode') + 1]).toBe('dontAsk');
@@ -33,8 +36,10 @@ it('records a real dontAsk Read denial and an allowed normal read within the pro
   expect(fixture.permission_denials[0].tool_name).toBe('Read');
   expect(fixture.permission_denials[0].tool_input.file_path).toContain('/server.json');
   const results = fixture.tools.filter((tool: any) => tool.type === 'tool_result');
-  expect(results).toHaveLength(2);
+  expect(results).toHaveLength(3);
   expect(results[0].is_error).toBe(true);
   expect(results[1].is_error).not.toBe(true);
-  expect(JSON.stringify(results[1].content)).toContain('NORMAL_READ_PROBE');
+  expect(JSON.stringify(results[1].content)).toContain('WORKTREE_READ_PROBE');
+  expect(results[2].is_error).not.toBe(true);
+  expect(JSON.stringify(results[2].content)).toContain('NORMAL_READ_PROBE');
 });

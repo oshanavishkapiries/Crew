@@ -1,34 +1,33 @@
 {
-  "version": "2.1.300",
+  "version": "2.1.305",
   "source": "https://code.claude.com/docs/en/permissions",
   "args": [
     "-p",
     "--output-format",
     "stream-json",
     "--verbose",
+    "--session-id",
+    "980c53c4-47c6-4750-8071-c421df6485e6",
     "--permission-mode",
     "dontAsk",
-    "--setting-sources",
-    "",
-    "--tools",
-    "Read",
+    "--permission-prompts",
+    "none",
     "--allowedTools",
-    "Read",
+    "Read Glob Grep Bash(git diff *) Bash(git diff) Bash(git log *) Bash(git log) Bash(git show *) Bash(git show) Bash(crew review *) Bash(crew review)",
     "--disallowedTools",
-    "Read(//tmp/crew-read-probe-yw1FEi/fake crew home/**) Read(//tmp/crew-read-probe-yw1FEi/fake crew home/server.json)",
+    "Edit Write Bash(git push *) Bash(git push) Bash(git remote *) Bash(git remote) Bash(sudo *) Bash(sudo) Bash(rm -rf / *) Bash(rm -rf /*) Bash(rm -rf ~ *) Bash(rm -rf ~) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/server.json) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/crew.db) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/crew.db-wal) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/crew.db-shm) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/claude-settings.json) Read(//tmp/crew-read-probe-QKw8Ye/fake crew home/logs/**)",
     "--max-budget-usd",
     "0.50"
   ],
   "deadlineMs": 120000,
-  "exitCode": 0,
   "timedOut": false,
   "tools": [
     {
       "type": "tool_use",
-      "id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d",
+      "id": "toolu_01DiAXMDBSKe1Zh1zD2fKqS6",
       "name": "Read",
       "input": {
-        "file_path": "/tmp/crew-read-probe-yw1FEi/fake crew home/server.json"
+        "file_path": "/tmp/crew-read-probe-QKw8Ye/fake crew home/server.json"
       },
       "caller": {
         "type": "direct"
@@ -38,21 +37,37 @@
       "type": "tool_result",
       "content": "<tool_use_error>File is in a directory that is denied by your permission settings.</tool_use_error>",
       "is_error": true,
-      "tool_use_id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d"
+      "tool_use_id": "toolu_01DiAXMDBSKe1Zh1zD2fKqS6"
     },
     {
       "type": "tool_use",
-      "id": "toolu_01HvS6Hd9HS7f7BVGdAtSKLw",
+      "id": "toolu_01PNY5Q8iipqf3bhYgiX9Pzg",
       "name": "Read",
       "input": {
-        "file_path": "/tmp/crew-read-probe-yw1FEi/normal.txt"
+        "file_path": "/tmp/crew-read-probe-QKw8Ye/fake crew home/worktrees/t1/work.txt"
       },
       "caller": {
         "type": "direct"
       }
     },
     {
-      "tool_use_id": "toolu_01HvS6Hd9HS7f7BVGdAtSKLw",
+      "tool_use_id": "toolu_01PNY5Q8iipqf3bhYgiX9Pzg",
+      "type": "tool_result",
+      "content": "1\tWORKTREE_READ_PROBE\n2\t"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01FxHnK8xpGeLYHWzKKc7RB2",
+      "name": "Read",
+      "input": {
+        "file_path": "/tmp/crew-read-probe-QKw8Ye/normal.txt"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01FxHnK8xpGeLYHWzKKc7RB2",
       "type": "tool_result",
       "content": "1\tNORMAL_READ_PROBE\n2\t"
     }
@@ -60,13 +75,12 @@
   "permission_denials": [
     {
       "tool_name": "Read",
-      "tool_use_id": "toolu_01D3Jc2GQt6PDT92wT8JyH4d",
+      "tool_use_id": "toolu_01DiAXMDBSKe1Zh1zD2fKqS6",
       "tool_input": {
-        "file_path": "/tmp/crew-read-probe-yw1FEi/fake crew home/server.json"
+        "file_path": "/tmp/crew-read-probe-QKw8Ye/fake crew home/server.json"
       }
     }
   ],
-  "total_cost_usd": 0.1684215,
-  "result": "Only one of the two reads worked.\n\n- **`/tmp/crew-read-probe-yw1FEi/fake crew home/server.json`:** denied. The Read tool returned \"File is in a directory that is denied by your permission settings.\" I didn't retry.\n- **`/tmp/crew-read-probe-yw1FEi/normal.txt`:** worked. It contains one line, `NORMAL_READ_PROBE`.",
-  "stderr": "Warning: no stdin data received in 3s, proceeding without it. If piping from a slow command, redirect stdin explicitly: < /dev/null to skip, or wait longer."
+  "total_cost_usd": 0.16935129999999998,
+  "result": "Two of the three reads worked.\n\n1. `/tmp/crew-read-probe-QKw8Ye/fake crew home/server.json` failed. The Read tool said the file is in a directory denied by the permission settings, and I didn't retry.\n2. `/tmp/crew-read-probe-QKw8Ye/fake crew home/worktrees/t1/work.txt` worked. It contains `WORKTREE_READ_PROBE`.\n3. `/tmp/crew-read-probe-QKw8Ye/normal.txt` worked. It contains `NORMAL_READ_PROBE`.\n\nThe second read was in the same `fake crew home` directory as the denied one but succeeded. So the denial seems to apply to `server.json` or its immediate directory, not to everything under `fake crew home`."
 }

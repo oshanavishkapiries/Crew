@@ -105,7 +105,7 @@ Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI 
 
 `test/harness/dispatch-integrate.test.ts` covers the grill-to-done three-ticket pipeline, staffed-role assignment, worker Q&A, integrate promotion/summary memory, atomic dispatch completion, gate races and human recovery. Workflow advances dispatch on work-status events and startup; the board move and integrate task commit together. Integrate role-memory listing in `src/server/api/app.ts` is limited to a live integrate Orchestrator in the same workspace.
 
-`test/adapters/crew-home-permissions.test.ts` covers Crew-home Read denials for every Claude profile, spawn/resume and custom homes; the matching real Read probe is in `test/fixtures/claude-code/crew-home-read-dontask.json`.
+`test/adapters/crew-home-permissions.test.ts` covers Crew state-file Read denials (not the worktrees subtree) for every Claude profile, spawn/resume and custom homes; the matching real Read probe is in `test/fixtures/claude-code/crew-home-read-dontask.json`.
 
 `test/harness/cli-status.test.ts` drives real CLI phase/gate/recovery output, dispatch ticket counts, combined task filters and help. The status API supplies per-board work-ticket counts and registered role IDs/names; task filtering and validation stay in `src/cli/commands/tasks.ts`, using that metadata and the existing task list.
 

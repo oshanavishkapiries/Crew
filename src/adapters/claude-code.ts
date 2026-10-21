@@ -60,7 +60,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     // Resolve at command build time: CREW_HOME may differ between server runs.
     // These tool denials are defence in depth, not an OS sandbox.
     const crewHome = getCrewHome();
-    const deniedTools = [...FIXED_DENIED_TOOLS, `Read(/${crewHome}/**)`, `Read(/${path.join(crewHome, 'server.json')})`];
+    // Never deny the whole home: task worktrees live in <home>/worktrees and agents must read them.
+    const crewStateFiles = ['server.json', 'crew.db', 'crew.db-wal', 'crew.db-shm', 'claude-settings.json'].map(name => `Read(/${path.join(crewHome, name)})`);
+    const deniedTools = [...FIXED_DENIED_TOOLS, ...crewStateFiles, `Read(/${path.join(crewHome, 'logs')}/**)`];
     if (permissions.mode === 'orchestrator') {
       return { allowedTools: ['Read', 'Glob', 'Grep', 'Bash(git diff *)', 'Bash(git log *)', 'Bash(git show *)', 'Bash(git status *)', 'Bash(crew *)', ...(permissions.phaseOutputPath ? [`Edit(/${permissions.phaseOutputPath})`] : [])], disallowedTools: [...(permissions.phaseOutputPath ? [] : ['Edit']), ...deniedTools], permissionMode: 'dontAsk' };
     }
