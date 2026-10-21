@@ -1,5 +1,7 @@
 # Handoff
 
+**Milestone 7 (Codex, Pull mode, heartbeat) is planned and approved** (D88–D93, `milestone-7.md`) on branch `feat/milestone-7-breadth`. Nothing is implemented. First session: bullets 0–1 (Codex adapter and wiring), prompt in `agent-prompts/m7-bullet-0-1.md`. Milestone 6 is merged to `main` and its manual browser checklist passed (2026-10-21); a clean tarball install of `npm pack` serves the Board.
+
 Track E (`feat/m6-gaps`) closes both assigned gaps: ticket cards persist edits,
 add and cancel work; Scheduler commits fields, dependencies and readiness atomically.
 The Log tab selects every recorded run, with summary, missing-file recovery and
