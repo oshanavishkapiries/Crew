@@ -1,3 +1,4 @@
+import { pullStatus, staleAfterMs } from '../scheduler/pull-stale.js';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import { getCrewHome } from '../config.js';
 import { LogReadError, logTailBytes, readRunLog } from './logs.js';
@@ -117,8 +118,12 @@ export function createApp(ctx: AppContext): Hono {
       ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date() }).where(eq(schema.agents.id, agent.id)).run();
       const owned = ctx.db.db.select().from(schema.tasks).where(sql`${schema.tasks.assigneeAgentId} = ${agent.id} OR ${schema.tasks.reviewerAgentId} = ${agent.id}`).orderBy(desc(schema.tasks.updatedAt), desc(sql`${schema.tasks}.rowid`)).all();
       const task = owned.find(task => ['doing', 'blocked', 'review'].includes(task.status)) ?? owned[0];
+      const priorRunId = c.req.header('X-Crew-Run-Id');
+      const priorRun = priorRunId && ctx.db.db.select().from(schema.runs).where(and(eq(schema.runs.id, priorRunId), eq(schema.runs.agentId, agent.id))).get();
+      const retired = agent.status === 'stale' || (priorRun && priorRun.exitReason === 'stale');
       const answer = task && ctx.db.db.select().from(schema.messages).where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'answer'))).orderBy(desc(sql`${schema.messages}.rowid`)).get();
       instruction = ctx.dispatcher?.isStopped() || agent.status === 'stopped' ? 'Crew is stopped. Stop working; wait for human crew resume, then call crew next.'
+        : retired ? 'Your previous Pull run was retired as stale. Stop working on the old task, clear context and run crew join for new work.'
         : task?.status === 'cancelled' ? `Task ${task.id} is cancelled. Stop working on it. Clear context and run crew join again.`
         : answer ? `Answer for ${task!.id}: ${Array.from(answer.body).slice(0, 500).join('')}. Call crew next for the full current task context.` : '';
     }
@@ -143,6 +148,7 @@ export function createApp(ctx: AppContext): Hono {
     const stopped = ctx.dispatcher?.isStopped() || agent.status === 'stopped';
     // Connected is represented by a recorded heartbeat; scheduling status stays idle/busy/stopped.
     ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date(), ...(!stopped && agent.status !== 'rate-limited' ? { status: active ? 'busy' : 'idle' } : {}) }).where(eq(schema.agents.id, agent.id)).run();
+    if (agent.status === 'stale') ctx.eventBus.publishBoardEvent('*', { type: 'agent_connected', data: { agentId: agent.id } });
     const memory = ctx.db.db.select().from(schema.memory).where(and(eq(schema.memory.workspaceId, workspace.id), eq(schema.memory.layer, 'project'))).all();
     return c.json({ agentId: agent.id, name: agent.name, connected: true, role: role.name,
       persona: agent.personality, systemPrompt: agent.systemPrompt,
@@ -215,7 +221,11 @@ export function createApp(ctx: AppContext): Hono {
     return c.body(null, 204);
   });
 
-  const publicAgent = ({ tokenHash: _tokenHash, ...agent }: Agent) => agent;
+  const connectionStatus = (agent: Agent) => {
+    const workspace = ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId)).get();
+    return pullStatus(agent, ctx.runner?.now().getTime() ?? Date.now(), staleAfterMs(workspace?.config ?? null), !!ctx.runner?.getPullRuns().some(run => run.agentId === agent.id));
+  };
+  const publicAgent = ({ tokenHash: _tokenHash, ...agent }: Agent) => ({ ...agent, status: connectionStatus({ ...agent, tokenHash: '' }), schedulingStatus: agent.status });
   app.get('/api/boards', c => {
     requireBoardHuman(c);
     const workspaces = new Map(ctx.db.db.select().from(schema.workspaces).all().map(w => [w.id, w]));
@@ -254,10 +264,17 @@ export function createApp(ctx: AppContext): Hono {
     return task;
   };
 
+  const refuseStaleRun = (c: Context, agent: Agent) => {
+    const id = c.req.header('X-Crew-Run-Id');
+    const run = id && ctx.db.db.select().from(schema.runs).where(and(eq(schema.runs.id, id), eq(schema.runs.agentId, agent.id))).get();
+    if (agent.mode === 'pull' && (agent.status === 'stale' || (run && run.exitReason === 'stale'))) throw new HTTPException(409, { res: Response.json({ error: 'Pull run retired as stale. Stop the old task, clear context and run crew join for new work.' }, { status: 409 }) });
+  };
+
   // Each agent token acts only for that agent, on tasks assigned to it (user story 125)
   const requireAssignedAgent = (c: Context, taskId: string): { agent: Agent; task: Task } => {
     const caller = identify(c);
     if (caller?.kind !== 'agent') throw unauthorized();
+    refuseStaleRun(c, caller.agent);
     const task = loadTask(taskId);
     if (task.assigneeAgentId !== caller.agent.id) {
       throw forbidden(`task ${taskId} is not assigned to this agent`);
@@ -272,6 +289,7 @@ export function createApp(ctx: AppContext): Hono {
   const requireReviewerAgent = (c: Context, taskId: string): { agent: Agent; task: Task } => {
     const caller = identify(c);
     if (caller?.kind !== 'agent') throw unauthorized();
+    refuseStaleRun(c, caller.agent);
     const task = loadTask(taskId);
     if (!task.reviewerAgentId || task.reviewerAgentId !== caller.agent.id) {
       throw forbidden(`agent is not the designated reviewer for task ${taskId}`);
@@ -1018,7 +1036,9 @@ export function createApp(ctx: AppContext): Hono {
         id: a.id,
         name: a.name,
         cliType: a.cliType,
-        status: a.status,
+        status: connectionStatus(a),
+        mode: a.mode,
+        lastHeartbeatAt: a.lastHeartbeatAt,
       })),
       liveRuns,
       rateLimits,
@@ -1041,10 +1061,13 @@ export function createApp(ctx: AppContext): Hono {
     const allAgents = ctx.db.db.select().from(schema.agents).all();
     const agentMap = new Map(allAgents.map((a) => [a.id, a.name]));
 
-    const tasksWithAgent = allTasks.map((t) => ({
+    const tasksWithAgent = allTasks.map((t) => {
+      const last = !t.assigneeAgentId ? ctx.db.db.select().from(schema.runs).where(and(eq(schema.runs.taskId, t.id), eq(schema.runs.kind, 'work'))).orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get() : undefined;
+      return ({
       ...t,
       assigneeAgentName: t.assigneeAgentId ? agentMap.get(t.assigneeAgentId) : undefined,
-    }));
+      staleAgentId: last?.exitReason === 'stale' ? last.agentId : undefined,
+    }); });
 
     return c.json({ tasks: tasksWithAgent });
   });

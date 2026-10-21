@@ -166,3 +166,9 @@ Stop-all/cancel end Pull run rows without calling process kill. The Pull harness
 includes a fake terminal agent process driving real join/next/update/remember/done
 CLI children, reviewed merge, failed gates, Pull review changes/approval, phase
 completion, concurrent assignment, interruption and startup-reaper behavior.
+
+Milestone 7 bullet 4 adds `scheduler/pull-stale.ts`: injectable-clock scanner and
+Pull connection-status projection. Scheduler owns an atomic stale recovery path
+that preserves branch/worktree/retries, clears task ownership and retires pid-less
+runs. Server startup/close owns scanner timers. `test/harness/pull-stale.test.ts`
+covers recovery, takeover, reconnect, grace, stop, idle, phase and review behavior.

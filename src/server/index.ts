@@ -1,3 +1,5 @@
+import { PullStaleScanner } from './scheduler/pull-stale.js';
+import type { Clock } from './runner/index.js';
 import { BrowserSessions } from './api/sessions.js';
 import { Workflow } from './workflow/index.js';
 import * as fs from 'node:fs';
@@ -16,6 +18,8 @@ import { MergeQueue } from './merge/index.js';
 import { Verifier } from './verify/index.js';
 
 export interface ServerOptions {
+  clock?: Clock;
+  staleScanIntervalMs?: number;
   port?: number;
   host?: string;
   db?: CrewDatabase;
@@ -49,6 +53,7 @@ export interface RunningServer {
   verifier: Verifier;
   mergeQueue: MergeQueue;
   workflow: Workflow;
+  pullStaleScanner: PullStaleScanner;
   close: () => Promise<void>;
 }
 
@@ -69,6 +74,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
       eventBus,
       scheduler,
       serverUrl: `http://${host}:${port}`,
+      clock: options.clock,
     });
 
   const dispatcher =
@@ -94,6 +100,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
   const mergeQueue = new MergeQueue({ db, eventBus, scheduler, worktreeManager });
 
+  const pullStaleScanner = new PullStaleScanner({ db, scheduler, runner, eventBus, isStopped: () => dispatcher.isStopped(), clock: options.clock, intervalMs: options.staleScanIntervalMs });
   const workflow = new Workflow(db, scheduler, eventBus, runner, worktreeManager);
   const app = createApp({
     workflow,
@@ -139,6 +146,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             // ignore
           }
 
+          pullStaleScanner.start();
           if (options.startWorkflow) workflow.start();
           if (options.startDispatcher) {
             dispatcher.start();
@@ -166,6 +174,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
             verifier,
             mergeQueue,
             workflow,
+            pullStaleScanner,
             close: () =>
               new Promise<void>((res, rej) => {
                 try {
@@ -173,6 +182,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                     fs.unlinkSync(serverJsonPath);
                   }
                 } catch {}
+                pullStaleScanner.stop();
                 dispatcher.stop();
                 verifier.stop();
                 Promise.all([mergeQueue.stop(), worktreeManager.stopAllSetup(), runner.killAll('stopped')]).then(() => workflow.close()).then(() => {

@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullet 4 is implemented (25 targeted tests pass); bullet 5 is in progress. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
 
 ## 1. Goal
 
@@ -218,3 +218,28 @@ First clean full suite: 54 files passed, one failed; 377 tests passed, one faile
 is unimplemented. It now asserts the implemented command rejects missing agent
 credentials instead. Production code was unchanged; the fresh clean full repeat passed **55 files /
 378 tests**, 506.21s. Exact output and all prior failures are in the session report.
+
+### Session 3: stale detection (bullet 4)
+
+Server-owned scanner uses an injectable clock/interval (default 5 seconds), with
+validated staleAfterMs (positive integer ms; default 600000). Startup and human
+resume each grant one full configured window of grace. Persisted lastHeartbeatAt
+is retained, so downtime alone never triggers immediate recovery; stopped dispatch
+suspends scanning. SQLite heartbeat precision remains one second.
+
+Recovery is a synchronous Scheduler transaction: recheck heartbeat/current task
+ownership, retire only that agent's eligible pid-less runs, mark stale, and return
+doing work/phase tasks to ready without retry charge or worktree/branch cleanup.
+Clear ownership so another matching agent can pick up the same branch. An open
+Pull review stays in review, clears its reviewer, and re-enters the existing
+Verifier selection path; stale candidates and the last stale reviewer for this
+task are excluded. An unconnected designated reviewer with no run is not scanned.
+A reviewer may remain pending if nobody else is eligible.
+
+Join/next reconnect a stale agent, with a retired-run notice; old task mutations
+remain refused. The last stale author/reviewer cannot immediately reclaim the
+same task until a different agent has run it. Idle agents are only projected as
+disconnected, never requeued. Scanner passes cannot interleave with done's SQLite
+transaction; both success-before-expiry and stale-before-late-done are tested.
+Targeted stale + existing Pull suite: 2 files / 25 tests passed, 47.55s. Bullet 5
+in progress; bullet 6 not started. Full verification remains for this session.

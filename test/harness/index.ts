@@ -17,6 +17,7 @@ import { Runner, type Clock } from '../../src/server/runner/index.js';
 import type { Verifier, VerifyCommand } from '../../src/server/verify/index.js';
 
 export interface HarnessOptions {
+  staleScanIntervalMs?: number;
   maxRetries?: number;
   maxRuntimeMs?: number;
   noOutputTimeoutMs?: number;
@@ -140,6 +141,8 @@ export async function createPipelineHarness(
     worktreeManager,
     runner,
     dispatcher,
+    clock: options.clock,
+    staleScanIntervalMs: options.staleScanIntervalMs,
     startDispatcher: options.startDispatcher,
     startVerifier: options.startVerifier,
     startMergeQueue: options.startMergeQueue,

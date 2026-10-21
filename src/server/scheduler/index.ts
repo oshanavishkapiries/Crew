@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { CrewDatabase } from '../db/index.js';
 import * as schema from '../db/schema.js';
 import type { CrewEvent, EventBus } from '../events/index.js';
@@ -233,6 +233,31 @@ export class Scheduler {
       }
       throw err;
     }
+  }
+
+  /** D90: dedicated recovery path, never a general ready transition or a retry. */
+  requeueStalePull(agentId: string, cutoff: Date, now: Date, retire: (taskIds: string[]) => void): string[] {
+    const pending: PendingEvent[] = [];
+    const affected = this.inTransaction(() => {
+      const agent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+      if (!agent || agent.mode !== 'pull' || ['stale', 'stopped', 'rate-limited'].includes(agent.status) || (agent.lastHeartbeatAt && agent.lastHeartbeatAt >= cutoff)) return [];
+      const open = this.db.db.select().from(schema.runs).where(sql`${schema.runs.agentId} = ${agentId} AND ${schema.runs.endedAt} IS NULL AND ${schema.runs.pid} IS NULL`).all();
+      const tasks = this.db.db.select().from(schema.tasks).all().filter(task =>
+        (task.assigneeAgentId === agentId && task.status === 'doing') ||
+        (task.reviewerAgentId === agentId && task.status === 'review' && open.some(run => run.taskId === task.id && run.kind === 'review')));
+      if (!tasks.length) return [];
+      retire(tasks.map(task => task.id));
+      this.db.db.update(schema.agents).set({ status: 'stale' }).where(eq(schema.agents.id, agentId)).run();
+      for (const task of tasks) {
+        const to = task.status === 'review' ? 'review' : 'ready';
+        this.db.db.update(schema.tasks).set({ status: to, ...(to === 'ready' ? { assigneeAgentId: null } : {}), reviewerAgentId: null, updatedAt: now }).where(eq(schema.tasks.id, task.id)).run();
+        pending.push({ boardId: task.boardId, event: { type: 'task_status_changed', data: { taskId: task.id, from: task.status, to, retries: task.retries, reason: 'Pull agent stale; branch and worktree preserved' } } });
+        pending.push({ boardId: task.boardId, event: { type: 'agent_stale', data: { agentId, taskId: task.id } } });
+      }
+      return tasks.map(task => task.id);
+    });
+    this.publish(pending);
+    return affected;
   }
 
   /**

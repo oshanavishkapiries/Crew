@@ -21,6 +21,7 @@ export interface ProjectConfig {
   maxDepth?: number;
   maxRuntimeMs?: number;
   noOutputTimeoutMs?: number;
+  staleAfterMs?: number;
   maxTicketsPerPhase?: number;
   memoryBudgetTokens?: number;
   stopHook?: boolean;
@@ -79,7 +80,7 @@ function profile(value: unknown, at: string) {
 }
 export function validateProjectConfig(value: unknown): ProjectConfig {
   object(value, 'config');
-  const numbers = ['maxParallelAgents', 'maxParallelVerifications', 'maxRetries', 'maxDepth', 'maxRuntimeMs', 'noOutputTimeoutMs', 'maxTicketsPerPhase', 'memoryBudgetTokens'];
+  const numbers = ['maxParallelAgents', 'maxParallelVerifications', 'maxRetries', 'maxDepth', 'maxRuntimeMs', 'noOutputTimeoutMs', 'staleAfterMs', 'maxTicketsPerPhase', 'memoryBudgetTokens'];
   keys(value, [...numbers, 'verifyCommands', 'worktreeSetup', 'mergeStrategy', 'stopHook', 'permissions', 'workflow', 'roles', 'team'], 'config');
   for (const key of numbers) if (value[key] !== undefined) positive(value[key], key, ['maxRetries', 'maxDepth'].includes(key) ? 0 : 1);
   if (value.mergeStrategy !== undefined && !['squash', 'rebase'].includes(value.mergeStrategy as string)) throw new Error('mergeStrategy must be squash or rebase');

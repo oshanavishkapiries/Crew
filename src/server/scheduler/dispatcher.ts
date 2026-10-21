@@ -300,7 +300,7 @@ export class Dispatcher {
   private async claimPullInner(agentId: string) {
     if (this.isStopped()) return undefined;
     const agent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
-    if (!agent || agent.mode !== 'pull' || !agent.lastHeartbeatAt || ['stopped', 'rate-limited'].includes(agent.status)) return undefined;
+    if (!agent || agent.mode !== 'pull' || !agent.lastHeartbeatAt || ['stopped', 'rate-limited', 'stale'].includes(agent.status)) return undefined;
     const tasks = this.db.db.select().from(schema.tasks).orderBy(asc(schema.tasks.createdAt), asc(sql`${schema.tasks}.rowid`)).all();
     // An outstanding assignment is replayed after a lost HTTP response; never assign a second task.
     const owned = tasks.find(task => (task.assigneeAgentId === agent.id && ['doing', 'blocked'].includes(task.status)) || (task.reviewerAgentId === agent.id && task.status === 'review'));
@@ -317,8 +317,13 @@ export class Dispatcher {
     const totalLimit = this.explicitParallelLimit ?? this.db.db.select().from(schema.workspaces).all().reduce((sum, w) => sum + (typeof w.config?.maxParallelAgents === 'number' ? w.config.maxParallelAgents : this.maxParallelAgents), 0);
     if (active.length >= totalLimit) return undefined;
     const boards = this.db.db.select().from(schema.boards).where(eq(schema.boards.workspaceId, agent.workspaceId)).all();
-    const task = owned ?? tasks.find(task => task.status === 'ready' && boards.some(board => board.id === task.boardId) &&
-      (task.assigneeAgentId === agent.id || (!task.assigneeAgentId && (!task.roleId || task.roleId === agent.roleId))));
+    const retiredHere = (taskId: string) => this.db.db.select().from(schema.runs).where(and(eq(schema.runs.taskId, taskId), eq(schema.runs.kind, 'work'))).orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get();
+    const task = owned ?? tasks.find(task => {
+      const lastRun = retiredHere(task.id);
+      if (lastRun?.exitReason === 'stale' && lastRun.agentId === agent.id) return false;
+      return task.status === 'ready' && boards.some(board => board.id === task.boardId) &&
+      (task.assigneeAgentId === agent.id || (!task.assigneeAgentId && (!task.roleId || task.roleId === agent.roleId)));
+    });
     if (!task || this.runner.isCancelling(task.id)) return undefined;
     if (task.status === 'review') return this.runner.startPullRun(task, agent);
     // Reserve before awaiting setup so spawn dispatch cannot select this task.
@@ -359,7 +364,7 @@ export class Dispatcher {
         .where(eq(schema.agents.id, task.assigneeAgentId))
         .get();
       if (!agent || agent.mode === 'pull') return undefined;
-      if (agent.status === 'rate-limited' || agent.status === 'stopped') return undefined;
+      if (['rate-limited', 'stopped', 'stale'].includes(agent.status)) return undefined;
       if (liveAgentIds.has(agent.id)) return undefined;
 
       const toolRateLimited = this.isToolRateLimited(board.workspaceId, agent.cliType);

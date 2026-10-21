@@ -59,6 +59,11 @@ export class Verifier {
 
     // Subscribe to task_status_changed events
     this.unsubscribeBoard = this.eventBus.subscribeBoardEvents('*', (event) => {
+      if (event.type === 'agent_connected') {
+        for (const task of this.db.db.select().from(schema.tasks).where(eq(schema.tasks.status, 'review')).all()) {
+          if (!task.reviewerAgentId) this.enqueue(task.id);
+        }
+      }
       if (event.type === 'task_status_changed') {
         const data = event.data as { taskId?: string; to?: string };
         if (data?.taskId && (data?.to === 'verifying' || data?.to === 'review')) {
@@ -485,12 +490,14 @@ export class Verifier {
 
     // Rank candidates: usable now beats paused, idle beats busy, a different tool beats the author's.
     // Stopped agents (stop-all) are never chosen.
-    const candidates = reviewerAgents.filter((r) => r.agent.status !== 'stopped');
+    const lastReview = this.db.db.select().from(schema.runs).where(and(eq(schema.runs.taskId, task.id), eq(schema.runs.kind, 'review'))).orderBy(desc(schema.runs.startedAt), desc(sql`${schema.runs}.rowid`)).get();
+    const candidates = reviewerAgents.filter(r => !['stopped', 'stale'].includes(r.agent.status) && !(lastReview?.exitReason === 'stale' && lastReview.agentId === r.agent.id));
     const rank = (r: (typeof reviewerAgents)[number]): number =>
       (r.agent.status === 'rate-limited' ? 4 : 0) +
       (r.agent.status === 'idle' ? 0 : 2) +
       (author && r.agent.cliType === author.cliType ? 1 : 0);
-    const selected = [...candidates].sort((a, b) => rank(a) - rank(b))[0] ?? reviewerAgents[0];
+    const selected = [...candidates].sort((a, b) => rank(a) - rank(b))[0];
+    if (!selected) return; // Keep review pending until another eligible Reviewer connects.
     const reviewer = selected.agent;
 
     // Set tasks.reviewerAgentId

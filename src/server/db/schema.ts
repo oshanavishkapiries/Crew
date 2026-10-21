@@ -101,7 +101,8 @@ export type ExitReason =
   | 'stopped'
   | 'rate-limited'
   | 'cancelled'
-  | 'resume-failed';
+  | 'resume-failed'
+  | 'stale';
 
 export const runs = sqliteTable('runs', {
   id: text('id').primaryKey(),

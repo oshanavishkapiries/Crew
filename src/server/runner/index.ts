@@ -796,8 +796,8 @@ export class Runner extends EventEmitter {
     return { task: latest, runId, prompt: context.prompt, workDir: context.workDir, permissions: context.permissionProfile };
   }
 
-  endPullRun(taskId: string, reason: ExitReason) {
-    for (const run of this.getPullRuns().filter(run => run.taskId === taskId)) {
+  endPullRun(taskId: string, reason: ExitReason, agentId?: string) {
+    for (const run of this.getPullRuns().filter(run => run.taskId === taskId && (!agentId || run.agentId === agentId))) {
       this.db.db.update(schema.runs).set({ endedAt: this.now(), exitReason: reason }).where(eq(schema.runs.id, run.id)).run();
       if (reason !== 'done' || run.kind === 'review') this.clearMainCheckoutSnapshot(run.id);
       this.db.db.update(schema.agents).set({ status: reason === 'stopped' ? 'stopped' : 'idle' }).where(eq(schema.agents.id, run.agentId)).run();

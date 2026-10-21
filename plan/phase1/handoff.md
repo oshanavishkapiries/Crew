@@ -1,3 +1,12 @@
+# Milestone 7 session 3 in progress
+
+Bullet 4 is implemented: injected-clock scanner, atomic stale requeue without
+retry charge, preserved worktrees/branches, another-agent takeover, retired-run
+refusal, phase/review recovery and one full window of restart/resume grace.
+Targeted stale + existing Pull suite passed 25 tests (47.55s). Bullet 5 is in
+progress; bullet 6 remains not started. No paid agents. Unrelated tickets.ts
+whitespace is untouched. See milestone-7.md §9 for the grace and reviewer rules.
+
 # Milestone 7 session 2: bullets 2 and 3 implemented and verified
 
 Branch `feat/milestone-7-breadth`. Pull join/next/heartbeat, own-agent token auth,
