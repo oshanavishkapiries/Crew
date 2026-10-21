@@ -291,3 +291,40 @@ before packaging. Track B did not edit server sources to address it.
   direct route reloads and a stale gate's real 409/refetch. Dispatch stays stopped;
   all fixture adapter names are `fake` and no agent runs are started. Full root
   suite output and final browser evidence are recorded in the Track D report.
+
+#### Bullet 5: Team and Memory
+
+- Team reads real agents, roles, tasks and status. It shows each persisted server
+  status verbatim, actual live-run task(s), tool, role, mode and heartbeat time,
+  plus tool rate-limit and stopped-dispatch information. A workspace filter
+  scopes the list. Persona editing uses a Dialog and PATCHes only name,
+  systemPrompt and personality. Nonblank names are checked locally; server
+  messages are preserved and attached to matching fields as well as the form.
+- **Server status limitation:** no connected/stale boolean, heartbeat cutoff or
+  connected/stale derived state is returned today. Team does not invent one;
+  raw statuses (including any future connected/stale values), heartbeat timestamp
+  and real live-run presence are shown. Future pull-mode status semantics remain
+  server-owned.
+- Memory has Project / Role / Task tabs, workspace selection and layer-specific
+  filters. Create sends only the selected layer's scope; role options use the
+  same builtin/configured/staffed workspace rule as MemoryStore and task options
+  come only from boards in the selected workspace. Edit sends title/body only.
+  Delete requires a Dialog confirmation. Promote is offered only for unpromoted
+  role entries; its server-created project copy and original timestamp are
+  refreshed. Source and promotion information are visible, including phase specs.
+- Reads coalesce refreshes, cancel on unmount and poll every 15 seconds; mutations
+  use the shared cookie API client and preserve server failures. All forms and
+  confirmations compose existing shadcn primitives. No dependency, shared file,
+  server, test harness, Board or task-detail changes were made.
+- Real-browser verification covers persona name/system prompt/personality saved
+  in SQLite, create/edit/delete in all three memory layers with DB assertions,
+  cancelling delete, role promotion retaining the original plus project copy,
+  and direct reloads of `/team` and `/memory`. The final seeded smoke asserts zero
+  run rows and no browser page errors. It does not claim a resumed agent run or
+  a full paid/fake phase workflow; the CLI has no registered adapter named fake.
+- Documentation ownership for this round is respected: architecture/techstack,
+  onboarding, handoff and UI README are unchanged. The owning docs track should
+  record these new feature folders/routes and replace placeholder/status text
+  when integrating Tracks C/D. No CLI declarations changed, so commands reference
+  regeneration is unnecessary. Full evidence and remaining limitations are in
+  `plan/phase1/reports/m6-gates.md`.
