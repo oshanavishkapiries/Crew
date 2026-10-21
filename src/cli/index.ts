@@ -13,6 +13,10 @@ export function createCli(commands: CommandDefinition[] = COMMANDS): Command {
   for (const def of commands) {
     const cmd = program.command(def.name, { hidden: Boolean(def.hidden) });
     cmd.description(def.summary);
+    cmd.addHelpText('after', `\n${def.description}\n`);
+    if (def.examples?.length) {
+      cmd.addHelpText('after', `\nExamples:\n${def.examples.map(example => `  ${example.command}`).join('\n')}\n`);
+    }
 
     if (def.args) {
       for (const arg of def.args) {

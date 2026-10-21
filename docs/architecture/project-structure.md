@@ -104,3 +104,5 @@ Phase instructions and lifecycle live in `src/server/workflow/phases.ts` and `in
 Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI grill Q&A and fallback, spec publication, held tickets, rejection/recovery and live Orchestrator command boundaries. Scheduler owns the ticket hold/release; Workflow validates the ticket graph and publishes approved spec memory atomically.
 
 `test/adapters/crew-home-permissions.test.ts` covers Crew-home Read denials for every Claude profile, spawn/resume and custom homes; the matching real Read probe is in `test/fixtures/claude-code/crew-home-read-dontask.json`.
+
+`test/harness/cli-status.test.ts` drives real CLI phase/gate/recovery output, dispatch ticket counts, combined task filters and help. The status API supplies per-board work-ticket counts and registered role IDs/names; task filtering and validation stay in `src/cli/commands/tasks.ts`, using that metadata and the existing task list.
