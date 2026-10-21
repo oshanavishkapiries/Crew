@@ -19,13 +19,26 @@ export class Workflow {
     const phaseTasks = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.boardId, boardId)).orderBy(desc(sql`rowid`)).all().filter(t => t.kind === 'phase' && t.creationPhase === board.currentPhase);
     const draft = this.db.db.select().from(schema.phaseOutputs).where(eq(schema.phaseOutputs.boardId, boardId)).all().find(o => o.phase === board.currentPhase && o.status === 'draft');
     const memory = this.db.db.select().from(schema.memory).where(eq(schema.memory.workspaceId, workspace.id)).all().filter(entry => entry.layer === 'project' || (entry.layer === 'role' && entry.roleId === phaseTasks[0]?.roleId) || (entry.layer === 'task' && entry.taskId === phaseTasks[0]?.id));
-    const problem = !phaseTasks[0] && !draft && !['dispatch', 'done'].includes(board.currentPhase) ? 'No phase task. Run crew init, then crew resume to start this phase.' : undefined;
+    const escalated = board.currentPhase === 'dispatch' ? this.db.db.select().from(schema.tasks).where(eq(schema.tasks.boardId, boardId)).all().find(t => t.kind === 'work' && t.status === 'escalated') : undefined;
+    const dispatchProblem = board.currentPhase === 'dispatch' && this.dispatchFinished(boardId) ? 'Dispatch complete but integrate has not started. Run crew init, then crew resume.' : undefined;
+    const problem = escalated ? `Ticket ${escalated.id} (${escalated.title}) escalated. Run crew retry ${escalated.id} or crew cancel ${escalated.id}.` : dispatchProblem ?? (!phaseTasks[0] && !draft && !['dispatch', 'done'].includes(board.currentPhase) ? 'No phase task. Run crew init, then crew resume to start this phase.' : undefined);
     return { board, workspace, task: phaseTasks[0], draft, memory, problem, instructions: PHASES[board.currentPhase]?.instructions ?? 'Board complete.' };
   }
   private changed(boardId: string) { this.events.publishBoardEvent(boardId, { type: 'phase_changed', data: { boardId, ...this.snapshot(boardId) } }); }
+  private dispatchFinished(boardId: string) {
+    return this.db.db.select().from(schema.boards).where(eq(schema.boards.id, boardId)).get()?.currentPhase === 'dispatch' &&
+      this.db.db.select().from(schema.tasks).where(eq(schema.tasks.boardId, boardId)).all().filter(t => t.kind === 'work').every(t => ['merged', 'cancelled'].includes(t.status));
+  }
   async ensureBoard(boardId: string) {
     const state = this.snapshot(boardId);
-    if (!PHASES[state.board.currentPhase] || state.board.currentPhase === 'dispatch' || state.draft || state.task) return;
+    if (state.board.currentPhase === 'dispatch') {
+      if (this.dispatchFinished(boardId)) await this.createPhase(boardId, 'integrate', () => {
+        if (!this.dispatchFinished(boardId)) throw new WorkflowError('Dispatch has moved on or still has unfinished tickets.');
+        this.db.db.update(schema.boards).set({ currentPhase: 'integrate' }).where(eq(schema.boards.id, boardId)).run();
+      });
+      return;
+    }
+    if (!PHASES[state.board.currentPhase] || state.draft || state.task) return;
     await this.createPhase(boardId, state.board.currentPhase);
   }
   private async createPhase(boardId: string, phase: string, alongside?: () => void, note?: string, previous?: { taskId?: string; output?: string; description?: string }) {
@@ -77,17 +90,17 @@ export class Workflow {
       const state = this.snapshot(boardId);
       if (state.draft?.id !== draftId || state.board.currentPhase !== phase) throw new WorkflowError('Draft missing, stale or already decided.');
       if (!input.reject && phase === 'tickets') this.validateTickets(boardId);
-      if (!input.reject && phase === 'spec') {
+      if (!input.reject && ['spec', 'integrate'].includes(phase)) {
         this.db.db.insert(schema.memory).values({
           id: randomUUID(), workspaceId: state.board.workspaceId, layer: 'project',
-          title: 'Approved spec', body: typeof input.edit === 'string' ? input.edit : state.draft.body,
-          source: `phase:spec:${draftId}`, createdAt: new Date(),
+          title: phase === 'spec' ? 'Approved spec' : 'Project summary', body: typeof input.edit === 'string' ? input.edit : state.draft.body,
+          source: `phase:${phase}:${draftId}`, createdAt: new Date(),
         }).run();
       }
       this.db.db.update(schema.phaseOutputs).set({ status: input.reject ? 'rejected' : 'approved', body: typeof input.edit === 'string' ? input.edit : state.draft.body, approvedAt: input.reject ? null : new Date() }).where(eq(schema.phaseOutputs.id, draftId)).run();
       this.db.db.update(schema.boards).set({ currentPhase: next }).where(eq(schema.boards.id, boardId)).run();
     };
-    if (next === 'dispatch') { this.scheduler.releaseTickets(boardId, commit); this.changed(boardId); }
+    if (next === 'dispatch') { this.scheduler.releaseTickets(boardId, commit); this.changed(boardId); await this.ensureBoard(boardId); }
     else if (next === 'done') { this.db.db.transaction(commit); this.changed(boardId); }
     else await this.createPhase(boardId, next, commit, input.reject ? input.note as string : undefined, { taskId: current.task?.id, output: typeof input.edit === 'string' ? input.edit : current.draft.body });
     return this.snapshot(boardId);
@@ -127,7 +140,10 @@ export class Workflow {
       if (event.type === 'task_status_changed') {
         const data = event.data as { taskId: string; to: string };
         const task = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, data.taskId)).get();
-        if (task?.kind === 'phase') this.changed(task.boardId);
+        if (task) {
+          this.changed(task.boardId);
+          if (task.kind === 'work') void this.ensureBoard(task.boardId).catch(error => console.error(`Workflow ${task.boardId}: ${error.message}`));
+        }
       }
     });
     for (const board of this.db.db.select().from(schema.boards).all()) void this.ensureBoard(board.id).catch(error => console.error(`Workflow ${board.id}: ${error.message}`));
