@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Nothing implemented yet. Bullet prompts: `agent-prompts/m7-bullet-0-1.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md`.
 
 ## 1. Goal
 
@@ -83,5 +83,59 @@ Harness first (PRD): Pull mode uses the fake adapter driven through the real CLI
 
 ## 8. Open questions
 
-- Who records the Codex fixtures (user runs a small script, as in milestone 3)? Default: I write `scripts/record-codex-fixtures.ts`; the user runs it once.
+- Resolved for session 1: `scripts/record-codex-fixtures.ts` was run once as explicitly requested by the task prompt; see §9 and the report for real output and cost limitations.
 - Is 10 minutes the right stale window for slow human-driven Pull sessions? Default: yes, configurable.
+
+## 9. Implementation notes (session 1: bullets 0 and 1 only)
+
+- Bullet 0: Codex adapter, minimum 0.163.0, explicit D88 sandbox mapping, stdin
+  prompts, resume with exec-level sandbox/cwd options before the subcommand,
+  isolated per-run JSONL parsers and structured rate-limit detection. CLI config
+  and execpolicy rules are ignored, approval policy is never, workspace network
+  follows `allowNetwork`. Only explicit full selects danger-full-access.
+- Real recorder ran exactly once: edit 19.553 s, resume 11.826 s, read-only
+  18.292 s (49.671 s total CLI time). Token usage is in recording.json. USD cost
+  is unavailable from the CLI and is not estimated. No real rate limit occurred;
+  `rate-limit-synthetic.jsonl` is labelled synthetic. The read-only response
+  reports denial and no file was created, but it has no command event: an actual
+  attempted syscall denial is not proven. No extra paid probe was attempted.
+- Bullet 1: default Runner registration and exports, installed-tool reporting in
+  init, additive validated config.team creation on init/start. Default Claude
+  staffing remains. Team fields are name, role and cliType (claude-code|codex);
+  names are idempotent, changing a name's role/tool is an error, omission never
+  deletes. No UI, Pull mode, heartbeat or Antigravity implementation.
+- Runner captures Codex's real thread ID instead of preassigning one; stored
+  Claude IDs now follow the actual adapter spawn env too. Complete final lines
+  use the same event/session/rate-limit path before retiring a run; repeated
+  rate-limit error/terminal events advance backoff only once per run. A dispatch/answer race exposed by
+  the new harness is fixed by choosing session resume for answered asked runs
+  and coalescing concurrent work starts for the same agent (authors and Reviewers remain separate). The harness asserts exactly two runs.
+- Codex-shaped fake processes use real CLI calls, real worktrees and the real
+  Codex parser for dispatch, ask/answer, rate-limit reset/backoff, stop/resume,
+  process-group timeout and no-output kill. A successful Codex turn without
+  crew done remains an exited run and consumes a retry/escalates (D22); no Stop
+  hook is invented.
+
+### Limitations and reviewer decisions
+
+Command lists, git push denial, state-file read rules and the Orchestrator's
+single-output-file rule are advisory prompt rules on Codex; workspace-write
+allows writes throughout the worktree. Full has no OS filesystem/network
+containment. The PRD permission section now says this explicitly (D88).
+
+Network-disabled sandbox HTTP connectivity to localhost Crew was not verified
+with a paid run. Codex read-only normally disables network, and full cannot
+restrict it; the workspace-write network flag is honoured exactly. Explicit
+allowNetwork can enable workers' HTTP CLI calls but also permits external
+network access. A network-disabled read-only Reviewer needs a future scoped
+local transport/network design. Reviewer: decide that follow-up before claiming
+a real mixed-tool review pipeline works. The harness proves engine behavior,
+not real-tool sandbox networking. Team UI permission caveats/status changes are
+not implemented in this server session.
+
+Final clean-build verification: `rm -r dist && npm test` passed **54 files /
+361 tests**, 440.58 s (typecheck and fresh CLI build). Full output, earlier
+failures and targeted regression results are in the session report.
+
+Open questions about who runs the recorder are closed for session 1: it ran once
+as explicitly requested by the task prompt. Bullet 2–6: **not started**.

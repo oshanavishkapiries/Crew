@@ -1,6 +1,34 @@
 # Handoff
 
-**Milestone 7 (Codex, Pull mode, heartbeat) is planned and approved** (D88–D93, `milestone-7.md`) on branch `feat/milestone-7-breadth`. Nothing is implemented. First session: bullets 0–1 (Codex adapter and wiring), prompt in `agent-prompts/m7-bullet-0-1.md`. Milestone 6 is merged to `main` and its manual browser checklist passed (2026-10-21); a clean tarball install of `npm pack` serves the Board.
+**Milestone 7 session 1: bullets 0 and 1 implemented** on
+`feat/milestone-7-breadth`. The Codex 0.163.0 adapter is registered by default;
+init detects tools; config.team creates additive named Codex/Claude spawn agents
+with built-in/custom roles on init/start. Init preserves stored config. Existing
+agents are never silently changed or removed. All three real fixture turns ran
+once (49.671 s; 105,426 input / 155 output tokens; USD cost unavailable). The
+read-only response reports denial but has no tool event; do not claim syscall
+proof. Rate-limit samples are explicitly synthetic.
+
+The Codex-shaped harness uses real child processes, CLI HTTP calls, worktrees
+and the production parser. It covers dispatch, captured thread identity,
+ask/answer resume, reported reset and backoff, stop/resume, timeout/no-output
+process-group kills, final non-newline and repeated rate-limit errors, and
+exited-without-done escalation. The answer/Dispatcher
+race discovered during verification is fixed for work tasks: both choose the
+saved session and Runner coalesces concurrent work starts for the same agent. Final clean-suite
+output and the complete file inventory are in `reports/m7-bullet-0-1.md`.
+Final `rm -r dist && npm test`: **54 files / 361 tests passed**, 440.58 s.
+Bullet commits: `78125a9` (fixtures/adapter), `a1250c2` (wiring).
+
+Limitations: Codex command lists, state-file denials and Orchestrator single-file
+writes are prompt rules, not per-command enforcement (D88). Workspace network
+follows allowNetwork; full has no OS containment. Real Codex-to-Crew HTTP in a
+network-disabled sandbox was not tested; read-only Reviewer completion needs a
+scoped local transport/network decision. No real Crew Codex workflow or mixed
+review smoke is claimed. No UI changes. **Bullets 2–6 are not started**: next is
+Pull join/next/heartbeat, using `milestone-7.md`. Stop this session after bullet 1.
+Milestone 6 is on main and its manual browser checklist passed (2026-10-21).
+
 
 Track E (`feat/m6-gaps`) closes both assigned gaps: ticket cards persist edits,
 add and cancel work; Scheduler commits fields, dependencies and readiness atomically.
