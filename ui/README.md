@@ -103,3 +103,11 @@ truncation are explicit. CLI equivalents: `crew ticket edit`, `crew logs --list`
 Task assignment/edit SSE events invalidate that task's detail cache even when
 SQLite's second-precision updatedAt has not changed. Reconnect and manual Refresh
 invalidate all task details; unrelated board events still reuse cached details.
+
+Team shows spawn/Pull mode, connection/running/stale/paused/disconnected status and
+relative heartbeat. For a Pull member, Connect prompt rotates its token and opens
+a private shadcn dialog with a Copy prompt button; closing clears it, and it is
+never saved in browser storage. Each new request invalidates the previous token.
+CLI parity is crew connect <agent-ID-or-unique-name>. Board cards show the stale
+previous-run assignment after recovery clears ownership, until another agent is
+assigned. Team polls every 15 seconds; use Refresh for immediate activity changes.

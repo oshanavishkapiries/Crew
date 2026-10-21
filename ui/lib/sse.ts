@@ -9,7 +9,7 @@ export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline'
 const boardEvents = [
   'task_status_changed', 'task_progress', 'phase_changed',
   'merge_item_changed', 'task_assignment_changed', 'verification_step',
-  'rate_limited', 'rate_limit_cleared', 'control_changed',
+  'rate_limited', 'rate_limit_cleared', 'control_changed', 'agent_stale', 'agent_connected',
 ];
 
 export function useBoardEvents(boardId: string, onRefetch: (change?: { type: string; taskId?: string }) => void): ConnectionState {

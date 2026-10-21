@@ -7,7 +7,7 @@ export interface CrewAgent {
   systemPrompt: string;
   personality: string;
   cliType: string;
-  mode: string;
+  mode: "spawn" | "pull";
   status: string;
   lastHeartbeatAt: string | null;
 }
@@ -18,7 +18,7 @@ export interface CrewRole {
 }
 export interface TeamStatus {
   stopped: boolean;
-  agents: { id: string; name: string; cliType: string; status: string }[];
+  agents: { id: string; name: string; cliType: string; status: string; mode: "spawn" | "pull"; lastHeartbeatAt: string | null }[];
   liveRuns: { id: string; taskId: string; agentId: string }[];
-  rateLimits: { cliType: string; [key: string]: unknown }[];
+  rateLimits: { cliType: string; isPaused: boolean; [key: string]: unknown }[];
 }

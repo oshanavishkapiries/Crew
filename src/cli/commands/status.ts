@@ -4,7 +4,7 @@ interface StatusResponse {
   stopped: boolean;
   phases?: Array<{ boardId: string; phase: string; draftId?: string; taskId?: string; status?: string; problem?: string; ticketCounts?: Record<string, number> }>;
   mergeQueue?: { pending: number; warnings: Array<{ workspaceId: string; message: string }> };
-  agents: Array<{ id: string; name: string; cliType: string; status: string }>;
+  agents: Array<{ id: string; name: string; cliType: string; status: string; mode: string; lastHeartbeatAt?: string | null }>;
   liveRuns: Array<{ id: string; taskId: string; agentId: string; sessionId?: string; pid?: number }>;
   rateLimits: Array<{ cliType: string; isPaused: boolean; resetTime?: number; backoffStep: number }>;
   taskCounts: Record<string, number>;
@@ -44,7 +44,7 @@ export async function handleStatus(): Promise<void> {
 
   console.log(`\nAgents (${status.agents.length}):`);
   for (const agent of status.agents) {
-    console.log(`  - ${agent.name} (${agent.id}): ${agent.status} [${agent.cliType}]`);
+    console.log(`  - ${agent.name} (${agent.id}): ${agent.status} [${agent.cliType}, ${agent.mode}]${agent.mode === 'pull' ? ` · last heartbeat: ${agent.lastHeartbeatAt || 'never'}` : ''}`);
   }
 
   console.log(`\nLive Runs (${status.liveRuns.length}):`);

@@ -11,7 +11,7 @@ import * as schema from './db/schema.js';
 
 export interface ProjectConfig {
   /** Additive team entries; existing agents are never silently replaced. */
-  team?: { name: string; role: string; cliType: 'claude-code' | 'codex' }[];
+  team?: { name: string; role: string; cliType: 'claude-code' | 'codex' | 'antigravity'; mode?: 'spawn' | 'pull' }[];
   verifyCommands?: { name: string; command: string; cwd?: string; timeout?: number; paths?: string[] }[];
   worktreeSetup?: string;
   mergeStrategy?: 'squash' | 'rebase';
@@ -35,7 +35,9 @@ export default {
   verifyCommands: [
     // { name: 'test', command: 'npm test', timeout: 600000, paths: ['src/**', 'test/**'] },
   ],
-  // team: [{ name: 'Codex developer', role: 'backend', cliType: 'codex' }],
+  // team: [{ name: 'Terminal developer', role: 'backend', cliType: 'antigravity', mode: 'pull' }],
+  // Get its private one-paste prompt with crew connect 'Terminal developer'.
+  // staleAfterMs: 600000,
   // worktreeSetup: 'npm ci',
   mergeStrategy: 'squash',
   maxParallelAgents: 3,
@@ -123,9 +125,11 @@ export function validateProjectConfig(value: unknown): ProjectConfig {
     if (!Array.isArray(value.team)) throw new Error('team must be a list');
     const names = new Set<string>();
     for (const member of value.team) {
-      object(member, 'team entry'); keys(member, ['name', 'role', 'cliType'], 'team entry');
+      object(member, 'team entry'); keys(member, ['name', 'role', 'cliType', 'mode'], 'team entry');
       text(member.name, 'team.name'); text(member.role, 'team.role');
-      if (!['claude-code', 'codex'].includes(member.cliType as string)) throw new Error('team.cliType must be claude-code or codex');
+      if (!['claude-code', 'codex', 'antigravity'].includes(member.cliType as string)) throw new Error('team.cliType must be claude-code, codex or antigravity');
+      if (member.mode !== undefined && !['spawn', 'pull'].includes(member.mode as string)) throw new Error('team.mode must be spawn or pull');
+      if (member.cliType === 'antigravity' && member.mode !== 'pull') throw new Error('Antigravity is Pull-only: set team.mode to pull (D17).');
       if (names.has(member.name as string)) throw new Error(`Duplicate team name ${member.name}`);
       names.add(member.name as string);
       if (!Object.hasOwn(BUILTIN_ROLES, member.role as string) && !Object.hasOwn(value.roles || {}, member.role as string)) throw new Error(`Unknown team role ${member.role}`);
@@ -175,10 +179,10 @@ export async function loadWorkspaceConfigs(db: CrewDatabase, onlyWorkspaceId?: s
         const roleId = Object.hasOwn(BUILTIN_ROLES, member.role) ? `builtin-${member.role}` : `configured-${id}-${member.role}`;
         const existing = db.db.select().from(schema.agents).where(eq(schema.agents.workspaceId, id)).all().find(agent => agent.name === member.name);
         if (existing) {
-          if (existing.cliType !== member.cliType || existing.roleId !== roleId) throw new Error(`Team member ${member.name} already exists with a different role or tool; choose a new name.`);
+          if (existing.cliType !== member.cliType || existing.roleId !== roleId || existing.mode !== (member.mode ?? 'spawn')) throw new Error(`Team member ${member.name} already exists with a different role, tool or mode; choose a new name.`);
           continue;
         }
-        db.db.insert(schema.agents).values({ id: `agent-${crypto.randomUUID()}`, workspaceId: id, roleId, name: member.name, cliType: member.cliType, tokenHash: hashToken(generateAgentToken()), createdAt: new Date() }).run();
+        db.db.insert(schema.agents).values({ id: `agent-${crypto.randomUUID()}`, workspaceId: id, roleId, name: member.name, cliType: member.cliType, mode: member.mode ?? 'spawn', tokenHash: hashToken(generateAgentToken()), createdAt: new Date() }).run();
       }
     }
   })();

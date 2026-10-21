@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useRef, useState } from "react";
+import { agentState, relativeHeartbeat } from "@/lib/agent-logic";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import type { CrewAgent, CrewRole, TeamStatus } from "@/lib/team-types";
 import type { CrewTask } from "@/lib/gates-types";
@@ -40,6 +42,21 @@ export function Team() {
   }, []);
   const { data, error, loading, refresh } = useResource(load);
   const [workspace, setWorkspace] = useState("all");
+  const [connection, setConnection] = useState<{ agent: CrewAgent; prompt: string; busy: boolean; error: string; copied: boolean }>();
+  const request = useRef(0);
+  const connectBusy = useRef(false);
+  async function connect(agent: CrewAgent) {
+    if (connectBusy.current) return;
+    connectBusy.current = true;
+    const id = ++request.current;
+    setConnection({ agent, prompt: "", busy: true, error: "", copied: false });
+    try {
+      const data = await api<{ prompt: string }>(`/api/agents/${encodeURIComponent(agent.id)}/connect`, { method: "POST" });
+      if (id === request.current) setConnection({ agent, prompt: data.prompt, busy: false, error: "", copied: false });
+    } catch (err) {
+      if (id === request.current) setConnection({ agent, prompt: "", busy: false, error: err instanceof Error ? err.message : String(err), copied: false });
+    } finally { connectBusy.current = false; }
+  }
   const [editing, setEditing] = useState<CrewAgent>();
   const agents =
     data?.agents.filter(
@@ -86,11 +103,12 @@ export function Team() {
               const runs = data.status.liveRuns.filter(
                 (run) => run.agentId === agent.id,
               );
-              const status =
+              const rawStatus =
                 data.status.agents.find((item) => item.id === agent.id)
                   ?.status ?? agent.status;
+              const status = agentState(rawStatus, runs.length > 0);
               const limited = data.status.rateLimits.some(
-                (limit) => limit.cliType === agent.cliType,
+                (limit) => limit.cliType === agent.cliType && limit.isPaused,
               );
               return (
                 <Card key={agent.id}>
@@ -99,15 +117,13 @@ export function Team() {
                     <CardDescription>
                       {data.roles.find((role) => role.id === agent.roleId)
                         ?.name ?? agent.roleId}{" "}
-                      · {agent.cliType} · {agent.mode}
+                      · {agent.cliType}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">{status}</Badge>
-                      {runs.length > 0 && (
-                        <Badge variant="outline">running</Badge>
-                      )}
+                      <Badge variant="outline">{agent.mode}</Badge>
+                      <Badge variant={status === "stale" ? "destructive" : "secondary"}>{status}</Badge>
                       {limited && status !== "rate-limited" && (
                         <Badge variant="outline">rate-limited</Badge>
                       )}
@@ -130,8 +146,9 @@ export function Team() {
                       <p>No live task.</p>
                     )}
                     <p className="text-sm text-muted-foreground">
-                      Last heartbeat: {agent.lastHeartbeatAt ?? "Not reported"}
+                      Last heartbeat: <span title={agent.lastHeartbeatAt ?? undefined}>{relativeHeartbeat(agent.lastHeartbeatAt)}</span>
                     </p>
+                    {agent.mode === "pull" && <Button variant="outline" disabled={connection?.busy ?? false} onClick={() => void connect(agent)}>Connect prompt</Button>}
                     <Button variant="outline" onClick={() => setEditing(agent)}>
                       Edit persona
                     </Button>
@@ -142,6 +159,26 @@ export function Team() {
           </div>
         </>
       )}
+      <Dialog open={!!connection} onOpenChange={open => { if (!open) { request.current++; setConnection(undefined); } }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Connect {connection?.agent.name}</DialogTitle>
+            <DialogDescription>A fresh private token replaces the previous token. Paste this prompt into your agent terminal. The prompt is not saved; close this dialog to clear it.</DialogDescription>
+          </DialogHeader>
+          {connection?.busy && <Notice>Preparing private prompt…</Notice>}
+          <ErrorNotice message={connection?.error ?? ""} />
+          {connection?.prompt && <>
+            <Textarea aria-label="Private connect prompt" readOnly value={connection.prompt} className="max-h-96 min-h-64 font-mono text-xs" />
+            <Button onClick={async () => {
+              const current = request.current;
+              try {
+                await navigator.clipboard.writeText(connection.prompt);
+                if (current === request.current) setConnection(old => old && { ...old, copied: true, error: "" });
+              } catch { if (current === request.current) setConnection(old => old && { ...old, error: "Clipboard is unavailable. Select and copy the prompt above." }); }
+            }}>{connection.copied ? "Copied" : "Copy prompt"}</Button>
+          </>}
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={!!editing}
         onOpenChange={(open) => {

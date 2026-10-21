@@ -1,3 +1,4 @@
+import { AntigravityAdapter } from '../../adapters/antigravity.js';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -51,8 +52,9 @@ export async function handleInit(): Promise<void> {
     })();
     // Init preserves existing stored settings; only start replaces workspace config.
     await loadWorkspaceConfigs(db, workspace.id, true);
-    const detected = await Promise.all([new ClaudeCodeAdapter(), new CodexAdapter()].map(async adapter => {
+    const detected = await Promise.all([new ClaudeCodeAdapter(), new CodexAdapter(), new AntigravityAdapter()].map(async adapter => {
       const result = await adapter.detect();
+      if (adapter.id === 'antigravity') return `antigravity: ${result.installed ? 'executable found on PATH' : 'executable not found on PATH'} (Pull only; headless: false)`;
       return `${adapter.id}: ${result.installed ? `${result.version || 'unknown version'} (${result.headless ? 'headless ready' : 'unsupported for headless runs'})` : 'not installed'}`;
     }));
     console.log(`Detected tools: ${detected.join('; ')}`);

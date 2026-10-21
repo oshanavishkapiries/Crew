@@ -5,13 +5,13 @@ export type TaskStatus = typeof taskStatuses[number];
 export interface BoardTask {
   id: string; boardId: string; title: string; description: string; acceptanceCriteria: string;
   status: TaskStatus; kind: 'work' | 'phase'; retries: number;
-  assigneeAgentId: string | null; assigneeAgentName?: string; reviewerAgentId: string | null;
+  staleAgentId?: string; assigneeAgentId: string | null; assigneeAgentName?: string; reviewerAgentId: string | null;
   branch: string | null; updatedAt: string; createdAt: string;
 }
 export interface Dependency { taskId: string; blockedByTaskId: string }
 export interface StatusResponse {
   stopped: boolean; phases: PhaseStatus[];
-  agents: { id: string; name: string; cliType: string; status: string }[];
+  agents: { id: string; name: string; cliType: string; status: string; mode: "spawn" | "pull"; lastHeartbeatAt: string | null }[];
   liveRuns: { id: string; taskId: string; agentId: string; sessionId?: string; pid?: number }[];
   rateLimits: { cliType: string; isPaused: boolean; resetTime?: number; backoffStep: number }[];
 }

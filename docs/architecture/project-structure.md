@@ -43,7 +43,7 @@ crew/
 ├─ src/
 │  ├─ cli/                # Agent commands (thin HTTP clients, shared in client.ts): join, next, update, ask, remember, done, review, hook (hidden), phase, ticket, assign
 │  │                      # Human commands: start, open, init, status, stop-all, resume (D23), worktree gc,
-│  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16), results, queue, retry (D44)
+│  │                      #   approve, answer, memory, cancel (D2), tasks, logs, diff (D16), results, queue, retry (D44), connect (Pull token rotation)
 │  │                      # Command declarations here are the single source for --help and docs/commands.md (D3)
 │  ├─ server/
 │  │  ├─ project-config.ts # jiti loader, config validation/template and command prefix filtering (CLI startup only)
@@ -172,3 +172,13 @@ Pull connection-status projection. Scheduler owns an atomic stale recovery path
 that preserves branch/worktree/retries, clears task ownership and retires pid-less
 runs. Server startup/close owns scanner timers. `test/harness/pull-stale.test.ts`
 covers recovery, takeover, reconnect, grace, stop, idle, phase and review behavior.
+
+Milestone 7 bullet 5 adds `cli/commands/connect.ts` and human-only agent connect
+POST: mint/rotate a Pull token, retain only its hash, and return a private prompt
+once with no-store. Team shows/copies it from an ephemeral shadcn dialog.
+`adapters/antigravity.ts` only detects executable presence on PATH and reports
+headless false; it is never registered as a spawn adapter. Config team supports
+spawn/Pull mode, with Antigravity restricted to explicit Pull. `ui/lib/agent-logic.ts`
+provides status precedence/relative heartbeat labels; client checks cover both.
+The Board uses staleAgentId history to show the retired assignment after ownership
+is cleared. Pull connect/config behavior is covered by the real CLI harness.

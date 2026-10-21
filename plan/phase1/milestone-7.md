@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullet 4 is implemented (25 targeted tests pass); bullet 5 is in progress. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4 and 5 are implemented; final clean suite/UI build/browser verification are pending. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md`.
 
 ## 1. Goal
 
@@ -243,3 +243,43 @@ disconnected, never requeued. Scanner passes cannot interleave with done's SQLit
 transaction; both success-before-expiry and stale-before-late-done are tested.
 Targeted stale + existing Pull suite: 2 files / 25 tests passed, 47.55s. Bullet 5
 in progress; bullet 6 not started. Full verification remains for this session.
+
+### Session 3: Antigravity, connect prompt and status (bullet 5)
+
+Config accepts team.mode (spawn default), Claude/Codex in either mode and
+Antigravity only with explicit mode: pull. Existing name/role/tool/mode mismatches
+are errors; init/start stay additive/idempotent. Detection checks only an executable
+named antigravity on PATH, never launches it and always reports headless false.
+No GUI-installation/version or headless-capability claim is made.
+
+Human POST /api/agents/:id/connect and crew connect <ID-or-unique-name> rotate
+a fresh token on every request. Only the hash persists; the previous token stops
+authenticating immediately. No-store response contains the one-paste prompt,
+including crew * allowlisting, terminal env, join/next loop and clear-context/rejoin
+after done. Cookies require the existing Board CSRF header and agent tokens are
+refused even with a human secret. CLI prints the prompt only on this explicit
+human command. Team shows it in a shadcn dialog with a manual copy button; close
+clears its state. No token is put in UI storage, SSE, logs or reports.
+
+Human agent/status responses project Pull connected/running/stale/rate-limited/
+disconnected (plus stopped), mode and heartbeat; raw schedulingStatus is retained
+on the agent inspector. Idle Pull agents become disconnected without a DB/status
+transition. Team shows mode/status badges and relative heartbeat. Board retains a
+previous-run stale badge using latest stale work-run history after the assignee is
+cleared, until a replacement is assigned. A background resource poll updates Team
+every 15 seconds; Refresh is available. Board also listens for stale/connect SSE.
+
+Targeted config/connect/detection suite: 3 files / 35 tests passed (46.77s). UI
+typecheck/lint and 22 client checks passed. Final clean suite, UI build and real
+browser check still pending. No paid agents; bullet 6 remains not started.
+
+Limits: the last stale assignee/reviewer cannot immediately reclaim its own retired
+task; another eligible agent must run it first. A single-agent team can therefore
+leave that task pending on reconnect. Reviewers with no open run remain outside
+stale scanning; blocked Q&A tasks are not requeued. Rate-limited agents are not
+stale-requeued during a tool pause. A duplicate human connect request rotates again,
+so the last prompt wins. Closing a still-loading dialog can discard a newly minted
+prompt; reopen to mint another. These choices add no persistent terminal lease or
+credential retrieval mechanism. Existing review-result/transition window above
+remains. Restart/resume grace is an implementation rule under D90, not a new
+Decision Log entry; reviewer should assess that explicit rule and these limits.

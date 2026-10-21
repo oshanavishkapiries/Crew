@@ -13,6 +13,16 @@ Reads server.json and opens the Board in your browser. Run this again if a login
 
 ---
 
+### `crew connect`
+
+Accepts an agent ID or unique exact name. Mints a fresh token and invalidates the previous token each time. Prints the private prompt once; never share or log it. Includes join/next instructions, context clearing after done, and the crew * allowlist rule.
+
+**Arguments:**
+
+- `agent` (required): Pull agent ID or unique exact name
+
+---
+
 ### `crew start`
 
 Loads each workspace crew.config.ts before starting the local server on 127.0.0.1. Fix config errors and run start again; the file replaces stored settings on every start.
@@ -40,7 +50,7 @@ crew start --port 4001
 
 ### `crew init`
 
-Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Detects Claude Code and Codex; optional config.team entries add named spawn agents with cliType claude-code or codex. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.
+Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Detects Claude Code and Codex; optional config.team entries add named spawn or Pull agents with cliType claude-code, codex or Pull-only antigravity. Use crew connect for a private Pull connection prompt. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.
 
 **Examples:**
 
@@ -54,7 +64,7 @@ crew init
 
 ### `crew status`
 
-Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agents, live runs, rate limits and merge pause warnings.
+Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agent modes, Pull connection/activity/stale status and last heartbeat, live runs, rate limits and merge pause warnings.
 
 **Examples:**
 

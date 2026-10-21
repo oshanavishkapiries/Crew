@@ -31,6 +31,7 @@ import type { Verifier } from '../verify/index.js';
 import {
   AGENT_TOKEN_HEADER,
   hashToken,
+  generateAgentToken,
   hostHeaderMiddleware,
   SECRET_HEADER,
   secretsMatch,
@@ -247,6 +248,30 @@ export function createApp(ctx: AppContext): Hono {
     requireBoardHuman(c);
     return c.json({ roles: ctx.db.db.select().from(schema.roles).all() });
   });
+  app.post('/api/agents/:id/connect', c => {
+    requireBoardHuman(c);
+    c.header('Cache-Control', 'no-store');
+    const agent = ctx.db.db.select().from(schema.agents).where(eq(schema.agents.id, c.req.param('id'))).get();
+    if (!agent) return c.json({ error: 'Agent not found.' }, 404);
+    if (agent.mode !== 'pull') return c.json({ error: 'Connect prompts are only for Pull agents.' }, 403);
+    const token = generateAgentToken();
+    ctx.db.db.update(schema.agents).set({ tokenHash: hashToken(token) }).where(eq(schema.agents.id, agent.id)).run();
+    const serverUrl = new URL(c.req.url).origin;
+    const prompt = [
+      `You are ${agent.name}, an agent on a Crew team. Crew is a local coding-team server that assigns isolated git worktrees, verifies work, reviews it and merges locally.`,
+      'Add crew * to your tool allowlist so Crew commands do not require permission prompts.',
+      'This private token is shown once. It replaces the previous token. Never log, echo or share it; keep it only in this terminal environment.',
+      `export CREW_SERVER_URL='${serverUrl}'`,
+      `export CREW_AGENT_TOKEN='${token}'`,
+      'crew join',
+      'Loop: run crew next --wait 90. If no task is available, wait retryIn seconds and call again. For an assignment set CREW_TASK_ID and CREW_RUN_ID from task.id/runId, change directory to workDir, and follow its full prompt and permissions.',
+      'Use crew update to report progress, crew remember for role learnings, and crew ask if blocked. After asking, call crew next to receive the answer. Submit work with crew done; Reviewers use crew review and phase agents use crew phase done.',
+      'After each crew done clear your context and run crew join again, then continue the crew next --wait loop. Also clear context and rejoin after review/phase completion.',
+      'If stopped, cancelled or stale, stop working on the old task and follow Crew instructions. Never reuse a retired run ID. Crew cannot sandbox or kill this terminal: honor the worktree boundary, never git push or change remotes, and never read Crew credentials/state files.',
+    ].join('\n\n');
+    return c.json({ agentId: agent.id, prompt });
+  });
+
   app.patch('/api/agents/:id', async c => {
     requireBoardHuman(c);
     const body = await c.req.json().catch(() => null);

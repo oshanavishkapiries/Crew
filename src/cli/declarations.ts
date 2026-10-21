@@ -1,3 +1,4 @@
+import { handleConnect } from './commands/connect.js';
 import { handleJoin, handleNext } from './commands/pull.js';
 import { handleApprove } from './commands/approve.js';
 import { handlePhase } from './commands/phase.js';
@@ -33,6 +34,14 @@ export const COMMANDS: CommandDefinition[] = [
     description: 'Reads server.json and opens the Board in your browser. Run this again if a login key was used or the browser lost its session. If opening fails, paste the printed URL into a browser.',
     action: handleOpen,
   },
+  {
+    name: 'connect',
+    category: 'human',
+    summary: 'Get a private one-paste connection prompt for a Pull agent',
+    description: 'Accepts an agent ID or unique exact name. Mints a fresh token and invalidates the previous token each time. Prints the private prompt once; never share or log it. Includes join/next instructions, context clearing after done, and the crew * allowlist rule.',
+    args: [{ name: 'agent', description: 'Pull agent ID or unique exact name', required: true }],
+    action: handleConnect,
+  },
   // Setup & Human commands
   {
     name: 'start',
@@ -53,7 +62,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'init',
     category: 'human',
     summary: 'Initialize Crew in the current repository',
-    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Detects Claude Code and Codex; optional config.team entries add named spawn agents with cliType claude-code or codex. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.',
+    description: 'Registers the git repository, a grill board, six built-in roles and a four-agent Claude Code team. Detects Claude Code and Codex; optional config.team entries add named spawn or Pull agents with cliType claude-code, codex or Pull-only antigravity. Use crew connect for a private Pull connection prompt. Creates a commented crew.config.ts without overwriting an existing file; safe to run twice. Review and commit the config: an untracked crew.config.ts pauses merging on the default checkout.',
     action: handleInit,
     examples: [
       { description: 'Initialize crew configuration', command: 'crew init' },
@@ -63,7 +72,7 @@ export const COMMANDS: CommandDefinition[] = [
     name: 'status',
     category: 'human',
     summary: 'Show board phases, gates, agents and tasks',
-    description: 'Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agents, live runs, rate limits and merge pause warnings.',
+    description: 'Shows each board phase, pending draft and exact approval command, phase task state, recovery hints and dispatch ticket counts. Also lists agent modes, Pull connection/activity/stale status and last heartbeat, live runs, rate limits and merge pause warnings.',
     examples: [
       { description: 'View current project status', command: 'crew status' },
     ],

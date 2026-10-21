@@ -294,3 +294,42 @@ describe('Codex team configuration', () => {
     expect(open(r.home).db.select().from(schema.agents).all()).toHaveLength(4);
   });
 });
+
+describe('Pull team configuration', () => {
+  it('creates Antigravity/Claude/Codex Pull members idempotently on real init/start with validated stale window', async () => {
+    const r = await repo();
+    fs.writeFileSync(r.config, `export default { staleAfterMs: 2000, team: [
+      { name: 'Terminal Antigravity', role: 'backend', cliType: 'antigravity', mode: 'pull' },
+      { name: 'Terminal Claude', role: 'backend', cliType: 'claude-code', mode: 'pull' },
+      { name: 'Terminal Codex', role: 'backend', cliType: 'codex', mode: 'pull' }
+    ] };`);
+    const initialized = await r.run(['init']); expect(initialized.exitCode).toBe(0);
+    expect(initialized.stdout).toContain('Pull only; headless: false');
+    expect((await r.run(['init'])).exitCode).toBe(0);
+    const db = open(r.home); const before = db.db.select().from(schema.agents).all().filter(agent => agent.mode === 'pull');
+    expect(before).toHaveLength(3);
+    await start(r.cwd, r.home);
+    expect(db.db.select().from(schema.agents).all().filter(agent => agent.mode === 'pull')).toEqual(before);
+    expect(db.db.select().from(schema.workspaces).get()!.config?.staleAfterMs).toBe(2000);
+    expect(db.db.select().from(schema.runs).all()).toHaveLength(0);
+  });
+  it.each([
+    ['staleAfterMs: 0', 'staleAfterMs'], ['staleAfterMs: -1', 'staleAfterMs'],
+    ['staleAfterMs: 1.5', 'staleAfterMs'], ['staleAfterMs: "1000"', 'staleAfterMs'],
+    ["team: [{ name: 'A', role: 'backend', cliType: 'antigravity', mode: 'spawn' }]", 'Pull-only'],
+    ["team: [{ name: 'A', role: 'backend', cliType: 'antigravity' }]", 'Pull-only'],
+    ["team: [{ name: 'A', role: 'backend', cliType: 'codex', mode: 'unknown' }]", 'team.mode'],
+  ])('rejects invalid Pull config: %s', async (content, error) => {
+    const r = await repo(); await r.run(['init']);
+    fs.writeFileSync(r.config, `export default { ${content} };`);
+    const bad = await r.run(['init']); expect(bad.exitCode).toBe(1); expect(bad.stderr).toContain(error);
+    expect(open(r.home).db.select().from(schema.agents).all()).toHaveLength(4);
+  });
+  it('refuses silently switching an existing team member mode', async () => {
+    const r = await repo(); fs.writeFileSync(r.config, "export default { team: [{ name: 'Stable', role: 'backend', cliType: 'codex' }] };");
+    expect((await r.run(['init'])).exitCode).toBe(0);
+    fs.writeFileSync(r.config, "export default { team: [{ name: 'Stable', role: 'backend', cliType: 'codex', mode: 'pull' }] };");
+    const bad = await r.run(['init']); expect(bad.exitCode).toBe(1); expect(bad.stderr).toContain('different role, tool or mode');
+    expect(open(r.home).db.select().from(schema.agents).all().find(agent => agent.name === 'Stable')?.mode).toBe('spawn');
+  });
+});

@@ -38,7 +38,7 @@ The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Desig
 | --- | --- | --- | --- |
 | Claude Code | `claude -p --output-format stream-json --verbose --session-id <uuid>` | `--resume <id>` | Implemented (milestones 2 and 3: runner, resume, permissions, rate-limits, read-only review, stop hook; milestone 4 adds scoped conflict git permissions and noninteractive rebase editor) |
 | Codex | `codex exec --json` | `codex exec resume <id>` | Implemented spawn/resume and CLI wiring (milestone 7 bullets 0–1), minimum 0.163.0 |
-| Antigravity | Unknown | — | Pull mode only (D17) |
+| Antigravity | None (never launched) | — | Pull only (D17): executable presence detection on PATH, always headless: false |
 | Fake | Scripted `crew` calls and git argument arrays | Supported | Tests and demos, including multi-commit history and real rebase conflict resolution |
 
 Tool versions checked on 2026-10-18: Claude Code 2.1.300 (minimum supported 2.1.0), codex-cli 0.163.0.
@@ -93,3 +93,14 @@ the localhost Crew API: the fake harness does not prove real sandbox HTTP
 connectivity. Workspace-write now has network by default;
 a read-only Reviewer is therefore run with workspace-write plus a no-edit prompt rule (a network-disabled read-only one could not use HTTP `crew review` without a
 future scoped local transport/network solution. Broad network access is enabled by default and documented (D88).
+
+Milestone 7 session 3 uses existing Node crypto, clocks and SQLite transactions for
+Pull stale recovery and private human-only token rotation. No dependency, package
+pin or platform change. `team.mode` defaults to spawn; explicit pull is required
+for Antigravity. Init/start provision entries additively and reject an existing
+name changing role/tool/mode. Antigravity presence detection never executes the
+program or claims a version/headless interface; GUI installations without a PATH
+entry are not detected, but their terminal session can still use Pull transport.
+Team/Board status and connect UI compose existing shadcn primitives; no new UI
+dependency. Private connect prompts live only in the current dialog/clipboard,
+never browser storage, server logs or database plaintext.
