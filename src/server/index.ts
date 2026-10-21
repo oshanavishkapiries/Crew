@@ -180,6 +180,8 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
                     if (err) rej(err);
                     else res();
                   });
+                  // Board SSE streams never end on their own and would keep close() waiting forever.
+                  (server as { closeAllConnections?: () => void }).closeAllConnections?.();
                 }, rej);
               }),
           });

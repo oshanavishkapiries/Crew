@@ -248,4 +248,12 @@ describe('Board server prerequisites', () => {
     expect(run.status).toBe(200);
     runController.abort();
   });
+  it('shuts down while a Board stream is still open', async () => {
+    const headers = { Cookie: await cookie() };
+    const response = await request(`/api/board/${h.boardId}/events`, { headers });
+    const reader = response.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('event: connected');
+    await h.server.close();
+    await reader.read().catch(() => ({ done: true }));
+  });
 });
