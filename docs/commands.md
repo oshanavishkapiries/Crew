@@ -340,7 +340,7 @@ Commands executed by AI agents in their worktrees to communicate progress, ask q
 
 ### `crew join`
 
-Connects agent using its token and receives role, persona, rules, workdir, and project memory.
+Connects a Pull agent using --token or CREW_AGENT_TOKEN and returns role, persona, rules, workDir and project memory. Set CREW_SERVER_URL for a nondefault server. Tokens are never echoed or saved; keep CREW_AGENT_TOKEN in the terminal environment for subsequent calls.
 
 **Options:**
 
@@ -358,11 +358,11 @@ crew join --token $CREW_AGENT_TOKEN
 
 ### `crew next`
 
-Fetches the next dispatchable task for this agent, with optional long-poll wait.
+Requires CREW_AGENT_TOKEN. Returns the assigned worktree, task/run IDs and full prompt without spawning a process. Set CREW_TASK_ID and CREW_RUN_ID and change to workDir before working. Wait is capped at 85 seconds. No task returns retryIn and instructions to call again.
 
 **Options:**
 
-- `-w, --wait <seconds>`: Long-poll wait duration in seconds (default: `90`)
+- `-w, --wait <seconds>`: Long-poll wait in seconds (nonnegative, capped at 85) (default: `90`)
 
 **Examples:**
 

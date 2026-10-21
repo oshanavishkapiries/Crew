@@ -345,8 +345,7 @@ export class Runner extends EventEmitter {
 
     const agent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
     if (!agent) throw new Error(`Agent not found: ${agentId}`);
-
-    const role = this.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get();
+    if (agent.mode === 'pull') throw new Error('Pull agents must request crew next; they cannot be spawned.');
 
     const adapter = options.adapter || this.getAdapter(agent.cliType);
     if (!adapter) throw new Error(`No adapter registered for cliType: ${agent.cliType}`);
@@ -359,14 +358,9 @@ export class Runner extends EventEmitter {
     const workspace = board
       ? this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()
       : undefined;
+    const { prompt: preparedPrompt, workDir, permissionProfile } = await this.prepareContext(options, task, agent);
+    const prompt = preparedPrompt;
     const projectConfig = (workspace?.config || {}) as ProjectConfig;
-    const configuredRole = projectConfig.roles?.[role?.name || ''];
-    const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
-
-    let prompt = await buildPrompt(this.db, {
-      task, agent, kind: options.kind, instructions: [options.prompt, ...(task.kind === 'phase' ? [`Phase: ${task.creationPhase}\n${PHASES[task.creationPhase || '']?.instructions || ''}\nWrite the output to ${path.join(workDir, PHASE_OUTPUT_FILE)}. Call crew phase done --output ${PHASE_OUTPUT_FILE}.`] : [])].filter(Boolean).join('\n\n'),
-      fallback: options.fallback, reviewContext: options.reviewContext,
-    });
 
     // Prepend crew shim to PATH
     const shimBinDir = ensureCrewShim(this.crewHome);
@@ -390,27 +384,6 @@ export class Runner extends EventEmitter {
     childEnv.CREW_HOME = this.crewHome;
     childEnv.CREW_CLI_PATH = path.join(findPackageRoot(), 'dist', 'cli.js');
 
-    const permissionProfile: PermissionProfile =
-      options.kind === 'review'
-        ? {
-            mode: 'read-only',
-            allowCommands: [],
-            denyCommands: [],
-          }
-        : { ...((configuredRole?.permissionProfile || role?.permissionProfile) as PermissionProfile || { mode: 'standard' }) };
-
-    if (options.kind !== 'review' && !['read-only', 'orchestrator'].includes(permissionProfile.mode || 'standard')) {
-      permissionProfile.allowCommands = commandPrefixes([...(permissionProfile.allowCommands || []), ...(projectConfig.permissions?.allowCommands || [])]);
-    }
-
-    // Role configuration cannot grant this extra profile to ordinary tasks.
-    permissionProfile.conflictResolution = options.kind !== 'review' && !!this.db.db.select().from(schema.mergeQueueItems)
-      .where(eq(schema.mergeQueueItems.conflictTaskId, task.id)).get();
-
-    if (task.kind === 'phase') permissionProfile.mode = 'orchestrator';
-    permissionProfile.phaseOutputPath = task.kind === 'phase' && role?.name === 'orchestrator' ? path.join(workDir, PHASE_OUTPUT_FILE) : undefined;
-    if (permissionProfile.phaseOutputPath && !fs.existsSync(permissionProfile.phaseOutputPath)) fs.writeFileSync(permissionProfile.phaseOutputPath, '# Phase output\n');
-
     // Check if Stop hook is enabled (D36: off by default, enabled per workspace or role)
     const isStopHookEnabled = Boolean(
       (workspace?.config as any)?.stopHook ||
@@ -421,8 +394,6 @@ export class Runner extends EventEmitter {
     if (isStopHookEnabled) {
       settingsPath = ensureClaudeSettings(this.crewHome);
     }
-
-    if (agent.cliType === 'codex') prompt += '\n\n' + codexPermissionInstructions(permissionProfile);
 
     // Build spawn or resume command
     let spawnConfig: { command: string; args: string[]; env: Record<string, string> };
@@ -463,18 +434,7 @@ export class Runner extends EventEmitter {
     const logPath = path.join(logsDir, `${runId}.jsonl`);
     const logStream = fs.createWriteStream(logPath, { flags: 'a' });
 
-    // Take snapshot of main checkout git status for out-of-worktree diff gate check (D31)
-    let mainCheckoutSnapshot = '';
-    if (workspace?.repoPath && fs.existsSync(workspace.repoPath)) {
-      try {
-        const statusRes = await execa('git', ['status', '--porcelain'], { cwd: workspace.repoPath, reject: false });
-        mainCheckoutSnapshot = statusRes.stdout || '';
-      } catch {}
-    }
-    try {
-      fs.mkdirSync(path.dirname(this.snapshotPath(runId)), { recursive: true });
-      fs.writeFileSync(this.snapshotPath(runId), mainCheckoutSnapshot, 'utf8');
-    } catch {}
+    await this.snapshotCheckout(runId, workspace?.repoPath);
 
     if (task.kind === 'phase' && (this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()?.status !== 'doing' || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped')))) {
       logStream.end();
@@ -741,6 +701,99 @@ export class Runner extends EventEmitter {
     return activeRun;
   }
 
+  /** D89: spawn and Pull use the same role, memory, phase and permission context. */
+  private async prepareContext(options: StartRunOptions, task: typeof schema.tasks.$inferSelect, agent: typeof schema.agents.$inferSelect) {
+    const role = this.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get();
+    const board = this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get();
+    const workspace = board && this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get();
+    const projectConfig = (workspace?.config || {}) as ProjectConfig;
+    const configuredRole = projectConfig.roles?.[role?.name || ''];
+    const workDir = task.worktreePath || workspace?.repoPath || process.cwd();
+    const permissionProfile: PermissionProfile =
+      options.kind === 'review'
+        ? {
+            mode: 'read-only',
+            allowCommands: [],
+            denyCommands: [],
+          }
+        : { ...((configuredRole?.permissionProfile || role?.permissionProfile) as PermissionProfile || { mode: 'standard' }) };
+
+    if (options.kind !== 'review' && !['read-only', 'orchestrator'].includes(permissionProfile.mode || 'standard')) {
+      permissionProfile.allowCommands = commandPrefixes([...(permissionProfile.allowCommands || []), ...(projectConfig.permissions?.allowCommands || [])]);
+    }
+
+    // Role configuration cannot grant this extra profile to ordinary tasks.
+    permissionProfile.conflictResolution = options.kind !== 'review' && !!this.db.db.select().from(schema.mergeQueueItems)
+      .where(eq(schema.mergeQueueItems.conflictTaskId, task.id)).get();
+
+    if (task.kind === 'phase') permissionProfile.mode = 'orchestrator';
+    permissionProfile.phaseOutputPath = task.kind === 'phase' && role?.name === 'orchestrator' ? path.join(workDir, PHASE_OUTPUT_FILE) : undefined;
+    if (permissionProfile.phaseOutputPath && !fs.existsSync(permissionProfile.phaseOutputPath)) fs.writeFileSync(permissionProfile.phaseOutputPath, '# Phase output\n');
+
+    let prompt = await buildPrompt(this.db, {
+      task, agent, kind: options.kind, instructions: [options.prompt, ...(task.kind === 'phase' ? [`Phase: ${task.creationPhase}\n${PHASES[task.creationPhase || '']?.instructions || ''}\nWrite the output to ${path.join(workDir, PHASE_OUTPUT_FILE)}. Call crew phase done --output ${PHASE_OUTPUT_FILE}.`] : [])].filter(Boolean).join('\n\n'),
+      fallback: options.fallback, reviewContext: options.reviewContext,
+    });
+    if (agent.cliType === 'codex') prompt += '\n\n' + codexPermissionInstructions(permissionProfile);
+    return { prompt, workDir, permissionProfile };
+  }
+
+  private async snapshotCheckout(runId: string, repoPath?: string) {
+    let snapshot = '';
+    if (repoPath && fs.existsSync(repoPath)) {
+      try { snapshot = (await execa('git', ['status', '--porcelain'], { cwd: repoPath, reject: false })).stdout || ''; } catch {}
+    }
+    fs.mkdirSync(path.dirname(this.snapshotPath(runId)), { recursive: true });
+    fs.writeFileSync(this.snapshotPath(runId), snapshot, 'utf8');
+  }
+
+  now(): Date { return new Date(this.clock.now()); }
+
+  getPullRuns() {
+    return this.db.db.select({ run: schema.runs }).from(schema.runs).innerJoin(schema.agents, eq(schema.runs.agentId, schema.agents.id))
+      .where(and(eq(schema.agents.mode, 'pull'), sql`${schema.runs.endedAt} IS NULL`, sql`${schema.runs.pid} IS NULL`)).all().map(row => row.run);
+  }
+
+  /** No adapter, token rotation, child process, runtime timer or process kill for Pull. */
+  async startPullRun(task: typeof schema.tasks.$inferSelect, agent: typeof schema.agents.$inferSelect) {
+    const context = await this.prepareContext({ taskId: task.id }, task, agent);
+    const current = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get();
+    if (current?.status !== 'doing' || current.assigneeAgentId !== agent.id || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) return undefined;
+    const existing = this.getPullRuns().find(run => run.agentId === agent.id && run.taskId === task.id);
+    if (existing) return { task: current, runId: existing.id, prompt: existing.prompt!, workDir: context.workDir };
+    const runId = crypto.randomUUID();
+    const board = this.db.db.select().from(schema.boards).where(eq(schema.boards.id, task.boardId)).get()!;
+    const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get()!;
+    await this.snapshotCheckout(runId, workspace.repoPath);
+    // Snapshot awaits git: recheck interruption/assignment before publishing the run.
+    const latest = this.db.db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id)).get()!;
+    if (latest.status !== 'doing' || latest.assigneeAgentId !== agent.id || this.isCancelling(task.id) || fs.existsSync(path.join(this.crewHome, 'stopped'))) { this.clearMainCheckoutSnapshot(runId); return undefined; }
+    const logsDir = path.join(this.crewHome, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    const logPath = path.join(logsDir, `${runId}.jsonl`);
+    fs.writeFileSync(logPath, '');
+    this.db.db.insert(schema.runs).values({ id: runId, taskId: task.id, agentId: agent.id, adapter: agent.cliType, startedAt: this.now(), logPath, prompt: context.prompt }).run();
+    this.db.db.update(schema.agents).set({ status: 'busy' }).where(eq(schema.agents.id, agent.id)).run();
+    return { task: latest, runId, prompt: context.prompt, workDir: context.workDir };
+  }
+
+  endPullRun(taskId: string, reason: ExitReason) {
+    for (const run of this.getPullRuns().filter(run => run.taskId === taskId)) {
+      this.db.db.update(schema.runs).set({ endedAt: this.now(), exitReason: reason }).where(eq(schema.runs.id, run.id)).run();
+      if (reason !== 'done') this.clearMainCheckoutSnapshot(run.id);
+      this.db.db.update(schema.agents).set({ status: reason === 'stopped' ? 'stopped' : 'idle' }).where(eq(schema.agents.id, run.agentId)).run();
+      this.emit('run_ended', { runId: run.id, taskId, agentId: run.agentId, exitReason: reason });
+    }
+  }
+
+  reportPullProgress(taskId: string, message: string) {
+    const run = this.getPullRuns().find(run => run.taskId === taskId);
+    if (!run?.logPath) return;
+    const event = { type: 'progress', data: { message }, timestamp: this.now().toISOString() };
+    fs.appendFileSync(run.logPath, JSON.stringify(event) + '\n');
+    this.eventBus.publishRunEvent(run.id, event);
+  }
+
   async runTask(taskId: string, options: Partial<StartRunOptions> = {}): Promise<RunResult> {
     const handle = await this.startRun({ taskId, ...options });
     return await handle.promise;
@@ -759,6 +812,7 @@ export class Runner extends EventEmitter {
 
     const agent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
     if (!agent) throw new Error(`Agent not found: ${agentId}`);
+    if (agent.mode === 'pull') throw new Error('Pull answers are delivered by crew next.');
 
     const adapter = this.getAdapter(agent.cliType);
     if (!adapter) throw new Error(`No adapter registered for cliType: ${agent.cliType}`);
@@ -834,6 +888,7 @@ export class Runner extends EventEmitter {
     // Until the caller finishes the task transition, the task still looks like an orphaned
     // 'doing' task, so tell the dispatcher not to start it again.
     this.cancelling.add(taskId);
+    this.endPullRun(taskId, exitReason);
     const run = this.getLiveRunByTaskId(taskId);
     if (!run) return false;
     await this.killRun(run.id, exitReason);
@@ -856,10 +911,12 @@ export class Runner extends EventEmitter {
     }
     this.rateLimitTimers.clear();
 
+    const pullRuns = this.getPullRuns();
+    for (const run of pullRuns) this.endPullRun(run.taskId, exitReason);
     const runs = this.getLiveRuns();
     await Promise.all(runs.map((r) => this.killRun(r.id, exitReason)));
     await Promise.all(runs.map((r) => r.promise.catch(() => {})));
-    return runs.length;
+    return runs.length + pullRuns.length;
   }
 
   private handleTaskBlocked(taskId: string): void {

@@ -1,5 +1,5 @@
 import { AGENT_TOKEN_HEADER, SECRET_HEADER } from '../../server/api/security.js';
-import { getServerInfo } from '../client.js';
+import { getServerInfo, printAgentInstruction } from '../client.js';
 
 async function memoryRequest(method: string, suffix: string, body?: Record<string, unknown>) {
   const token = process.env.CREW_AGENT_TOKEN;
@@ -9,6 +9,7 @@ async function memoryRequest(method: string, suffix: string, body?: Record<strin
     method, headers: { 'Content-Type': 'application/json', ...(token ? { [AGENT_TOKEN_HEADER]: token } : { [SECRET_HEADER]: info.secret }) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  printAgentInstruction(response);
   if (!response.ok) throw new Error(`crew memory failed: ${response.status} ${await response.text()}`);
   return await response.json() as { entry?: unknown; entries?: unknown[]; deleted?: boolean };
 }

@@ -146,3 +146,11 @@ as does real CLI startup. Existing named agents cannot silently change role/tool
 omitting entries never deletes agents. Default Claude staffing stays unchanged.
 `test/harness/codex.test.ts` wraps the fake process to emit Codex JSONL consumed
 by the production parser while driving real CLI and worktree operations.
+
+Milestone 7 bullet 2 adds `cli/commands/pull.ts`: token-only join/next clients
+that keep no credentials on disk. Dispatcher serializes spawn and Pull provisioning,
+shares Scheduler worktree/setup and Runner's role/memory/permission prompt builder,
+and reserves capacity for pid-less Pull runs. `test/harness/pull.test.ts` drives the
+real CLI against the real database/server for context, long-poll, auth and activity.
+Pull lifecycle helpers in Runner record updates in ordinary run logs; the startup
+reaper leaves pid-less Pull rows alone. No stale scanner or UI changes are included.

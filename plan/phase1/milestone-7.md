@@ -2,7 +2,7 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
+**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullet 2 is implemented; bullet 3 completion coverage is in progress. Bullets 4–6 are not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md`.
 
 ## 1. Goal
 
@@ -147,3 +147,17 @@ A real probe showed a network-disabled `workspace-write` Codex sandbox cannot re
 ### Codex Reviewer sandbox (D88 update, 2026-10-22)
 
 The `read-only` profile maps to Codex `workspace-write` (network on) unless `allowNetwork: false`, so the Reviewer can call `crew review`. The no-edit rule is now a prompt rule, not an OS boundary: a Codex Reviewer could modify the author's worktree. The Diff gate and merge-time checks still run on what the author committed, but a Reviewer edit in the worktree is possible. Verified with real Codex 0.163.0 (fake author, Codex Reviewer, harness): the Reviewer ran `git diff`, `git show` and `crew review approve`, the task reached `merge-queue`, and no files were edited.
+
+### Session 2: Pull provisioning (bullet 2)
+
+Join/next/heartbeat and CLI handlers are implemented. Connection is represented by
+lastHeartbeatAt plus idle/busy scheduling status; join returns connected: true.
+The server uses token headers, refuses spawn tokens and human auth on Pull endpoints,
+and refreshes heartbeat on every token-authenticated API call (injected Runner clock).
+next caps idle waiting at 85 seconds, checks every 250 ms, cleans abort listeners and
+returns retryIn when empty. Provisioning is serialized with spawn dispatch, including
+worktree setup. Concurrent polls for one agent replay one run/assignment; they do
+not create two worktrees/runs. No token rotation, process or runtime timer for Pull.
+The same prompt/permission-context builder and main-checkout snapshot serve both modes.
+Initial targeted coverage: 11 Pull harness tests pass (21.48s); full clean suite pending.
+Bullet 3 completion/recovery coverage is in progress. Bullets 4–6 remain not started.

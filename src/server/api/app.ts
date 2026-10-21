@@ -108,6 +108,75 @@ export function createApp(ctx: AppContext): Hono {
   const forbidden = (message: string) =>
     new HTTPException(403, { res: Response.json({ error: `Forbidden: ${message}` }, { status: 403 }) });
 
+  // D91: authenticated calls record activity, including idle polling, without a background process.
+  app.use('/api/*', async (c, next) => {
+    let instruction = '';
+    const token = c.req.header(AGENT_TOKEN_HEADER);
+    const agent = token && ctx.db.db.select().from(schema.agents).where(eq(schema.agents.tokenHash, hashToken(token))).get();
+    if (agent && agent.mode === 'pull') {
+      ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date() }).where(eq(schema.agents.id, agent.id)).run();
+      const task = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, agent.id)).orderBy(desc(schema.tasks.updatedAt), desc(sql`${schema.tasks}.rowid`)).get();
+      const answer = task && ctx.db.db.select().from(schema.messages).where(and(eq(schema.messages.taskId, task.id), eq(schema.messages.type, 'answer'))).orderBy(desc(sql`${schema.messages}.rowid`)).get();
+      instruction = ctx.dispatcher?.isStopped() || agent.status === 'stopped' ? 'Crew is stopped. Stop working; wait for human crew resume, then call crew next.'
+        : task?.status === 'cancelled' ? `Task ${task.id} is cancelled. Stop working on it. Clear context and run crew join again.`
+        : answer ? `Answer for ${task!.id}: ${Array.from(answer.body).slice(0, 500).join('')}. Call crew next for the full current task context.` : '';
+    }
+    await next();
+    if (instruction) c.header('X-Crew-Instruction', encodeURIComponent(instruction));
+  });
+
+  const requirePullAgent = (c: Context, id?: string) => {
+    const caller = identify(c);
+    if (caller?.kind !== 'agent') throw unauthorized();
+    if (id && caller.agent.id !== id) throw forbidden('agent token can only access its own endpoints');
+    if (caller.agent.mode !== 'pull') throw forbidden('this endpoint requires a Pull-mode agent; spawn agents cannot join or poll');
+    return caller.agent;
+  };
+
+  app.post('/api/agents/join', c => {
+    const agent = requirePullAgent(c);
+    const role = ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, agent.roleId)).get()!;
+    const workspace = ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId)).get()!;
+    const configuredRole = (workspace.config?.roles as Record<string, { defaultPrompt?: string; permissionProfile?: unknown }> | undefined)?.[role.name];
+    const active = ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, agent.id)).all().find(task => ['doing', 'blocked'].includes(task.status));
+    const stopped = ctx.dispatcher?.isStopped() || agent.status === 'stopped';
+    // Connected is represented by a recorded heartbeat; scheduling status stays idle/busy/stopped.
+    ctx.db.db.update(schema.agents).set({ lastHeartbeatAt: ctx.runner?.now() ?? new Date(), ...(!stopped ? { status: active ? 'busy' : 'idle' } : {}) }).where(eq(schema.agents.id, agent.id)).run();
+    const memory = ctx.db.db.select().from(schema.memory).where(and(eq(schema.memory.workspaceId, workspace.id), eq(schema.memory.layer, 'project'))).all();
+    return c.json({ agentId: agent.id, name: agent.name, connected: true, role: role.name,
+      persona: agent.personality, systemPrompt: agent.systemPrompt,
+      rules: configuredRole?.defaultPrompt || role.defaultPrompt, permissions: configuredRole?.permissionProfile || role.permissionProfile,
+      workDir: active?.worktreePath || workspace.repoPath, memory,
+      instruction: stopped ? 'Crew is stopped. Stop working and wait for human crew resume.' : 'Keep CREW_AGENT_TOKEN and CREW_SERVER_URL in your environment. Run crew next --wait 90. Work only in the returned workDir; set CREW_TASK_ID and CREW_RUN_ID from the response. Use crew update, ask, remember and done. After done clear context and run crew join again. Never print your token.' });
+  });
+
+  app.post('/api/agents/:id/heartbeat', c => {
+    const agent = requirePullAgent(c, c.req.param('id'));
+    return c.json({ success: true, agentId: agent.id, lastHeartbeatAt: ctx.runner?.now() ?? new Date(), stopped: ctx.dispatcher?.isStopped() ?? false });
+  });
+
+  app.get('/api/agents/:id/next-task', async c => {
+    const agent = requirePullAgent(c, c.req.param('id'));
+    const requested = Number(c.req.query('wait') ?? 90);
+    if (!Number.isFinite(requested) || requested < 0) return c.json({ error: 'wait must be a nonnegative number of seconds (capped at 85).' }, 400);
+    if (!ctx.dispatcher) return c.json({ error: 'Task dispatch is unavailable.' }, 503);
+    const deadline = Date.now() + Math.min(requested, 85) * 1000;
+    while (!c.req.raw.signal.aborted) {
+      const assignment = await ctx.dispatcher.claimPull(agent.id);
+      if (assignment) return c.json(assignment);
+      if (ctx.dispatcher.isStopped()) return c.json({ retryIn: 5, instruction: 'Crew is stopped. Stop working; wait for human crew resume, then call crew next.' });
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      // Short bounded waits also notice setup completion and control changes; always remove abort listeners.
+      await new Promise<void>(resolve => {
+        const finish = () => { clearTimeout(timer); c.req.raw.signal.removeEventListener('abort', finish); resolve(); };
+        const timer = setTimeout(finish, Math.min(250, remaining));
+        c.req.raw.signal.addEventListener('abort', finish, { once: true });
+      });
+    }
+    return c.json({ retryIn: 1, instruction: 'No task available. Call crew next --wait 90 again.' });
+  });
+
   const requireHuman = (c: Context): void => {
     if (identify(c)?.kind !== 'human') throw unauthorized();
   };
@@ -191,6 +260,9 @@ export function createApp(ctx: AppContext): Hono {
     const task = loadTask(taskId);
     if (task.assigneeAgentId !== caller.agent.id) {
       throw forbidden(`task ${taskId} is not assigned to this agent`);
+    }
+    if (caller.agent.mode === 'pull' && (task.status !== 'doing' || ctx.dispatcher?.isStopped() || caller.agent.status === 'stopped' || !ctx.runner?.getPullRuns().some(run => run.taskId === task.id && run.agentId === caller.agent.id))) {
+      throw new HTTPException(409, { res: Response.json({ error: `Task ${task.id} is ${task.status} or its Pull run is inactive. Stop working and call crew next for current instructions.` }, { status: 409 }) });
     }
     return { agent: caller.agent, task };
   };
@@ -431,6 +503,7 @@ export function createApp(ctx: AppContext): Hono {
       })
       .run();
 
+    if (agent.mode === 'pull') ctx.runner?.reportPullProgress(task.id, message);
     ctx.eventBus.publishBoardEvent(task.boardId, {
       type: 'task_progress',
       data: { taskId: task.id, message },
@@ -453,7 +526,8 @@ export function createApp(ctx: AppContext): Hono {
 
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'verifying', {
       reason: result,
-      alongside: () =>
+      alongside: () => {
+        if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'done');
         ctx.db.db
           .insert(schema.messages)
           .values({
@@ -464,10 +538,11 @@ export function createApp(ctx: AppContext): Hono {
             body: result,
             createdAt: new Date(),
           })
-          .run(),
+          .run();
+      },
     });
 
-    return c.json({ success: true, status: updatedTask.status });
+    return c.json({ success: true, status: updatedTask.status, ...(agent.mode === 'pull' ? { instruction: 'Clear your context and run crew join again, then crew next --wait 90. Verification feedback will be included if this task needs another attempt.' } : {}) });
   });
 
   // PRD line 362: POST /api/tasks/:id/review (D34, D35)
@@ -633,7 +708,8 @@ export function createApp(ctx: AppContext): Hono {
 
     const updatedTask = await ctx.scheduler.transitionTask(task.id, 'blocked', {
       reason: question,
-      alongside: () =>
+      alongside: () => {
+        if (agent.mode === 'pull') ctx.runner?.endPullRun(task.id, 'asked');
         ctx.db.db
           .insert(schema.messages)
           .values({
@@ -644,7 +720,8 @@ export function createApp(ctx: AppContext): Hono {
             body: question,
             createdAt: new Date(),
           })
-          .run(),
+          .run();
+      },
     });
 
     return c.json({ success: true, status: updatedTask.status });
@@ -736,7 +813,8 @@ export function createApp(ctx: AppContext): Hono {
           .run(),
     });
 
-    if (ctx.runner) {
+    const assignee = task.assigneeAgentId && ctx.db.db.select().from(schema.agents).where(eq(schema.agents.id, task.assigneeAgentId)).get();
+    if (ctx.runner && assignee && assignee.mode !== 'pull') {
       ctx.runner.resumeTask(task.id, answer).catch((err) => {
         console.error(`Failed to resume task ${task.id}:`, err);
       });
@@ -890,7 +968,7 @@ export function createApp(ctx: AppContext): Hono {
     const isStopped = ctx.dispatcher ? ctx.dispatcher.isStopped() : false;
     const agents = ctx.db.db.select().from(schema.agents).all();
     const liveRuns = ctx.runner
-      ? ctx.runner.getLiveRuns().map((r) => ({
+      ? [...ctx.runner.getLiveRuns(), ...ctx.runner.getPullRuns()].map((r) => ({
           id: r.id,
           taskId: r.taskId,
           agentId: r.agentId,

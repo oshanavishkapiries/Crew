@@ -149,12 +149,18 @@ export class Dispatcher {
     }
   }
 
-  async dispatchOnce(): Promise<void> {
+  dispatchOnce(): Promise<void> {
+    const dispatch = this.provisioning.then(() => this.dispatchOnceInner());
+    this.provisioning = dispatch.catch(() => {});
+    return dispatch;
+  }
+
+  private async dispatchOnceInner(): Promise<void> {
     if (this.isStopped()) {
       return;
     }
 
-    const liveRuns = this.runner.getLiveRuns();
+    const liveRuns = [...this.runner.getLiveRuns(), ...this.runner.getPullRuns()];
     const liveTaskIds = new Set(liveRuns.map((r) => r.taskId));
     const liveAgentIds = new Set(liveRuns.map((r) => r.agentId));
     const capacity = this.explicitParallelLimit ?? this.db.db.select().from(schema.workspaces).all()
@@ -282,6 +288,52 @@ export class Dispatcher {
     }
   }
 
+  private provisioning: Promise<unknown> = Promise.resolve();
+
+  /** Serialize provisioning, including async worktree setup, across all Pull polls. */
+  claimPull(agentId: string) {
+    const claim = this.provisioning.then(() => this.claimPullInner(agentId));
+    this.provisioning = claim.catch(() => {});
+    return claim;
+  }
+
+  private async claimPullInner(agentId: string) {
+    if (this.isStopped()) return undefined;
+    const agent = this.db.db.select().from(schema.agents).where(eq(schema.agents.id, agentId)).get();
+    if (!agent || agent.mode !== 'pull' || !agent.lastHeartbeatAt || ['stopped', 'rate-limited'].includes(agent.status)) return undefined;
+    const tasks = this.db.db.select().from(schema.tasks).orderBy(asc(schema.tasks.createdAt), asc(sql`${schema.tasks}.rowid`)).all();
+    // An outstanding assignment is replayed after a lost HTTP response; never assign a second task.
+    const owned = tasks.find(task => task.assigneeAgentId === agent.id && ['doing', 'blocked'].includes(task.status));
+    if (owned?.status === 'blocked') return { task: owned, blocked: true, instruction: 'Waiting for the human answer. Call crew next again.' };
+    if (owned) {
+      const live = this.runner.getPullRuns().find(run => run.agentId === agent.id && run.taskId === owned.id);
+      if (live) return { task: owned, runId: live.id, prompt: live.prompt!, workDir: owned.worktreePath! };
+    }
+    const active = [...this.runner.getLiveRuns(), ...this.runner.getPullRuns()];
+    const workspace = this.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, agent.workspaceId)).get();
+    const agents = this.db.db.select().from(schema.agents).all();
+    const limit = typeof workspace?.config?.maxParallelAgents === 'number' ? workspace.config.maxParallelAgents : this.maxParallelAgents;
+    if (active.filter(run => agents.some(a => a.id === run.agentId && a.workspaceId === agent.workspaceId)).length >= limit) return undefined;
+    const totalLimit = this.explicitParallelLimit ?? this.db.db.select().from(schema.workspaces).all().reduce((sum, w) => sum + (typeof w.config?.maxParallelAgents === 'number' ? w.config.maxParallelAgents : this.maxParallelAgents), 0);
+    if (active.length >= totalLimit) return undefined;
+    const boards = this.db.db.select().from(schema.boards).where(eq(schema.boards.workspaceId, agent.workspaceId)).all();
+    const task = owned ?? tasks.find(task => task.status === 'ready' && boards.some(board => board.id === task.boardId) &&
+      (task.assigneeAgentId === agent.id || (!task.assigneeAgentId && (!task.roleId || task.roleId === agent.roleId))));
+    if (!task || this.runner.isCancelling(task.id)) return undefined;
+    // Reserve before awaiting setup so spawn dispatch cannot select this task.
+    this.db.db.update(schema.tasks).set({ assigneeAgentId: agent.id }).where(eq(schema.tasks.id, task.id)).run();
+    this.db.db.update(schema.agents).set({ status: 'busy' }).where(eq(schema.agents.id, agent.id)).run();
+    try {
+      const started = await this.scheduler.transitionTask(task.id, 'doing', { reason: `Pulled by agent ${agent.name}` });
+      if (started.status !== 'doing' || started.assigneeAgentId !== agent.id || this.isStopped() || this.runner.isCancelling(task.id)) return undefined;
+      return await this.runner.startPullRun(started, agent);
+    } finally {
+      if (!this.runner.getPullRuns().some(run => run.agentId === agent.id)) {
+        this.db.db.update(schema.agents).set({ status: this.isStopped() ? 'stopped' : 'idle' }).where(eq(schema.agents.id, agent.id)).run();
+      }
+    }
+  }
+
   private resolveAgentForTask(
     task: typeof schema.tasks.$inferSelect,
     liveAgentIds: Set<string>,
@@ -305,7 +357,7 @@ export class Dispatcher {
         .from(schema.agents)
         .where(eq(schema.agents.id, task.assigneeAgentId))
         .get();
-      if (!agent) return undefined;
+      if (!agent || agent.mode === 'pull') return undefined;
       if (agent.status === 'rate-limited' || agent.status === 'stopped') return undefined;
       if (liveAgentIds.has(agent.id)) return undefined;
 
@@ -324,6 +376,7 @@ export class Dispatcher {
       .all();
 
     for (const agent of agentsInWs) {
+      if (agent.mode === 'pull') continue;
       if (task.roleId && agent.roleId !== task.roleId) continue;
       if (agent.status !== 'idle') continue;
       if (liveAgentIds.has(agent.id)) continue;

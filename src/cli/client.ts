@@ -3,6 +3,11 @@ import * as path from 'node:path';
 import { getCrewHome } from '../server/config.js';
 import { AGENT_TOKEN_HEADER, SECRET_HEADER } from '../server/api/security.js';
 
+export function printAgentInstruction(response: Response) {
+  const instruction = response.headers.get('X-Crew-Instruction');
+  if (instruction) console.log(decodeURIComponent(instruction));
+}
+
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
@@ -68,6 +73,7 @@ export async function postHumanAction<T>(endpoint: string, body?: unknown, metho
     fail(`Failed to connect to Crew server at ${url}: ${(err as Error).message}`);
   }
 
+  printAgentInstruction(res);
   if (!res.ok) {
     fail(`Request failed: ${res.status} ${await res.text()}`);
   }
@@ -92,6 +98,7 @@ export async function getHumanAction<T>(endpoint: string): Promise<T> {
     fail(`Failed to connect to Crew server at ${url}: ${(err as Error).message}`);
   }
 
+  printAgentInstruction(res);
   if (!res.ok) {
     fail(`Request failed: ${res.status} ${await res.text()}`);
   }
@@ -110,7 +117,7 @@ export async function postTaskAction<T>(command: string, action: string, body: u
 
   if (!taskId || !token) {
     fail(
-      `Error: crew ${command} needs the CREW_TASK_ID and CREW_AGENT_TOKEN environment variables. Crew sets them when it spawns an agent.`,
+      `Error: crew ${command} needs the CREW_TASK_ID and CREW_AGENT_TOKEN environment variables. Crew sets them for spawn agents; Pull agents set them from crew next.`,
     );
   }
 
@@ -128,6 +135,7 @@ export async function postTaskAction<T>(command: string, action: string, body: u
     fail(`Failed to connect to Crew server at ${serverUrl}: ${(err as Error).message}`);
   }
 
+  printAgentInstruction(res);
   if (!res.ok) {
     fail(`crew ${command} failed: ${res.status} ${await res.text()}`);
   }

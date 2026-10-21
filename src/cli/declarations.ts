@@ -1,3 +1,4 @@
+import { handleJoin, handleNext } from './commands/pull.js';
 import { handleApprove } from './commands/approve.js';
 import { handlePhase } from './commands/phase.js';
 import { handleMemory, handleRemember } from './commands/memory.js';
@@ -253,9 +254,10 @@ export const COMMANDS: CommandDefinition[] = [
   // Agent commands
   {
     name: 'join',
+    action: handleJoin,
     category: 'agent',
     summary: 'Join workspace and receive agent context',
-    description: 'Connects agent using its token and receives role, persona, rules, workdir, and project memory.',
+    description: 'Connects a Pull agent using --token or CREW_AGENT_TOKEN and returns role, persona, rules, workDir and project memory. Set CREW_SERVER_URL for a nondefault server. Tokens are never echoed or saved; keep CREW_AGENT_TOKEN in the terminal environment for subsequent calls.',
     options: [
       { flags: '-t, --token <token>', description: 'Agent authentication token' },
     ],
@@ -265,11 +267,12 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     name: 'next',
+    action: handleNext,
     category: 'agent',
     summary: 'Poll for next assigned task (Pull mode)',
-    description: 'Fetches the next dispatchable task for this agent, with optional long-poll wait.',
+    description: 'Requires CREW_AGENT_TOKEN. Returns the assigned worktree, task/run IDs and full prompt without spawning a process. Set CREW_TASK_ID and CREW_RUN_ID and change to workDir before working. Wait is capped at 85 seconds. No task returns retryIn and instructions to call again.',
     options: [
-      { flags: '-w, --wait <seconds>', description: 'Long-poll wait duration in seconds', defaultValue: 90 },
+      { flags: '-w, --wait <seconds>', description: 'Long-poll wait in seconds (nonnegative, capped at 85)', defaultValue: 90 },
     ],
     examples: [
       { description: 'Wait up to 90s for a task', command: 'crew next --wait 90' },

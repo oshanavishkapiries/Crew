@@ -429,9 +429,9 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /api/agents/join` | Agent identity, persona, workDir and memory from a token |
-| `GET /api/agents/:id/next-task?wait=90` | Long-poll (Pull mode) |
-| `POST /api/agents/:id/heartbeat` | Pull mode heartbeat |
+| `POST /api/agents/join` | Pull-only token authentication; agentId, role, persona, rules, permissions, workDir and project memory; records connection/activity |
+| `GET /api/agents/:id/next-task?wait=90` | Own Pull agent only; wait capped at 85 seconds; task, runId, workDir and full shared prompt, or retryIn and call-again instructions |
+| `POST /api/agents/:id/heartbeat` | Own Pull agent only; records lastHeartbeatAt, returns stopped state |
 | `POST /api/tasks` | Creates a task / ticket (with dependencies and criteria); Orchestrator or human only (D59, user) |
 | `POST /api/tasks/:id/report` | Progress |
 | `POST /api/tasks/:id/question` | Publishes a question |
@@ -450,6 +450,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 | `POST /api/tasks/:id/retry` | Restarts an escalated task (human secret, D44, user) |
 | `GET /api/board/:id/events` | SSE, live UI updates |
 
+- Pull endpoints reject spawn tokens and human secrets/cookies. CLI join accepts --token or CREW_AGENT_TOKEN; subsequent calls require CREW_AGENT_TOKEN. No token is echoed or persisted. next resolves identity with join, returns task/run IDs for CREW_TASK_ID/CREW_RUN_ID, and instructs the agent to change to workDir.
 - The long-poll wait is always shorter than a typical agent Bash timeout (90 seconds default) and returns an explicit "no task, call again" response.
 - Every endpoint the Board uses is also used by a human CLI command (D2, user).
 - Every agent-facing response is plain, human-readable text suitable for an agent to act on, with structured data available for the Board.

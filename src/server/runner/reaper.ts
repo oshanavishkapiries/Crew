@@ -32,6 +32,7 @@ export function reapStaleRuns(db: CrewDatabase, warn: (message: string) => void 
   let killed = 0;
   let ended = 0;
   for (const run of db.db.select().from(schema.runs).where(isNull(schema.runs.endedAt)).all()) {
+    if (!run.pid && db.db.select().from(schema.agents).where(eq(schema.agents.id, run.agentId)).get()?.mode === 'pull') continue;
     if (run.pid) {
       const owner = isAgentOfTask(run.pid, run.taskId);
       if (owner === 'unknown') {

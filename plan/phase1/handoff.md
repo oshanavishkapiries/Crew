@@ -1,3 +1,11 @@
+# Milestone 7 session 2 in progress
+
+Bullet 2 is implemented on feat/milestone-7-breadth: token-only Pull join/next/heartbeat,
+serialized shared provisioning/prompt building, pid-less run records, real CLI and
+activity/auth harness coverage. Eleven targeted Pull tests pass; full clean suite is
+pending. Completion helpers are present; bullet 3 completion/recovery validation is
+still in progress. Bullets 4–6 remain not started. No paid tools or UI changes.
+
 # Handoff
 
 **Milestone 7 session 1: bullets 0 and 1 implemented** on
