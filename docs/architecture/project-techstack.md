@@ -70,7 +70,7 @@ The Board package `ui/` pins every direct dependency exactly (Next 16.4.2, React
 
 Codex 0.163.0 uses `exec --json -s <sandbox> -C <worktree>` with stdin prompts;
 resume options precede `resume --json <thread-id> -`. D88 maps read-only to
-`read-only`, standard/orchestrator to `workspace-write`, and only explicit full
+`workspace-write` (the OS `read-only` sandbox only when `allowNetwork: false`, because it blocks the local Crew API and `crew review` would fail; the Reviewer's no-edit rule is then a prompt rule), standard/orchestrator to `workspace-write`, and only explicit full
 to `danger-full-access`. Workspace network is **enabled by default** (`allowNetwork: false` disables it): a network-disabled Codex sandbox cannot reach the localhost Crew API, so `crew done`/`ask` would fail (verified with real Codex 0.163.0). This also lets the agent reach external hosts.
 Read-only has no network and full has unrestricted network: Codex cannot enforce
 a network restriction in full mode. User config and execpolicy rules are ignored
@@ -91,5 +91,5 @@ never deletes an existing agent. `init` preserves stored workspace settings;
 now accept boolean `allowNetwork`. Network-disabled Codex sandboxes can also block
 the localhost Crew API: the fake harness does not prove real sandbox HTTP
 connectivity. Workspace-write now has network by default;
-a network-disabled read-only Reviewer cannot use HTTP `crew review` without a
+a read-only Reviewer is therefore run with workspace-write plus a no-edit prompt rule (a network-disabled read-only one could not use HTTP `crew review` without a
 future scoped local transport/network solution. Broad network access is enabled by default and documented (D88).

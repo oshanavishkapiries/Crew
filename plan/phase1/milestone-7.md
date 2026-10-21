@@ -143,3 +143,7 @@ as explicitly requested by the task prompt. Bullet 2–6: **not started**.
 ### Codex network default (D88 update, 2026-10-22)
 
 A real probe showed a network-disabled `workspace-write` Codex sandbox cannot reach `127.0.0.1` (curl exit 7; a Unix socket also failed), so a Codex worker could not call `crew ask`/`crew done`. Crew now enables `sandbox_workspace_write.network_access` by default (`allowNetwork: false` turns it off). The cost: Codex workers can also reach external hosts, so the sandbox is a filesystem boundary, not a network one. Verified with real Codex 0.163.0 through the harness: a worker ran `crew done` and the task reached `verifying` (run exit `done`). Still open: a read-only Reviewer on Codex has no network and therefore cannot run `crew review` over HTTP; needs a scoped transport or running the Reviewer with workspace-write plus prompt rules.
+
+### Codex Reviewer sandbox (D88 update, 2026-10-22)
+
+The `read-only` profile maps to Codex `workspace-write` (network on) unless `allowNetwork: false`, so the Reviewer can call `crew review`. The no-edit rule is now a prompt rule, not an OS boundary: a Codex Reviewer could modify the author's worktree. The Diff gate and merge-time checks still run on what the author committed, but a Reviewer edit in the worktree is possible. Verified with real Codex 0.163.0 (fake author, Codex Reviewer, harness): the Reviewer ran `git diff`, `git show` and `crew review approve`, the task reached `merge-queue`, and no files were edited.

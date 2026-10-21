@@ -21,7 +21,7 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   private options(permissions: PermissionProfile, workDir: string): string[] {
-    const sandbox = permissions.mode === 'full' ? 'danger-full-access' : permissions.mode === 'read-only' ? 'read-only' : 'workspace-write';
+    const sandbox = permissions.mode === 'full' ? 'danger-full-access' : permissions.mode === 'read-only' && permissions.allowNetwork === false ? 'read-only' : 'workspace-write';
     return ['--ignore-user-config', '--ignore-rules', '-s', sandbox, '-C', workDir,
       '-c', 'approval_policy="never"',
       '-c', `sandbox_workspace_write.network_access=${permissions.allowNetwork !== false}`,
@@ -86,7 +86,7 @@ export function codexPermissionInstructions(profile: PermissionProfile): string 
   return [
     'Crew permission rules: never git push, change remotes, use sudo, run destructive commands, write outside this worktree, or read Crew server.json, crew.db, logs or credentials.',
     'Call crew done (or crew ask / crew review / crew phase done as appropriate) before ending. Codex turn completion alone does not complete the Crew task.',
-    profile.mode === 'read-only' ? 'Review only: do not edit files. Use read/search, git diff/log/show and crew review commands only.' : '',
+    profile.mode === 'read-only' ? 'Review only: do NOT create, edit, delete or move any file. Use read/search, git diff/log/show and crew review commands only. (The sandbox allows writes so crew can reach the local API; this rule is your restriction.)' : '',
     profile.mode === 'orchestrator' ? `Plan only: use read/search, git diff/log/show/status and crew commands. Write only ${profile.phaseOutputPath || 'the designated phase output file'}.` : '',
     profile.allowCommands?.length ? `Additional permitted command prefixes: ${profile.allowCommands.join(', ')}.` : '',
     profile.denyCommands?.length ? `Forbidden command prefixes: ${profile.denyCommands.join(', ')}.` : '',

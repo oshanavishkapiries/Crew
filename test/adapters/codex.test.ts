@@ -9,7 +9,7 @@ const temporary: string[] = [];
 afterEach(() => { process.env.PATH = originalPath; for (const dir of temporary.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
 describe('Codex adapter contract (real 0.163.0 JSONL)', () => {
-  it.each([['read-only', 'read-only'], ['standard', 'workspace-write'], ['orchestrator', 'workspace-write'], ['full', 'danger-full-access'], [undefined, 'workspace-write']] as const)('maps %s explicitly for spawn and resume', (mode, sandbox) => {
+  it.each([['read-only', 'workspace-write'], ['standard', 'workspace-write'], ['orchestrator', 'workspace-write'], ['full', 'danger-full-access'], [undefined, 'workspace-write']] as const)('maps %s explicitly for spawn and resume', (mode, sandbox) => {
     const adapter = new CodexAdapter();
     const options = { prompt: 'private prompt', workDir: '/tmp/with space', permissions: { mode, allowCommands: ['npm test'], denyCommands: ['curl'] }, taskId: 'task', serverUrl: 'http://127.0.0.1:1234', agentToken: 'test-only-token' };
     for (const config of [adapter.buildSpawn(options), adapter.buildResume({ ...options, sessionId: 'thread-id' })]) {
@@ -26,6 +26,10 @@ describe('Codex adapter contract (real 0.163.0 JSONL)', () => {
     const resume = adapter.buildResume({ ...options, sessionId: 'thread-id' });
     expect(resume.args.slice(-4)).toEqual(['resume', '--json', 'thread-id', '-']);
     expect(resume.env.CREW_SESSION_ID).toBe('thread-id');
+  });
+  it('keeps the OS read-only sandbox for a read-only profile only when network is explicitly disabled', () => {
+    const args = new CodexAdapter().buildSpawn({ prompt: '', workDir: '/tmp', permissions: { mode: 'read-only', allowNetwork: false } }).args;
+    expect(args[args.indexOf('-s') + 1]).toBe('read-only');
   });
   it('enables network by default so the sandbox can reach the local Crew API, and honours an explicit false', () => {
     expect(new CodexAdapter().buildSpawn({ prompt: '', workDir: '/tmp', permissions: { allowNetwork: false } }).args).toContain('sandbox_workspace_write.network_access=false');
