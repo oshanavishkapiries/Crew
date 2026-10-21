@@ -200,6 +200,8 @@ it('rejects an old gate while the next Orchestrator run is live and leaves exact
 
 it.each([['grill', 'spec'], ['tickets', 'dispatch'], ['integrate', 'done']])('honours an ungated %s phase and advances to %s without an extra Orchestrator for dispatch or done', async (phase, next) => {
   const task = await setup(phase); h.db.db.update(schema.workspaces).set({ config: { workflow: { gates: { [phase]: false } } } }).run();
+  // A nonempty board stays in dispatch; empty boards now immediately start integrate.
+  if (phase === 'tickets') await h.scheduler.createTask({ id: 'ungated-ticket', boardId: h.boardId, title: 'Ungated work', description: '', roleId: h.roleId, creationPhase: 'tickets' });
   await complete(task);
   expect(h.db.db.select().from(schema.boards).get()?.currentPhase).toBe(next);
   expect(outputs()[0].status).toBe('approved');

@@ -97,7 +97,7 @@ it.each([0, 1, 20])('holds %s tickets through rejection and releases only at app
   expect(work()).toHaveLength(count); expect(work().every(t => t.status === 'todo')).toBe(true);
   expect((await approve()).exitCode).toBe(0);
   expect(work().every(t => t.status === 'ready')).toBe(true);
-  expect(h.db.db.select().from(schema.boards).get()?.currentPhase).toBe('dispatch');
+  expect(h.db.db.select().from(schema.boards).get()?.currentPhase).toBe(count ? 'dispatch' : 'integrate');
   if (count) {
     h.fakeAdapter.setScript([{ type: 'edit_file', filePath: 'work.txt', content: 'Built' }, { type: 'done' }]);
     await h.dispatcher.dispatchOnce();

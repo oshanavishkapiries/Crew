@@ -193,11 +193,19 @@ export function createApp(ctx: AppContext): Hono {
     if (caller.kind === 'agent' && caller.agent.workspaceId !== workspaceId) throw forbidden('memory belongs to another workspace');
     const layer = c.req.query('layer');
     if (layer && !['project', 'role', 'task'].includes(layer)) throw new MemoryError('Unknown memory layer.');
+    // Integrate reviews workspace role learnings; ordinary runs retain role isolation.
+    const integrating = caller.kind === 'agent' && ctx.db.db.select().from(schema.roles).where(eq(schema.roles.id, caller.agent.roleId)).get()?.name === 'orchestrator' && ctx.db.db.select().from(schema.tasks).where(eq(schema.tasks.assigneeAgentId, caller.agent.id)).all().some(task => {
+      const live = ctx.runner?.getLiveRunByTaskId(task.id);
+      const state = ctx.workflow?.snapshot(task.boardId);
+      return task.kind === 'phase' && task.creationPhase === 'integrate' && task.status === 'doing' &&
+        state?.board.workspaceId === workspaceId && state.board.currentPhase === 'integrate' &&
+        !!live && !live.exitReason && !ctx.runner?.isCancelling(task.id);
+    });
     const entries = ctx.db.db.select().from(schema.memory).where(eq(schema.memory.workspaceId, workspaceId)).all().filter(entry => {
       if (layer && entry.layer !== layer) return false;
       if (caller.kind === 'human') return true;
       if (entry.layer === 'project') return true;
-      if (entry.layer === 'role') return entry.roleId === caller.agent.roleId;
+      if (entry.layer === 'role') return integrating || entry.roleId === caller.agent.roleId;
       const task = entry.taskId ? loadTask(entry.taskId) : undefined;
       return task?.assigneeAgentId === caller.agent.id || task?.reviewerAgentId === caller.agent.id;
     });

@@ -54,7 +54,7 @@ crew/
 │  │  ├─ verify/          # Gate pipeline: diff → commands → review (D8, D10); command-runner.ts is shared with worktree setup (D45)
 │  │  ├─ merge/           # Serial merge queue, detached integration worktree, rebase, re-verification, squash/rebase strategies, protected checkout/ref transactions with recovery journals, cleanup, feedback, conflict sub-tasks and interruption/restart recovery (D38–D46)
 │  │  ├─ memory/          # Layers, shared protected prompt budget, promotion (D15)
-│  │  ├─ workflow/        # Phase instructions, Scheduler phase tasks, durable drafts and human gates
+│  │  ├─ workflow/        # Phase instructions, Scheduler phase tasks, durable gates, automatic dispatch completion and approved integrate summary memory
 │  │  └─ events/          # In-process event bus behind SSE
 │  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
 │  └─ roles/              # Built-in role prompts and permission profiles; workspace overrides stay in config
@@ -102,3 +102,5 @@ Ticket creation/assignment lives in `scheduler/tickets.ts` and the thin `cli/com
 Phase instructions and lifecycle live in `src/server/workflow/phases.ts` and `index.ts`. The engine uses Scheduler phase transitions, durable task-linked drafts and human gates; `cli/commands/phase.ts` and `approve.ts` are thin clients. `test/harness/phases.test.ts` covers engine/recovery behavior and `phase-transport.test.ts` checks exact CLI transport. Generated migration `0005` links outputs and constrains active phase tasks. `test/adapters/phase-permissions.test.ts` checks the scoped output rule and the recorded real permission probe.
 
 Bullet 5 adds `test/harness/early-workflow.test.ts`: real Dispatcher/Runner/CLI grill Q&A and fallback, spec publication, held tickets, rejection/recovery and live Orchestrator command boundaries. Scheduler owns the ticket hold/release; Workflow validates the ticket graph and publishes approved spec memory atomically.
+
+`test/harness/dispatch-integrate.test.ts` covers the grill-to-done three-ticket pipeline, staffed-role assignment, worker Q&A, integrate promotion/summary memory, atomic dispatch completion, gate races and human recovery. Workflow advances dispatch on work-status events and startup; the board move and integrate task commit together. Integrate role-memory listing in `src/server/api/app.ts` is limited to a live integrate Orchestrator in the same workspace.
