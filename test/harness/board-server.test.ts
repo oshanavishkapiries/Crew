@@ -153,6 +153,8 @@ describe('Board server prerequisites', () => {
     expect((await request(`/api/agents/${h.agentId}`, { method: 'PATCH', headers: { Cookie: session }, body: '{"name":"bad"}' })).status).toBe(403);
     const boards = await (await request('/api/boards', { headers })).json() as { boards: unknown[] };
     expect(boards.boards[0]).toMatchObject({ id: h.boardId, workspaceId: h.workspaceId, currentPhase: 'dispatch', stopped: false, workspace: { id: h.workspaceId, name: 'Harness Workspace' } });
+    const status = await (await request('/api/status', { headers })).json() as { phases: { boardId: string; limits: unknown }[] };
+    expect(status.phases.find(phase => phase.boardId === h.boardId)?.limits).toEqual({ maxParallelAgents: 3, maxRetries: 3, maxRuntimeMs: 1800000 });
     const agents = await (await request('/api/agents', { headers })).json() as { agents: Record<string, unknown>[] };
     expect(agents.agents[0]).toMatchObject({ id: h.agentId, name: 'Fake Backend Agent', roleId: h.roleId, personality: '', systemPrompt: '', status: 'idle' });
     expect('tokenHash' in agents.agents[0]).toBe(false);

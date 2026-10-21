@@ -7,6 +7,7 @@ export interface PhaseStatus {
   status?: string;
   problem?: string;
   ticketCounts: Record<string, number>;
+  limits?: { maxParallelAgents: number; maxRetries: number; maxRuntimeMs: number };
 }
 export interface BoardConnectedEvent { boardId: string; timestamp: string }
 export interface ApiErrorResponse { error: string }

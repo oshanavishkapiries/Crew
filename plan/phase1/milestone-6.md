@@ -4,7 +4,7 @@ The implementation plan for milestone 6 of Phase 1. The PRD (`prd.md`) says *wha
 
 **Status:** bullets 0–5 implemented and merged on `feat/milestone-6-board` (2026-10-21): server prerequisites, UI scaffold, Board view, task detail, Inbox, phase gates, Team and Memory. The merged branch passes `rm -r dist && npm test` (324 tests), `npm run build:ui` and the UI checks (18). Bullet 6 is partly done (README quick start, UI README, gate link); the user's manual browser checklist (§6), a decision on the gaps below and the preview packaging (npm tag, tarball or git URL) remain. D80–D87 are decided and logged.
 
-Known gaps to decide (from the track reports): the tickets gate cannot persist edits to individual tickets (server stores edited output text only); `/api/status` exposes no configured budget limits or run start times, so the budget bar shows activity, not capacity; task logs return only the latest run; task dependencies are only on task detail; the shared SSE hook omits `control_changed` and run-end events (the Board polls every 5 s as a fallback).
+Closed after the merge: `/api/status` phases now carry the effective `limits` (parallel agents, retries, runtime) and the Board shows them; the SSE hook listens to `control_changed`. Known gaps to decide: the tickets gate cannot persist edits to individual tickets (the server stores edited output text only); task logs return only the latest run; task dependencies are only on task detail (the Board reads them per task); the Board still polls every 5 s because run-end events are per run, not per board.
 
 ## 1. Goal
 

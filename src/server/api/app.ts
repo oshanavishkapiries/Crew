@@ -910,7 +910,10 @@ export function createApp(ctx: AppContext): Hono {
             ticketCounts[task.status] = (ticketCounts[task.status] || 0) + 1;
           }
         }
-        return { boardId: board.id, phase: board.currentPhase, draftId: state.draft?.id, taskId: state.task?.id, status: state.task?.status, problem: state.problem, ticketCounts };
+        const workspace = ctx.db.db.select().from(schema.workspaces).where(eq(schema.workspaces.id, board.workspaceId)).get();
+        const config = (workspace?.config ?? {}) as { maxParallelAgents?: number; maxRetries?: number; maxRuntimeMs?: number };
+        const limits = { maxParallelAgents: config.maxParallelAgents ?? ctx.dispatcher?.maxParallelAgents ?? 3, maxRetries: config.maxRetries ?? 3, maxRuntimeMs: config.maxRuntimeMs ?? 1800000 };
+        return { boardId: board.id, phase: board.currentPhase, draftId: state.draft?.id, taskId: state.task?.id, status: state.task?.status, problem: state.problem, ticketCounts, limits };
       }),
       roles: ctx.db.db.select({ id: schema.roles.id, name: schema.roles.name }).from(schema.roles).all(),
       mergeQueue: { pending: queue.items.filter(i => i.taskStatus === 'merge-queue').length, warnings: queue.warnings },
