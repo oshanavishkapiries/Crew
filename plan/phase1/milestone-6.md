@@ -264,3 +264,86 @@ before packaging. Track B did not edit server sources to address it.
 - Each history request stages incoming events until the snapshot arrives. A generation guard discards stale responses without dropping events received during reconnect. The server has no event IDs, so history/live overlap may repeat a few entries; the log explains this. **Server gap/proposal:** the history endpoint exposes only the latest run and reads the whole file. Per-run history and a bounded/paginated tail would support earlier run inspection and avoid transferring an entire long log. The runs list remains complete; no fake historical output is supplied.
 - Diff uses the actual worktree endpoint, file collapses, theme-token additions/deletions, and explicit truncation at 250,000 characters or 3,000 lines. Missing worktrees preserve the server explanation. Cancel is confirmed; escalated Retry is confirmed in detail and requires Resume while stopped. Server errors are displayed verbatim, with retry/refresh paths. An open Retry confirmation also disables if external Stop-all is observed; confirmation and execution both check the current disabled state.
 - Focused checks cover event-burst coalescing/disposal, arrow coordinates, same-task-timestamp resumed runs, count/payload bounds, structured history, snapshot/live races, stale responses, diff grouping/classification and both diff bounds. Initial coalescing and geometry checks were observed failing before implementation, as were the initial log/diff checks and the line-count regression. Browser evidence and exact clean-suite/build summaries are in `reports/m6-board.md`.
+
+### Track D
+
+#### Bullet 4: Inbox and phase gates
+
+- Inbox now derives unanswered questions from blocked tasks and their ordered
+  messages. It shows the question's author, preserves answer text on failure,
+  removes an answer optimistically with rollback, and refetches after mutations,
+  on demand and every 15 seconds. Dependency blocks without an unanswered ask
+  are excluded. Its count is on the Inbox page; a nav badge needs a shared-shell
+  edit and is deferred under this round's ownership rules.
+- `/phase?board=<id>` reads the real snapshot, subscribes to that board's existing
+  SSE hook, refetches on reconnect/events and polls as a fallback. It renders
+  problem text, instructions, no-gate state, `crew retry` guidance for escalated
+  or cancelled phase runs, and feedback/rejection history from phase-task messages.
+  Gate decisions use the exact displayed draft ID and CLI-compatible body. A
+  synchronous guard plus disabled controls prevents duplicate in-flight decisions;
+  successful decisions remain disabled until the refreshed draft replaces them.
+  Stale/validation errors preserve the server message and refetch the snapshot.
+- The markdown textarea has a small safe rendered preview (headings, paragraphs,
+  bullets and fenced code; HTML and links stay literal). Ticket cards expose
+  title, description, acceptance criteria and blocker IDs, validate unknown/cyclic
+  blockers and the phase's configured quota (default 20). Earlier-phase and merged
+  blockers remain in the dependency graph but outside editable cards and quota.
+- **Server gap / proposal:** `Workflow.approve` accepts `edit` only as output text;
+  it never applies that text to persisted work tickets. There is no task-update
+  endpoint for title, description, acceptance criteria or dependencies. Therefore
+  edited ticket cards deliberately cannot be approved; the screen explains this
+  and offers rejection with a note to request changes. Original tickets and edited
+  output text can still be approved using the existing endpoint. Completing true
+  ticket editing needs a server-owned transactional ticket-edit contract that
+  checks the draft ID and graph before releasing tickets. No server code was
+  changed, and text edits are never presented as saved ticket edits.
+- `/phase` is reachable directly or via its board selector. Track C owns the
+  Board-header entry point; shared Boards list and shell files were not edited.
+- New response subsets and checks stay in Track D's `*-types.ts` / `*-logic.ts`
+  files. Existing API, SSE, types, shell and primitives remain unchanged; all
+  controls compose the checked-in shadcn components and theme tokens.
+- Verification: strict types, ESLint, static export and focused client checks pass.
+  Two initial client checks were observed failing (unknown blockers and role scope)
+  before fixes, plus a failing merged-blocker regression before its fix. Real
+  Chromium against an isolated copy of the built CLI/static export verifies an
+  answer, approval, edited spec saved to memory, ticket rejection/note history,
+  direct route reloads and a stale gate's real 409/refetch. Dispatch stays stopped;
+  all fixture adapter names are `fake` and no agent runs are started. Full root
+  suite output and final browser evidence are recorded in the Track D report.
+
+#### Bullet 5: Team and Memory
+
+- Team reads real agents, roles, tasks and status. It shows each persisted server
+  status verbatim, actual live-run task(s), tool, role, mode and heartbeat time,
+  plus tool rate-limit and stopped-dispatch information. A workspace filter
+  scopes the list. Persona editing uses a Dialog and PATCHes only name,
+  systemPrompt and personality. Nonblank names are checked locally; server
+  messages are preserved and attached to matching fields as well as the form.
+- **Server status limitation:** no connected/stale boolean, heartbeat cutoff or
+  connected/stale derived state is returned today. Team does not invent one;
+  raw statuses (including any future connected/stale values), heartbeat timestamp
+  and real live-run presence are shown. Future pull-mode status semantics remain
+  server-owned.
+- Memory has Project / Role / Task tabs, workspace selection and layer-specific
+  filters. Create sends only the selected layer's scope; role options use the
+  same builtin/configured/staffed workspace rule as MemoryStore and task options
+  come only from boards in the selected workspace. Edit sends title/body only.
+  Delete requires a Dialog confirmation. Promote is offered only for unpromoted
+  role entries; its server-created project copy and original timestamp are
+  refreshed. Source and promotion information are visible, including phase specs.
+- Reads coalesce refreshes, cancel on unmount and poll every 15 seconds; mutations
+  use the shared cookie API client and preserve server failures. All forms and
+  confirmations compose existing shadcn primitives. No dependency, shared file,
+  server, test harness, Board or task-detail changes were made.
+- Real-browser verification covers persona name/system prompt/personality saved
+  in SQLite, create/edit/delete in all three memory layers with DB assertions,
+  cancelling delete, role promotion retaining the original plus project copy,
+  and direct reloads of `/team` and `/memory`. The final seeded smoke asserts zero
+  run rows and no browser page errors. It does not claim a resumed agent run or
+  a full paid/fake phase workflow; the CLI has no registered adapter named fake.
+- Documentation ownership for this round is respected: architecture/techstack,
+  onboarding, handoff and UI README are unchanged. The owning docs track should
+  record these new feature folders/routes and replace placeholder/status text
+  when integrating Tracks C/D. No CLI declarations changed, so commands reference
+  regeneration is unnecessary. Full evidence and remaining limitations are in
+  `plan/phase1/reports/m6-gates.md`.
