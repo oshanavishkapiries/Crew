@@ -56,7 +56,10 @@ The planner/reviewer (Claude here) watches via the Board in the browser pane, `c
 - Real rate-limit parsing is only fixture-tested.
 - Board has had no real-agent or mobile pass.
 
-## 8. Open questions
+## 8. Decisions
 
-- Which tool plays the Orchestrator for the grill: Claude Code (recommended; its grill skill is the most tested) or Codex?
+- The Orchestrator is Claude Code (user, 2026-10-22).
+
+## 9. Open questions
+
 - Is a real Antigravity session available for the Pull member, or do we use a plain terminal Claude/Codex session instead?
