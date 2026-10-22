@@ -104,3 +104,14 @@ entry are not detected, but their terminal session can still use Pull transport.
 Team/Board status and connect UI compose existing shadcn primitives; no new UI
 dependency. In the UI, private connect prompts live only in the current dialog/clipboard,
 never browser storage, server logs or database plaintext.
+
+The manual milestone 7 smoke (`npm run smoke:m7`) uses the existing real Claude
+Code and Codex adapters, real CLI init/connect/join/next/done/control calls and an
+in-process real server in temporary folders. Adapter subclasses only reserve a
+hard maximum of seven paid launch slots and inspect the actual Codex sandbox
+flags; Claude uses its existing $0.50 budget option. No model retries, no provider
+rate-limit probes, 120s run / 90s silence caps, ten-minute total deadline. Codex
+cost is not capped in dollars. Missing or unauthenticated tools produce named
+skips; Pull steps can use a scripted CLI Reviewer when neither tool is available.
+The script is typechecked by `npm test`, never executed by it. No dependencies
+or tool minimums changed.

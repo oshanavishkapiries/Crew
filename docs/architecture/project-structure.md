@@ -21,7 +21,7 @@ crew/
 ├─ vitest.config.ts       # Test config; global setup builds dist/ before tests
 ├─ drizzle.config.ts      # drizzle-kit config for generating migrations
 ├─ drizzle/               # Generated SQL migrations and snapshots (drizzle-kit)
-├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts, smoke-milestone-4.ts and smoke-milestone-5.ts (`npm run smoke:m3` / `smoke:m4` / `smoke:m5`, manual)
+├─ scripts/               # Dev scripts: generate-docs.ts, smoke-milestone-2.ts, smoke-milestone-3.ts, smoke-milestone-4.ts, smoke-milestone-5.ts and smoke-milestone-7.ts (`npm run smoke:m3` / `smoke:m4` / `smoke:m5` / `smoke:m7`, manual)
 ├─ docs/
 │  ├─ Crew Design Doc.md  # Original product design (the PRD overrides it where they differ)
 │  ├─ commands.md         # Commands reference, generated from CLI declarations (D3)
@@ -187,3 +187,12 @@ The pipeline harness cleanup closes a replacement harness.server after restart
 tests as well as the original, before releasing the DB. The stale restart case
 asserts the replacement listener and timer are gone. Board staffing activity
 counts both spawn busy and Pull running statuses.
+
+`scripts/smoke-milestone-7.ts` (`npm run smoke:m7`) is manual and paid,
+never executed by `npm test` (which typechecks it). It initializes a throwaway
+repo/home with config.team, then runs the real in-process server and real adapters,
+with real CLI children for human control and scripted Pull terminals. Seven paid
+launches maximum, no author/Reviewer retries, ten-minute deadline, existing $0.50
+Claude per-run budget; Codex has no dollar cap. Auth checks report explicit skips.
+Spawn fixture roles are separate from Pull roles so stale takeover stays with Pull.
+Cleanup closes the server, checks process groups and deletes the repo/home.
