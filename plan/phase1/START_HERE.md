@@ -43,10 +43,11 @@ D1–D93 are approved. Milestone 7 task prompts are retired in git history.
   SQLite, fake process adapters and recorded fixtures. It never runs paid smokes.
   `npm run smoke:m7` is manual and paid; read its seven-launch/deadline/budget
   limits before running. Missing tools/auth produce named skips.
-- **Next: milestone 8 (plan: milestone-8.md)**, the manual end-to-end run on a real project with a mixed
-  Claude Code + Codex team. Restore Claude authentication and close the live mixed
-  review validation gap in an authorized run. Do not start milestone 8 without
-  the user's instruction. Public release and package publication remain pending.
+- **Phase 1 is complete (milestones 1–8), by the user's decision on 2026-10-22.**
+  Milestone 8 (manual end-to-end run) was only started, not carried through:
+  the live Claude-author / Codex-Reviewer review and a real grill-to-merge run are
+  unverified. Procedure: `milestone-8.md` and `m8-run-guide.md`. Public release,
+  package publication and preview packaging remain pending.
 
 ## 4. Things that are easy to get wrong
 

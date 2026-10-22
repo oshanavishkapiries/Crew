@@ -2,7 +2,7 @@
 
 The plan for milestone 8 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** planned, not started. The user chose a small throwaway project (below), so a failure risks nothing real.
+**Status:** closed by the user on 2026-10-22 without the full manual run. The run was only started (a throwaway `mdlint` project was initialised with a Claude + Codex team and the Claude Orchestrator asked its first grill question); it was not carried through grill to merge, and no `reports/m8-run.md` exists. The live Claude-author / Codex-Reviewer review (milestone 7 smoke step 2) and a real grill-to-merge run therefore remain **unverified**. Phase 1 is treated as complete by the user's decision; this doc and `m8-run-guide.md` stay as the procedure for that run whenever it is done.
 
 ## 1. Goal
 

@@ -1,4 +1,4 @@
-# Handoff: milestone 7 implementation complete; next is milestone 8
+# Handoff: Phase 1 complete (milestone 8 closed by the user without a full run)
 
 Branch: `feat/milestone-7-breadth`. Bullet 6 adds the bounded manual paid smoke
 and final docs; no product behavior changed. The script commit is `462a16b`.
@@ -30,7 +30,9 @@ network-enabled workspace-write/Reviewer edit risk, unsandboxed Pull terminals,
 restart/resume grace, one-second heartbeat precision and five-second scanning,
 last-stale-agent exclusion and the existing verdict/transition window.
 
-**Next is milestone 8:** a manual grill-to-merge run on a real project with mixed
+**Update 2026-10-22: the user declared milestone 8 and Phase 1 complete. The throwaway `mdlint` run was started but not finished; the end-to-end run and mixed-tool review stay unverified (see milestone-8.md). Open: preview packaging, publication.**
+
+**Previously next was milestone 8:** a manual grill-to-merge run on a real project with mixed
 Claude Code + Codex staffing, after restoring Claude login and explicit user
 instruction. No milestone 8 work or public publishing was performed. Milestone 7
 agent prompts were retired; their instructions remain in git history, while the

@@ -49,5 +49,6 @@ loop; each new connect prompt invalidates the previous token. Antigravity runs
 only in Pull mode. Crew cannot sandbox or kill an external terminal. Codex uses
 workspace-write with network enabled for the local Crew API; command restrictions
 and the Reviewer's no-edit rule are prompt rules. See [milestone 7](plan/phase1/milestone-7.md)
-for limits and the manual paid `npm run smoke:m7` command. Milestone 8's mixed-team
-end-to-end run is still required before public release.
+for limits and the manual paid `npm run smoke:m7` command. Phase 1 milestones 1–8 are
+declared complete; the full mixed-team end-to-end run (milestone 8) was not carried
+through, so run `plan/phase1/m8-run-guide.md` before any public release.
