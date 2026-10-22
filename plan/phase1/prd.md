@@ -332,7 +332,7 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 
 ### Modules
 
-- **CLI:** human commands (`start`, `init`, `stop-all`, `resume` (D23, user), `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided), plus `results <task>` for verification results, `queue` for the merge queue and `retry <task>` to restart an escalated task (D44); final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `review approve|changes` (Reviewer only, D34), `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user). They find the running server and its per-start secret through `~/.crew/server.json` (D25, user).
+- **CLI:** human commands (`start`, `open`, `init`, `connect`, `stop-all`, `resume` (D23, user), `status`, `worktree gc`, plus `approve`, `answer`, `memory`, `cancel` (D2, user) and `tasks`, `logs --follow`, `diff` (D16, Claude-decided), plus `results <task>` for verification results, `queue` for the merge queue and `retry <task>` to restart an escalated task (D44); final names are settled in the commands reference) and agent commands (`join`, `next`, `update`, `ask`, `remember`, `done`, `review approve|changes` (Reviewer only, D34), `phase`, `ticket create`, `assign`). Agent commands are thin HTTP clients of the server API; they identify the agent by token. Human commands call the same API endpoints as the Board, so anything possible on the Board is possible in the terminal (D2, user). They find the running server and its per-start secret through `~/.crew/server.json` (D25, user).
 - **Commands reference:** every command's name, arguments, flags and help text are declared once. Both `--help` and the commands reference document are generated from those declarations, and handwritten examples sit around the generated parts (D3, user).
 - **API:** REST + SSE endpoints (contract below). Validates input, enforces role permissions (Orchestrator-only commands), and drives the other modules.
 - **DB:** schema and migrations for the full data model below.
@@ -344,7 +344,7 @@ Crew is a CLI tool (`npx crew`) that runs a local server and web Task Board and 
 - **Memory:** three layers, injection within a context budget, promotion from role to project, CRUD for the Board.
 - **Workflows:** Orchestrator phases (grill, spec, tickets, dispatch, integrate) defined on the server as data plus instructions, customisable per Board (add/remove phases, toggle gates).
 - **Roles:** built-in roles (orchestrator, architect, backend, frontend, qa, reviewer) with default prompts and permission profiles; custom roles supported.
-- **Adapters:** claude-code, codex, fake at launch; antigravity later.
+- **Adapters:** claude-code and codex spawn/resume; fake for tests; Antigravity detection only, with external agents connected through Pull (D17).
 - **Event bus:** in-process pub/sub that the API exposes as SSE per board and per run.
 
 ### Adapter interface
@@ -463,18 +463,18 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 ### Configuration
 
-- `crew.config.ts` optionally holds additive `team` entries (`name`, `role`, `cliType: claude-code|codex|antigravity`, optional `mode: spawn|pull`, default spawn; Antigravity requires explicit pull), provisioned by init/start without deleting existing agents or silently changing their tool/role/mode. It holds verify commands, roles, limits (staleAfterMs for Pull activity, default 600000 ms; max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy. `crew.config.ts` is loaded by `crew start` and copied into the workspace's stored config (D56, user); it also holds `permissions.allowCommands` (D58, user) and the workflow's gate toggles (D61, user). Until that lands in milestone 5, `mergeStrategy` (D40, user) and an optional `worktreeSetup` shell command (D45, user) are read from the workspace's stored config, like the verify commands.
-- Verify commands are a named list. Each entry has a command, an optional working directory, a timeout (default 10 minutes), and optional path globs (matched with `picomatch`, D37). Until `crew.config.ts` loading lands in milestone 5, they are read from the workspace's stored config (D29, user). They run through a shell, because they are written by the user in their own config; an entry with globs runs only when the task's changed files match them. During merge-queue re-verification, every entry matching the rebased diff runs again (D10, Claude-decided).
+- `crew.config.ts` optionally holds additive `team` entries (`name`, `role`, `cliType: claude-code|codex|antigravity`, optional `mode: spawn|pull`, default spawn; Antigravity requires explicit pull), provisioned by init/start without deleting existing agents or silently changing their tool/role/mode. It holds verify commands, roles, limits (staleAfterMs for Pull activity, default 600000 ms; max parallel agents, max retries, max depth, max runtime, no-output timeout, max tickets per phase) and merge strategy. `crew.config.ts` is loaded by `crew start` and copied into the workspace's stored config (D56, user); it also holds `permissions.allowCommands` (D58, user) and the workflow's gate toggles (D61, user). `mergeStrategy` (D40) and optional `worktreeSetup` (D45) also come from the loaded workspace config.
+- Verify commands are a named list. Each entry has a command, an optional working directory, a timeout (default 10 minutes), and optional path globs (matched with `picomatch`, D37). They are read from the loaded workspace config (D29, D56). They run through a shell, because they are written by the user in their own config; an entry with globs runs only when the task's changed files match them. During merge-queue re-verification, every entry matching the rebased diff runs again (D10, Claude-decided).
 - Defaults: max parallel verification pipelines 2 (D37, user), max parallel agents 3, max retries 3, max task depth 3, max runtime per run 30 minutes, no-output timeout 5 minutes, max tickets per phase 20 (D24, user), squash merge, long-poll wait 90 seconds, memory injection budget about 8k tokens (D15, Claude-decided), rate-limit backoff from 1 minute doubling up to 30 minutes (D7, Claude-decided).
 
 ### Permissions
 
 - Each role has a permission profile, which the adapter maps to the tool's own flags.
 - Spawned agents may edit files and run commands inside their worktree and run `crew *`.
-- Claude Code tool rules deny `git push`, writes outside the worktree and destructive commands. Codex uses sandbox modes (D88): command allow/deny lists, push denial and the Orchestrator's one-output-file rule are advisory prompt rules, not per-command enforcement. Workspace-write network follows `allowNetwork`; read-only has no network, and full mode has unrestricted network.
+- Claude Code tool rules deny `git push`, writes outside the worktree and destructive commands. Codex uses sandbox modes (D88): command allow/deny lists, push denial and the Orchestrator's one-output-file rule are advisory prompt rules, not per-command enforcement. Workspace-write network is on by default for the localhost Crew API (`allowNetwork: false` disables it), including the default Codex Reviewer. OS read-only is used only for a read-only profile with `allowNetwork: false` and cannot reach that API; full mode has unrestricted network (D88).
 - "Everything allowed" mode is explicitly configured by the human. On Codex it maps to `danger-full-access`, which has no OS filesystem or network containment (D88); the worktree boundary is a prompt rule plus the limited diff checks below.
 - The diff gate also checks for out-of-worktree changes server-side, so permissions are enforced even if a tool's own sandbox fails: a changed path that is a symlink pointing outside the worktree fails, and so does any change to the main checkout's `git status` between run start and `crew done` (D31, user). The second check can false-positive if the user edits the main checkout during a run.
-- The Reviewer runs with a `read-only` profile: it can read, search, `git diff|log|show` and call `crew review *`, and nothing else (D34, user).
+- The Reviewer runs with a `read-only` profile: Claude Code restricts it to read/search, `git diff|log|show` and `crew review *` (D34). Codex maps this profile to network-enabled workspace-write so it can call the localhost API; its no-edit rule is advisory, and it could modify the author worktree (D88).
 
 ### Local security (D13, Claude-decided)
 
@@ -498,7 +498,7 @@ todo → ready → doing → verifying → review → merge-queue → merged
 
 ### Reviewer gate (D8, Claude-decided)
 
-- The review gate is a fresh Reviewer process with read-only permissions, given the diff and the task's acceptance criteria.
+- The review gate is a fresh Reviewer run with the read-only profile, given the diff and the task's acceptance criteria. A Pull Reviewer polls for that run; Codex no-edit restrictions are prompt rules as described above.
 - When the team has more than one AI tool, the Reviewer runs on a different tool than the task's author.
 - "Changes requested" uses the same retry limit as verification failures.
 - The Reviewer answers with `crew review approve` or `crew review changes --feedback "..."`. The endpoint accepts only the task's current reviewer (`tasks.reviewerAgentId`), not the author (D34, user).

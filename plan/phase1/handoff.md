@@ -1,77 +1,48 @@
-# Milestone 7 session 3: bullets 4 and 5 implemented and verified
+# Handoff: milestone 7 implementation complete; next is milestone 8
 
-Bullet 4 is implemented: injected-clock scanner, atomic stale requeue without
-retry charge, preserved worktrees/branches, another-agent takeover, retired-run
-refusal, phase/review recovery and one full window of restart/resume grace.
-Targeted stale + existing Pull suite passed 25 tests (47.55s). Bullet 5 is implemented: config Pull modes, Antigravity detection-only, human
-connect token rotation/CLI, and Team/Board status. 35 targeted config/connect/detection tests, 33 stale/phase tests, UI build, 22 UI
-checks and actual Chromium/real CLI-server checks passed. The first full run passed
-all 400 tests but caught a timer from a replaced test server; cleanup now closes
-the current server and the regression checks its scanner/listener after shutdown.
-The final `rm -r dist && npm test` exited 0: 58 files / 400 tests passed
-in 582.29s without unhandled errors. The validated static export was restored after
-the root clean run. Implementation commits: f2876dd, 70a5908, 25e8600; full output,
-browser coverage and limits: [reports/m7-bullet-4-5.md](reports/m7-bullet-4-5.md).
-Bullet 6 remains not started. No paid agents. Unrelated tickets.ts
-whitespace is untouched. See milestone-7.md §9 for the grace and reviewer rules.
+Branch: `feat/milestone-7-breadth`. Bullet 6 adds the bounded manual paid smoke
+and final docs; no product behavior changed. The script commit is `462a16b`.
+The final docs/report commit follows required verification. The unrelated existing
+whitespace edit in `src/server/scheduler/tickets.ts` remains unstaged and untouched.
 
-# Milestone 7 session 2: bullets 2 and 3 implemented and verified
+`npm run smoke:m7` ran twice, within the prompt's maximum. First attempt passed
+Codex worker, Pull completion and stop/resume, skipped mixed-tool review because
+Claude login was unavailable, then failed the stale takeover observation: an idle
+Codex worker shared the Pull role and reclaimed the task. Separate spawn fixture
+roles fixed the script; no production bug or behavior change was needed.
+The only repeat exited 0: **steps 1, 3, 4, 5 passed; step 2 skipped**. It completed
+three local one-file merges with real Codex author/Reviewers and real CLI Pull
+terminals, real-time stale recovery, preserved draft/branch, old-run rejection and
+zero retries. Five Codex launches in the repeat, six in the first attempt. No
+Claude run, real Antigravity process or induced provider limit. Both attempts
+closed the server, checked process groups and deleted fixtures/private material.
 
-Branch `feat/milestone-7-breadth`. Pull join/next/heartbeat, own-agent token auth,
-shared serialized provisioning/prompts and pid-less run lifecycle are implemented.
-Pull work passes existing verification/review/retry/merge; next carries feedback
-and Q&A. Stop/cancel notices and answer reminders reach the next CLI call; active
-run IDs protect task submissions. Logs/status and the startup reaper handle
-pid-less runs. Pull Reviewer and Orchestrator phase paths use existing endpoints.
+**Live Claude-author / Codex-Reviewer step 2 remains unverified.** Initial shell
+checks reported login, but the script and later safe probes found Claude logged
+out; no login/credential changes or paid authentication probe was attempted.
+Its implemented path must not be described as passed. The historical real Codex
+Reviewer probe used a fake author, and does not close this mixed-real-tool gap.
 
-Final `rm -r dist && npm test`: **55 files / 378 tests passed**, **506.21s**, with
-typecheck and a fresh CLI build. Sixteen Pull harness cases include a fake terminal
-agent launching real CLI children, reviewed merge, failed gates/review changes,
-Q&A, concurrent polls/submissions, old-run rejection, stop/cancel and reaper behavior.
-The first full run passed 377 tests and failed only the obsolete join-is-unimplemented
-assertion; it now checks the implemented command's missing-agent-token error.
-Report: `reports/m7-bullet-2-3.md`, with exact output, failures and limitations.
-Commits: `3ac8121` (bullet 2), `c3e5b87` (bullet 3), `ef0f722` (late submission
-check), `1e28706` (legacy auth test). Final docs/report are committed separately.
+Read [reports/m7-bullet-6.md](reports/m7-bullet-6.md) for actual command output,
+all per-step results, usage, bounds, failures/fixes and unverified paths. See
+[milestone-7.md](milestone-7.md) §9 for consolidated Codex prompt-only restrictions,
+network-enabled workspace-write/Reviewer edit risk, unsandboxed Pull terminals,
+restart/resume grace, one-second heartbeat precision and five-second scanning,
+last-stale-agent exclusion and the existing verdict/transition window.
 
-No dependencies, migrations, UI or paid agents. Stop after bullet 3; **bullets 4–6
-are not started**. Next is stale detection (4), not more breadth in this session.
-Milestone §9 records single-server serialization, shared-token replay, provisioning
-waits, advisory terminal permissions, repeated answer reminders and the existing
-review-result/transition interruption window. The unrelated whitespace-only edit
-in `src/server/scheduler/tickets.ts` is left out of these commits.
+**Next is milestone 8:** a manual grill-to-merge run on a real project with mixed
+Claude Code + Codex staffing, after restoring Claude login and explicit user
+instruction. No milestone 8 work or public publishing was performed. Milestone 7
+agent prompts were retired; their instructions remain in git history, while the
+milestone 5 implementer template is retained. No dependencies, migrations, tool
+minimums or UI behavior changed in this session.
 
-# Handoff
+Final session verification (2026-10-22): `rm -r dist && npm test` exited 0,
+58 files / 400 tests passed in 600.56s; UI build (typecheck/lint/static export)
+and all 22 client checks passed. Final script typecheck passed after the bounded
+preflight cleanup; no third paid run. Full command output is in the session report.
 
-**Milestone 7 session 1: bullets 0 and 1 implemented** on
-`feat/milestone-7-breadth`. The Codex 0.163.0 adapter is registered by default;
-init detects tools; config.team creates additive named Codex/Claude spawn agents
-with built-in/custom roles on init/start. Init preserves stored config. Existing
-agents are never silently changed or removed. All three real fixture turns ran
-once (49.671 s; 105,426 input / 155 output tokens; USD cost unavailable). The
-read-only response reports denial but has no tool event; do not claim syscall
-proof. Rate-limit samples are explicitly synthetic.
-
-The Codex-shaped harness uses real child processes, CLI HTTP calls, worktrees
-and the production parser. It covers dispatch, captured thread identity,
-ask/answer resume, reported reset and backoff, stop/resume, timeout/no-output
-process-group kills, final non-newline and repeated rate-limit errors, and
-exited-without-done escalation. The answer/Dispatcher
-race discovered during verification is fixed for work tasks: both choose the
-saved session and Runner coalesces concurrent work starts for the same agent. Final clean-suite
-output and the complete file inventory are in `reports/m7-bullet-0-1.md`.
-Final `rm -r dist && npm test`: **54 files / 361 tests passed**, 440.58 s.
-Bullet commits: `78125a9` (fixtures/adapter), `a1250c2` (wiring).
-
-Limitations: Codex command lists, state-file denials and Orchestrator single-file
-writes are prompt rules, not per-command enforcement (D88). Workspace network
-follows allowNetwork; full has no OS containment. Real Codex-to-Crew HTTP in a
-network-disabled sandbox was not tested; read-only Reviewer completion needs a
-scoped local transport/network decision. No real Crew Codex workflow or mixed
-review smoke is claimed. No UI changes. **Bullets 2–6 are not started**: next is
-Pull join/next/heartbeat, using `milestone-7.md`. Stop this session after bullet 1.
-Milestone 6 is on main and its manual browser checklist passed (2026-10-21).
-
+## Historical handoffs (milestones 6 and earlier)
 
 Track E (`feat/m6-gaps`) closes both assigned gaps: ticket cards persist edits,
 add and cancel work; Scheduler commits fields, dependencies and readiness atomically.

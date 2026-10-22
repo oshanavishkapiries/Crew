@@ -2,7 +2,16 @@
 
 The implementation plan for milestone 7 of Phase 1. The PRD (`prd.md`) says *what* and *why*; this doc says *how* and *in what order*. Where they disagree, the PRD wins until its Decision Log is updated.
 
-**Status:** plan approved by the user (D88–D93 logged in the PRD). Bullets 0 and 1 implemented; verification is recorded in `reports/m7-bullet-0-1.md`. Bullets 2 and 3 are implemented and verified: 55 files / 378 tests passed; see reports/m7-bullet-2-3.md. Bullets 4 and 5 are implemented and verified: 58 files / 400 tests, UI build, 22 client checks and real Chromium/CLI-server checks passed; see reports/m7-bullet-4-5.md. Bullet 6 is not started. Bullet prompts: `agent-prompts/m7-bullet-0-1.md` (done), `agent-prompts/m7-bullet-2-3.md` (done), `agent-prompts/m7-bullet-4-5.md` (done), `agent-prompts/m7-bullet-6.md`.
+**Status:** implementation done (bullets 0–6), D88–D93 approved. The manual
+`npm run smoke:m7` passed steps 1, 3, 4 and 5 on 2026-10-22: real Codex worker
+and Reviewers, Pull completion, stale takeover and Codex stop/resume. **Step 2
+(mixed Claude author / Codex Reviewer) was skipped because Claude authentication
+was unavailable at preflight.** That live validation remains open; it is not a
+pass. See [session 4 report](reports/m7-bullet-6.md) for both attempts, usage and
+final checks. Earlier implementation evidence: [0–1](reports/m7-bullet-0-1.md),
+[2–3](reports/m7-bullet-2-3.md), [4–5](reports/m7-bullet-4-5.md).
+Next is milestone 8's manual end-to-end run on a real project with a mixed team.
+Milestone 7 task prompts are retired; their instructions remain in git history.
 
 ## 1. Goal
 
@@ -22,7 +31,7 @@ A team can mix Claude Code and Codex agents, and any agent (including Antigravit
 In: Codex adapter; Pull mode API + CLI; heartbeat/stale; Antigravity as a Pull agent type; Team/Board status; smoke script.
 Out: an Antigravity headless adapter (D17), other tools, Phase 2 budgets, the milestone 8 end-to-end run (separate, manual).
 
-## 3. What exists
+## 3. Baseline before milestone 7
 
 - `AgentAdapter` interface (`src/adapters/types.ts`): `detect`, `buildSpawn`, `parseOutput`, `isRateLimit`, `buildResume`. Claude Code and fake implement it; the Runner, rate-limit backoff, session resume and the `done` fallback already go through it.
 - `agents.mode` (`spawn|pull`) and `lastHeartbeatAt` exist in the schema, unused. `join`/`next` are declared in `src/cli/declarations.ts` but have no handlers or endpoints. Declared endpoints in the PRD: `POST /api/agents/join`, `GET /api/agents/:id/next-task?wait=90`, `POST /api/agents/:id/heartbeat`.
@@ -32,9 +41,9 @@ Out: an Antigravity headless adapter (D17), other tools, Phase 2 budgets, the mi
 
 ### 4.1 Codex adapter
 
-- `buildSpawn`: `codex exec --json -s <sandbox> -C <workDir>` with the prompt on stdin. Mapping: `read-only` → `read-only`; `standard`/`orchestrator` → `workspace-write`; `full` → `danger-full-access` (only when the human configured `full`). `allowNetwork` maps to Codex's network option for workspace-write.
-- **Limitation (stated, not hidden):** Codex has no per-command allow/deny lists like Claude Code. `allowCommands`/`denyCommands` are enforced by the sandbox mode and by the prompt rules, not command by command. The PRD permission section and Team UI say so.
-- `parseOutput` turns `--json` lines into `AgentEvent`s and captures the session id; `buildResume` uses `codex exec resume <id>`. `isRateLimit` recognises recorded Codex rate-limit errors (D7).
+- `buildSpawn`: `codex exec --json -s <sandbox> -C <workDir>` with the prompt on stdin. Current D88 mapping: `read-only` → `workspace-write` by default so `crew review` can reach localhost; only `allowNetwork: false` uses OS `read-only`. `standard`/`orchestrator` → `workspace-write`; explicit `full` → `danger-full-access`. Workspace-write network is on by default; `allowNetwork: false` disables it. This permits external networking too. The Codex Reviewer's no-edit restriction is a prompt rule, not an OS boundary.
+- **Limitation (stated, not hidden):** Codex has no per-command allow/deny lists like Claude Code. `allowCommands`/`denyCommands` are advisory prompt rules, not executable command filters. The PRD permission section and Team UI say so.
+- `parseOutput` turns `--json` lines into `AgentEvent`s and captures the session id; `buildResume` uses `codex exec resume <id>`. `isRateLimit` recognises structured Codex rate-limit errors (D7); the rate-limit fixture is explicitly synthetic because no real limit was obtained.
 - No Stop hook equivalent: completion comes from `crew done`, and the existing "run ended without `crew done`" fallback applies (same path as Claude without the hook).
 
 ### 4.2 Pull mode
@@ -87,6 +96,10 @@ Harness first (PRD): Pull mode uses the fake adapter driven through the real CLI
 - Is 10 minutes the right stale window for slow human-driven Pull sessions? Default: yes, configurable.
 
 ## 9. Implementation notes
+
+Sessions 1–3 below are historical records. Later D88 updates and the final
+consolidation supersede their initial sandbox/network limits and “not started”
+status statements.
 
 ### Session 1: bullets 0 and 1
 
@@ -306,3 +319,85 @@ errors or model processes. The final `rm -r dist && npm test` exited 0: 58 files
 400 tests passed in 582.29s, with no unhandled errors. The previously validated
 ui/out export was restored to dist/ui after the root clean run. Full output and
 precise browser coverage/limits: reports/m7-bullet-4-5.md. Bullet 6 is not started.
+
+### Session 4: bullet 6 — manual smoke and final docs
+
+`scripts/smoke-milestone-7.ts` is manual, paid and typechecked by `npm test`, never
+executed by it. Read its top-level bounds before running `npm run smoke:m7` from
+the repo root. Authenticate both tools for all five steps; absent/unauthenticated
+tools cause explicit skips. No real Antigravity installation is required: real
+CLI child processes play the Pull terminal. Neither the smoke nor Crew pushes the
+fixture repo. The script deletes its temporary repo/home after closing the server
+and checking recorded process groups; private connect output stays in memory.
+
+With both tools, expect seven paid launches: Codex interrupted author + replacement,
+Claude Reviewer, Claude author + Codex Reviewer, and two real reviews of Pull work
+(the review tool depends on available candidates). The hard cap is seven, with no
+author/Reviewer retries; runs are limited to 120 seconds, silence to 90 seconds,
+and the whole smoke to ten minutes plus bounded cleanup. Claude has its existing
+$0.50 per-run cap (at most $3.50 if every allowed launch were Claude). Codex has
+no dollar cap: tiny tasks/runtime/run-count bounds constrain exposure, and the
+CLI reports token usage rather than USD. This is not a total-dollar guarantee.
+
+First attempt: steps 1, 3 and 5 passed, step 2 skipped (Claude auth unavailable),
+step 4 failed because an idle Codex worker shared the Pull role and reclaimed
+stale work before the script could observe ready. Production behavior was correct.
+The script now gives spawn workers separate fixture roles, and asserts real
+Codex command success in addition to API/DB/merge evidence. The sole permitted
+repeat exited 0: steps 1, 3, 4 and 5 passed, step 2 explicitly skipped. Five Codex
+launches in the repeat, six in the first attempt, no Claude or real Antigravity
+launch. Both attempts closed the server, checked process groups and removed their
+fixtures. No further paid run was made. Full outputs and usage: session 4 report.
+
+The smoke checks the actual Codex arguments returned to Runner (workspace-write,
+network on, approval never, user config/rules ignored), a successful real CLI done
+command and localhost completion, diff/command verification, a real Reviewer
+verdict, merge-queue transition, re-verification, one-file local merge and cleanup.
+Before ref publication it compares the author worktree's HEAD/status with its
+pre-review snapshot. Pull checks include connect/join/next/done/rejoin, null pid,
+real-time stale scanning, preserved branch/draft, zero retries, another Pull agent's
+takeover and retired-run rejection. Stop/resume uses the human CLI on a live Codex
+process, never a deliberately induced provider limit. Live mixed-tool step 2 is
+implemented but **unverified** in this session; restore Claude login before its
+next authorized run or milestone 8. No product behavior changed in bullet 6.
+
+### Consolidated known limitations
+
+- Codex cannot enforce per-command allow/deny lists, git-push denial, state-file
+  read denial or the Orchestrator's one-output-file restriction. These are prompt
+  rules. Workspace-write permits worktree edits and network access by default,
+  including external hosts. Explicit full has no OS filesystem/network containment.
+- The Codex Reviewer uses workspace-write/network-on to reach `crew review` over
+  localhost. Its no-edit restriction is advisory. The smoke observes unchanged
+  HEAD/status before merge; it does not prove edits are impossible or detect edits
+  that were reverted. A network-disabled OS read-only Reviewer cannot use the
+  current HTTP transport. Real rate-limit samples are still unavailable/synthetic.
+- Pull terminal agents are external and unsandboxed. Crew cannot kill or prevent
+  their file writes after stop/cancel/stale; retired run IDs cannot submit task
+  mutations. Shared tokens represent one identity, not independent terminal leases.
+- Startup and every human resume grant a full configured stale window without
+  rewriting persisted heartbeat. Repeated restarts/resumes postpone recovery.
+  SQLite heartbeat precision is one second; the production scanner checks every
+  five seconds, so very short windows are approximate. Default is ten minutes.
+- Stale recovery covers doing work/phase ownership and open Pull review runs.
+  Idle agents only project disconnected. Blocked Q&A and designated Reviewers with
+  no open run are not stale-requeued; stopped/rate-limited agents remain paused.
+  The last stale assignee/reviewer cannot reclaim that task until another agent
+  has run it, so a single-agent team can leave it pending. Review is never skipped
+  merely because another eligible Reviewer is unavailable.
+- Provisioning is serialized in one server, not across servers. The 85-second
+  idle poll cap does not bound worktree/setup work ahead of assignment. Connect
+  rotates on every request; the last prompt wins, and closing a pending dialog
+  may discard a minted prompt (reopen to rotate). No plaintext retrieval exists.
+- Existing verdict persistence precedes the asynchronous status transition: an
+  interruption can leave a verdict row even when the transition is refused.
+  Milestone 7 adds no general transaction redesign. Antigravity detection checks
+  PATH presence only, not GUI installation/version or a headless interface.
+- The live smoke covers tiny dispatch tasks, not the full grill-to-integrate
+  workflow or a real project. Mixed-tool live review remains skipped, no macOS or
+  actual Antigravity terminal was exercised, and milestone 8 remains required.
+
+Final session verification (2026-10-22): `rm -r dist && npm test` exited 0,
+58 files / 400 tests passed in 600.56s; UI build (typecheck/lint/static export)
+and all 22 client checks passed. Final script typecheck passed after the bounded
+preflight cleanup; no third paid run. Full command output is in the session report.

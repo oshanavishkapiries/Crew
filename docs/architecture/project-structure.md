@@ -1,8 +1,12 @@
 # Project Structure
 
-The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D65).
+The folder layout of the Crew repository. Milestones 1 (core), 2 (runner, worktrees, dispatcher, safety, Claude Code adapter, human CLI) and 3 (verification pipeline, diff gate, command gates, reviewer gate, stop hook, human CLI) are implemented. Milestone 4 (merge queue, worktree setup, conflict sub-tasks, human queue/retry CLI) is implemented and its manual smoke passed. It is based on `docs/Crew Design Doc.md` and updated with the decisions in `plan/phase1/prd.md` (Decision Log D1–D93).
 
-**Status:** milestones 1 to 5 are done (smoke passed with real Claude Code, 2026-10-21). Milestone 6 bullets 0–5 (server prerequisites and the whole Board UI in `ui/`) are implemented; packaging and the manual browser checklist remain (`milestone-6.md`).
+**Status:** milestones 1–6 are done; milestone 7 implementation is complete
+(Codex, Pull, stale recovery, connect/status and manual smoke). Live smoke steps
+1/3/4/5 passed; mixed-tool step 2 was skipped for unavailable Claude authentication.
+Milestone 8's real-project mixed-team end-to-end run is next. See milestone-7.md §9
+and reports/m7-bullet-6.md for exact limits and verification.
 
 **Keep this file current.** When a folder is added, removed, renamed or changes purpose, update this document in the same change.
 
@@ -37,6 +41,7 @@ crew/
 │     ├─ milestone-4.md   # Milestone 4 plan: merge queue, rebase, conflict sub-tasks (done; manual smoke passed)
 │     ├─ milestone-5.md   # Milestone 5 plan: config, memory, workflow phases, human gates (done; smoke passed)
 │     ├─ milestone-6.md   # Milestone 6 plan: Board UI (Next.js static export + shadcn/ui)
+│     ├─ milestone-7.md   # Milestone 7 plan/results: Codex, Pull, stale recovery and manual smoke
 │     ├─ agent-prompts/   # The implementer prompt template and its lessons
 │     ├─ reports/         # Session reports and recorded verification for review
 │     └─ handoff.md       # Latest session handoff
@@ -57,7 +62,7 @@ crew/
 │  │  ├─ memory/          # Layers, shared protected prompt budget, promotion (D15)
 │  │  ├─ workflow/        # Phase instructions, Scheduler phase tasks, durable gates, automatic dispatch completion and approved integrate summary memory
 │  │  └─ events/          # In-process event bus behind SSE
-│  ├─ adapters/           # claude-code, codex, fake (antigravity later, D17)
+│  ├─ adapters/           # claude-code, codex, fake; antigravity detection only (Pull, D17)
 │  └─ roles/              # Built-in role prompts and permission profiles; workspace overrides stay in config
 ├─ ui/                    # Board UI (Next.js static export + Tailwind + shadcn/ui, D80/D81), built to dist/ui and served by the server
 └─ test/
@@ -196,3 +201,7 @@ launches maximum, no author/Reviewer retries, ten-minute deadline, existing $0.5
 Claude per-run budget; Codex has no dollar cap. Auth checks report explicit skips.
 Spawn fixture roles are separate from Pull roles so stale takeover stays with Pull.
 Cleanup closes the server, checks process groups and deletes the repo/home.
+
+Milestone 7 session prompts are retired after bullet 6 (git history retains them);
+`agent-prompts/` keeps the milestone 5 template and lessons. The session reports
+remain the review evidence. No new runtime folder is introduced by the smoke.

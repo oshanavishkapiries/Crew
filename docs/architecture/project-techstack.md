@@ -1,6 +1,6 @@
 # Project Tech Stack
 
-The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D87). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
+The runtime, libraries and tooling Crew is built with. Based on `docs/Crew Design Doc.md` and updated with `plan/phase1/prd.md` (Decision Log D1–D93). Milestones 1, 2, and 3 are implemented; the versions below are pinned exactly in `package.json`.
 
 **Keep this file current.** When a dependency, tool, version requirement or supported platform is added, removed or swapped, update this document in the same change.
 
@@ -62,7 +62,7 @@ Milestone 5 phase runs use the same Claude Code `dontAsk` mode with an exact abs
 
 Every Claude Code profile (including full, Reviewer and Orchestrator), for spawn and resume, denies `Read` of the Crew state files in the resolved Crew home (`server.json`, `crew.db` with its `-wal`/`-shm` files, `claude-settings.json`) and of its `logs/` directory. The `worktrees/` subtree is deliberately not denied, because agents run and read inside it. `CREW_HOME` is resolved each time commands are built. This is defence in depth, not an OS sandbox: Bash and other access paths need their own controls. A real Claude Code 2.1.305 `dontAsk` probe (fake home containing spaces) recorded a denied `server.json` read, an allowed read of a file under `worktrees/`, and an allowed normal-file read for $0.1693513, under a $0.50 cap and two-minute deadline: `test/fixtures/claude-code/crew-home-read-dontask.json`. Syntax follows [Configure permissions](https://code.claude.com/docs/en/permissions).
 
-The manual milestone 5 smoke (`npm run smoke:m5`) uses real CLI init/start and the initialized Claude team in isolated `/tmp` folders. Its executable launcher forwards the existing $0.50 budget flag and reserves up to 30 run slots atomically; the script has a 20-minute deadline. Expected cost is $1–$6, with $15 in total per-run caps. It is typechecked only and has not been run. No dependency, migration or adapter implementation change was needed in the final session. The built-server SIGKILL test uses a local Claude executable stub, not real Claude: detached agents survive server death and startup can duplicate a run; see milestone-5.md §9 before preview use.
+The manual milestone 5 smoke (`npm run smoke:m5`) uses real CLI init/start and the initialized Claude team in isolated `/tmp` folders. Its executable launcher forwards the existing $0.50 budget flag and reserves up to 30 run slots atomically; the script has a 20-minute deadline. Expected cost is $1–$6, with $15 in total per-run caps. It is typechecked only by the suite; the manual smoke passed on 2026-10-21 (reports/m5-final.md). No dependency, migration or adapter implementation change was needed in the final session. The built-server SIGKILL test uses a local Claude executable stub, not real Claude; the accepted D77 startup reaper terminates a verifiably owned orphan before dispatch (Linux environment identity checks). See milestone-5.md §9 for platform limits.
 
 Milestone 6 bullet 0 uses Node crypto for random browser login/session credentials (hashes retained in server memory only), Hono cookie and MIME helpers, and Node realpath checks for `dist/ui`. Human header-secret authentication remains available; cookie mutations require `X-Crew-Board: 1`. `crew open` uses execa argument arrays to run macOS `open`, Linux/WSL `xdg-open`, or the executable named by `BROWSER`; if unavailable it prints paste-the-URL guidance. No new dependency or runtime version is required. The server build and test suite do not require a UI export; Track B owns `build:ui` and `prepack`.
 
@@ -91,7 +91,7 @@ never deletes an existing agent. `init` preserves stored workspace settings;
 now accept boolean `allowNetwork`. Network-disabled Codex sandboxes can also block
 the localhost Crew API: the fake harness does not prove real sandbox HTTP
 connectivity. Workspace-write now has network by default;
-a read-only Reviewer is therefore run with workspace-write plus a no-edit prompt rule (a network-disabled read-only one could not use HTTP `crew review` without a
+a read-only Reviewer is therefore run with workspace-write plus a no-edit prompt rule. A network-disabled read-only one could not use HTTP `crew review` without a
 future scoped local transport/network solution. Broad network access is enabled by default and documented (D88).
 
 Milestone 7 session 3 uses existing Node crypto, clocks and SQLite transactions for
@@ -115,3 +115,10 @@ cost is not capped in dollars. Missing or unauthenticated tools produce named
 skips; Pull steps can use a scripted CLI Reviewer when neither tool is available.
 The script is typechecked by `npm test`, never executed by it. No dependencies
 or tool minimums changed.
+
+Milestone 7 smoke result (2026-10-22): steps 1/3/4/5 passed with Codex 0.163.0;
+mixed-tool step 2 skipped because Claude auth could not be confirmed (installed
+Claude 2.1.308; minimum unchanged). Two attempts only; the first's shared-role
+fixture race was fixed in the script. Repeat: five Codex launches, three local
+merges, no Claude launch, no provider-limit probe, cleanup passed. Full outputs
+and numeric token usage, with USD unavailable: reports/m7-bullet-6.md.
